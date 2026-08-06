@@ -1,251 +1,108 @@
 ---
 title: Avatar
-description: Displays a user avatar image with fallback options.
+description: Displays an image with explicit fallback, badge, and group slots.
 ---
 
 # Avatar
 
-The Avatar component displays user profile images with intelligent fallbacks. When no image is provided, it shows user initials or a placeholder icon. The component supports various sizes and can be grouped together for team displays.
+Avatar follows the shadcn Vega geometry. Images and fallback content are clipped to a circle, while badges remain visible outside the clipped media layer.
 
 ## Import
 
 ```rust
-use gpui_component::avatar::{Avatar, AvatarGroup};
+use gpui_component::{
+    IconName,
+    avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
+};
 ```
 
-## Usage
+## Basic usage
 
-### Basic Avatar
-
-You can create an [Avatar] by providing an image source URL and a user name:
+Semantic avatars require a stable element ID and accessible label. The fallback is used while an image loads and when it fails.
 
 ```rust
-Avatar::new()
-    .name("John Doe")
-    .src("https://example.com/avatar.jpg")
+Avatar::new("jane-avatar", "Jane Smith")
+    .image(AvatarImage::new("https://example.com/jane.jpg"))
+    .fallback(AvatarFallback::text("JS"))
 ```
 
-### Avatar with Fallback Text
-
-When no image source is provided, the Avatar displays user initials with an automatically generated color background:
+Use an icon fallback when initials are not appropriate:
 
 ```rust
-// Shows "JD" initials with colored background
-Avatar::new()
-    .name("John Doe")
-
-// Shows "JS" initials
-Avatar::new()
-    .name("Jane Smith")
+Avatar::new("organization-avatar", "Acme organization")
+    .fallback(AvatarFallback::icon(IconName::Building2))
 ```
 
-### Avatar Placeholder
+Use `Avatar::decorative()` only when adjacent content already conveys the same identity.
 
-For anonymous users or when no name is provided:
+## Badge
+
+`AvatarBadge` renders outside the clipped image surface and includes a background-colored ring.
 
 ```rust
-use gpui_component::IconName;
+Avatar::new("online-user", "Online user")
+    .image(AvatarImage::new("https://example.com/user.jpg"))
+    .fallback(AvatarFallback::text("OU"))
+    .badge(AvatarBadge::new().bg(cx.theme().green))
 
-// Default user icon placeholder
-Avatar::new()
-
-// Custom placeholder icon
-Avatar::new()
-    .placeholder(IconName::Building2)
+Avatar::new("invited-user", "Invited user")
+    .fallback(AvatarFallback::text("IU"))
+    .badge(AvatarBadge::new().child(IconName::Plus))
 ```
 
-### Avatar Sizes
+## Sizes
+
+The built-in sizes follow Vega: small 24 px, default 32 px, and large 40 px. Extra small and custom sizes remain available through `Sizable`.
 
 ```rust
-Avatar::new()
-    .name("John Doe")
-    .xsmall()
-
-Avatar::new()
-    .name("John Doe")
+Avatar::new("small-avatar", "Small avatar")
+    .fallback(AvatarFallback::text("S"))
     .small()
 
-Avatar::new()
-    .name("John Doe")   // 48px (default medium)
+Avatar::new("default-avatar", "Default avatar")
+    .fallback(AvatarFallback::text("M"))
 
-Avatar::new()
-    .name("John Doe")
+Avatar::new("large-avatar", "Large avatar")
+    .fallback(AvatarFallback::text("L"))
     .large()
 
-// Custom size
-Avatar::new()
-    .name("John Doe")
-    .with_size(px(100.))
+Avatar::new("custom-avatar", "Custom avatar")
+    .fallback(AvatarFallback::text("C"))
+    .with_size(px(56.))
 ```
 
-### Custom Styling
+## Avatar group
 
-```rust
-Avatar::new()
-    .src("https://example.com/avatar.jpg")
-    .with_size(px(100.))
-    .border_3()
-    .border_color(cx.theme().foreground)
-    .shadow_sm()
-    .rounded(px(20.))  // Custom border radius
-```
-
-## AvatarGroup
-
-The [AvatarGroup] component allows you to display multiple avatars in a compact, overlapping layout:
-
-### Basic Group
+Groups preserve insertion order, apply the Vega overlap and background ring, and accept an explicit trailing count or icon item.
 
 ```rust
 AvatarGroup::new()
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().name("John Doe"))
-```
-
-### Group with Limit
-
-```rust
-AvatarGroup::new()
-    .limit(3)  // Show maximum 3 avatars
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().src("https://example.com/user4.jpg"))  // Hidden
-    .child(Avatar::new().src("https://example.com/user5.jpg"))  // Hidden
-```
-
-### Group with Ellipsis
-
-Show an ellipsis indicator when avatars are hidden due to the limit.
-
-In this example, only 3 avatars are shown, and "..." indicates there are more:
-
-```rust
-AvatarGroup::new()
-    .limit(3)
-    .ellipsis()  // Shows "..." when limit is exceeded
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().src("https://example.com/user4.jpg"))
-    .child(Avatar::new().src("https://example.com/user5.jpg"))
-```
-
-### Group Sizes
-
-The [Sizeable] trait can also be applied to AvatarGroup, and it will set the size for all contained avatars.
-
-```rust
-// Extra small group
-AvatarGroup::new()
-    .xsmall()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-    .child(Avatar::new().name("C"))
-
-// Small group
-AvatarGroup::new()
-    .small()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-
-// Medium group (default)
-AvatarGroup::new()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-
-// Large group
-AvatarGroup::new()
-    .large()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-```
-
-### Adding Multiple Avatars
-
-```rust
-let avatars = vec![
-    Avatar::new().src("https://example.com/user1.jpg"),
-    Avatar::new().src("https://example.com/user2.jpg"),
-    Avatar::new().name("John Doe"),
-];
-
-AvatarGroup::new()
-    .children(avatars)
-    .limit(5)
-    .ellipsis()
-```
-
-## API Reference
-
-- [Avatar]
-- [AvatarGroup]
-
-## Examples
-
-### Team Display
-
-```rust
-use gpui_component::{h_flex, v_flex};
-
-v_flex()
-    .gap_4()
-    .child("Development Team")
-    .child(
-        AvatarGroup::new()
-            .limit(4)
-            .ellipsis()
-            .child(Avatar::new().name("Alice Johnson").src("https://example.com/alice.jpg"))
-            .child(Avatar::new().name("Bob Smith").src("https://example.com/bob.jpg"))
-            .child(Avatar::new().name("Charlie Brown"))
-            .child(Avatar::new().name("Diana Prince"))
-            .child(Avatar::new().name("Eve Wilson"))
+    .avatar(
+        Avatar::new("alice", "Alice")
+            .image(AvatarImage::new("https://example.com/alice.jpg"))
+            .fallback(AvatarFallback::text("A")),
     )
-```
-
-### User Profile Header
-
-```rust
-h_flex()
-    .items_center()
-    .gap_4()
-    .child(
-        Avatar::new()
-            .src("https://example.com/profile.jpg")
-            .name("John Doe")
-            .large()
-            .border_2()
-            .border_color(cx.theme().primary)
+    .avatar(
+        Avatar::new("bob", "Bob")
+            .image(AvatarImage::new("https://example.com/bob.jpg"))
+            .fallback(AvatarFallback::text("B")),
     )
-    .child(
-        v_flex()
-            .child("John Doe")
-            .child("Software Engineer")
+    .avatar(
+        Avatar::new("charlie", "Charlie")
+            .fallback(AvatarFallback::text("C")),
     )
+    .count(AvatarGroupCount::text("+3"))
 ```
 
-### Anonymous User
+The count slot may contain an icon:
 
 ```rust
-use gpui_component::IconName;
-
-Avatar::new()
-    .placeholder(IconName::UserCircle)
-    .medium()
+AvatarGroup::new()
+    .avatars(avatars)
+    .count(AvatarGroupCount::icon(IconName::Plus))
 ```
 
-### Avatar with Custom Colors
-
-```rust
-// The avatar automatically generates colors based on the name
-// Different names will get different colors from the color palette
-Avatar::new().name("Alice")    // Gets one color
-Avatar::new().name("Bob")      // Gets a different color
-Avatar::new().name("Charlie")  // Gets another color
-```
+The group size is authoritative and is applied uniformly to every Avatar and count item.
 
 [Avatar]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.Avatar.html
 [AvatarGroup]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.AvatarGroup.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html

@@ -47,7 +47,9 @@ pub struct StylePreset {
     pub density: Density,
     pub radii: RadiusMetrics,
     pub controls: ControlMetrics,
+    pub avatars: AvatarMetrics,
     pub overlays: OverlayMetrics,
+    pub modals: ModalMetrics,
     pub focus: FocusMetrics,
     pub disclosure: DisclosureMetrics,
     pub elevation: ElevationMetrics,
@@ -105,6 +107,10 @@ Custom `Size::Size(height)` preserves the requested height and uses medium ancil
 ### Modal
 
 `ModalMetrics` owns AlertDialog default/small widths, content and header spacing, Media geometry, footer treatment, overlay opacity, and surface ring opacity. Vega uses the full 512 px confirmation surface with an unseparated footer, Nova uses compact geometry and a tinted separated footer, and Maia uses comfortable geometry with a stronger backdrop. Dialog and AlertDialog consume these values without branching on preset ids.
+
+### Avatar
+
+`AvatarMetrics` owns Avatar diameter, fallback text/icon size, badge geometry, outline width, group overlap, and group ring width. The current built-in presets use the pinned shadcn geometry: 24 px small, 32 px default, 40 px large, 8 px group overlap, and a 2 px background ring. Semantic image labels, fallback content, loading behavior, and group ordering remain component behavior.
 
 ### Focus
 
@@ -196,4 +202,5 @@ Add a shared metric only when at least three consumers need the same semantic va
 - No component branches on `vega`, `nova`, or `maia`.
 - Invalid registration and unknown selection do not partially mutate runtime state.
 - Button, form control, focus, overlay, navigation motion, and data metrics use shared semantic fields.
+- Avatar, AvatarBadge, AvatarGroup, and AvatarGroupCount consume shared Avatar metrics without preset-id branches.
 - P3 components retain GPUI-native behavior and consume shared tokens only where applicable.

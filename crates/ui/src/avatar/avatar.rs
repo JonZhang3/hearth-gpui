@@ -1,60 +1,234 @@
 use gpui::{
-    App, Div, Hsla, ImageSource, InteractiveElement, Interactivity, IntoElement,
-    ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div, img,
-    prelude::FluentBuilder,
+    AnyElement, App, BoxShadow, Div, ElementId, ImageSource, InteractiveElement, Interactivity,
+    IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, StyledImage as _, Window, div, img,
+    point, prelude::FluentBuilder as _, px,
 };
 
-use crate::{
-    ActiveTheme, Colorize, Icon, IconName, Sizable, Size, StyledExt,
-    avatar::{AvatarSized as _, avatar_size},
-};
+use crate::{ActiveTheme, AvatarSizeMetrics, Icon, IconName, Sizable, Size, StyledExt};
 
-/// User avatar element.
-///
-/// We can use [`Sizable`] trait to set the size of the avatar (see also: [`avatar_size`] about the size in pixels).
-#[derive(IntoElement)]
-pub struct Avatar {
-    base: Div,
+/// The image slot rendered by an [`Avatar`].
+pub struct AvatarImage {
+    source: ImageSource,
     style: StyleRefinement,
-    src: Option<ImageSource>,
-    name: Option<SharedString>,
-    short_name: SharedString,
-    placeholder: Icon,
-    size: Size,
 }
 
-impl Avatar {
+impl AvatarImage {
+    /// Creates an Avatar image from a GPUI image source.
+    pub fn new(source: impl Into<ImageSource>) -> Self {
+        Self {
+            source: source.into(),
+            style: StyleRefinement::default(),
+        }
+    }
+}
+
+impl Styled for AvatarImage {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+#[derive(Clone)]
+enum AvatarFallbackContent {
+    Text(SharedString),
+    Icon(Box<Icon>),
+}
+
+/// The loading and error fallback rendered by an [`Avatar`].
+#[derive(Clone)]
+pub struct AvatarFallback {
+    content: AvatarFallbackContent,
+    style: StyleRefinement,
+}
+
+impl AvatarFallback {
+    /// Creates a text fallback, typically one or two initials.
+    pub fn text(value: impl Into<SharedString>) -> Self {
+        Self {
+            content: AvatarFallbackContent::Text(value.into()),
+            style: StyleRefinement::default(),
+        }
+    }
+
+    /// Creates an icon fallback.
+    pub fn icon(icon: impl Into<Icon>) -> Self {
+        Self {
+            content: AvatarFallbackContent::Icon(Box::new(icon.into())),
+            style: StyleRefinement::default(),
+        }
+    }
+
+    fn render_with_metrics(
+        self,
+        metrics: AvatarSizeMetrics,
+        background: gpui::Hsla,
+        foreground: gpui::Hsla,
+    ) -> AnyElement {
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .bg(background)
+            .text_color(foreground)
+            .refine_style(&self.style)
+            .map(|this| match self.content {
+                AvatarFallbackContent::Text(text) => {
+                    this.text_size(metrics.fallback_text_size).child(text)
+                }
+                AvatarFallbackContent::Icon(icon) => {
+                    this.child(icon.with_size(metrics.fallback_icon_size))
+                }
+            })
+            .into_any_element()
+    }
+}
+
+impl Styled for AvatarFallback {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+/// A status or icon marker anchored to the lower-right of an [`Avatar`].
+pub struct AvatarBadge {
+    base: Div,
+    style: StyleRefinement,
+    icon: Option<Icon>,
+}
+
+impl AvatarBadge {
+    /// Creates an empty status-dot badge.
     pub fn new() -> Self {
         Self {
             base: div(),
             style: StyleRefinement::default(),
-            src: None,
-            name: None,
-            short_name: SharedString::default(),
-            placeholder: Icon::new(IconName::User),
-            size: Size::Medium,
+            icon: None,
         }
     }
 
-    /// Set to use image source for the avatar.
-    pub fn src(mut self, source: impl Into<ImageSource>) -> Self {
-        self.src = Some(source.into());
+    /// Adds an icon to the badge. Small and extra-small Avatars hide it.
+    pub fn child(mut self, icon: impl Into<Icon>) -> Self {
+        self.icon = Some(icon.into());
         self
     }
 
-    /// Set name of the avatar user, if `src` is none, will use this name as placeholder.
-    pub fn name(mut self, name: impl Into<SharedString>) -> Self {
-        let name: SharedString = name.into();
-        let short: SharedString = extract_text_initials(&name).into();
+    fn render_with_metrics(
+        self,
+        metrics: AvatarSizeMetrics,
+        ring_width: Pixels,
+        ring_color: gpui::Hsla,
+        background: gpui::Hsla,
+        foreground: gpui::Hsla,
+    ) -> AnyElement {
+        let ring = BoxShadow {
+            color: ring_color,
+            offset: point(px(0.), px(0.)),
+            blur_radius: px(0.),
+            spread_radius: ring_width,
+            inset: false,
+        };
 
-        self.name = Some(name);
-        self.short_name = short;
+        self.base
+            .absolute()
+            .right_0()
+            .bottom_0()
+            .size(metrics.badge_size)
+            .flex()
+            .items_center()
+            .justify_center()
+            .rounded_full()
+            .bg(background)
+            .text_color(foreground)
+            .shadow(vec![ring])
+            .refine_style(&self.style)
+            .when_some(
+                self.icon.zip(metrics.badge_icon_size),
+                |this, (icon, icon_size)| this.child(icon.with_size(icon_size)),
+            )
+            .into_any_element()
+    }
+}
+
+impl Default for AvatarBadge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Styled for AvatarBadge {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+/// A user or organization image with explicit image, fallback, and badge slots.
+#[derive(IntoElement)]
+pub struct Avatar {
+    base: Div,
+    style: StyleRefinement,
+    id: Option<ElementId>,
+    accessibility_label: Option<SharedString>,
+    image: Option<AvatarImage>,
+    fallback: Option<AvatarFallback>,
+    badge: Option<AvatarBadge>,
+    size: Size,
+    grouped: bool,
+}
+
+impl Avatar {
+    /// Creates a semantic Avatar with an accessible name.
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        Self {
+            base: div(),
+            style: StyleRefinement::default(),
+            id: Some(id.into()),
+            accessibility_label: Some(label.into()),
+            image: None,
+            fallback: None,
+            badge: None,
+            size: Size::Medium,
+            grouped: false,
+        }
+    }
+
+    /// Creates a decorative Avatar that is omitted from the accessibility tree.
+    pub fn decorative() -> Self {
+        Self {
+            base: div(),
+            style: StyleRefinement::default(),
+            id: None,
+            accessibility_label: None,
+            image: None,
+            fallback: None,
+            badge: None,
+            size: Size::Medium,
+            grouped: false,
+        }
+    }
+
+    /// Sets the image slot.
+    pub fn image(mut self, image: AvatarImage) -> Self {
+        self.image = Some(image);
         self
     }
 
-    /// Set placeholder icon, default: [`IconName::User`]
-    pub fn placeholder(mut self, icon: impl Into<Icon>) -> Self {
-        self.placeholder = icon.into();
+    /// Sets the loading and error fallback slot.
+    pub fn fallback(mut self, fallback: AvatarFallback) -> Self {
+        self.fallback = Some(fallback);
+        self
+    }
+
+    /// Sets the lower-right badge slot.
+    pub fn badge(mut self, badge: AvatarBadge) -> Self {
+        self.badge = Some(badge);
+        self
+    }
+
+    pub(super) fn grouped(mut self) -> Self {
+        self.grouped = true;
         self
     }
 }
@@ -80,89 +254,125 @@ impl InteractiveElement for Avatar {
 
 impl RenderOnce for Avatar {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let corner_radii = self.style.corner_radii.clone();
-        let mut inner_style = StyleRefinement::default();
-        inner_style.corner_radii = corner_radii;
+        let avatar_metrics = cx.theme().style.avatars;
+        let metrics = avatar_metrics.for_size(self.size);
+        let fallback = self
+            .fallback
+            .unwrap_or_else(|| AvatarFallback::icon(IconName::User));
+        let fallback_background = cx.theme().muted;
+        let fallback_foreground = cx.theme().muted_foreground;
+        let mut media_style = StyleRefinement::default();
+        media_style.corner_radii = self.style.corner_radii.clone();
 
-        const COLOR_COUNT: u64 = 360 / 15;
-        fn default_color(ix: u64, cx: &mut App) -> Hsla {
-            let h = (ix * 15).clamp(0, 360) as f32;
-            cx.theme().blue.hue(h / 360.0)
-        }
+        let media = match self.image {
+            Some(image) => {
+                let loading_fallback = fallback.clone();
+                let error_fallback = fallback;
+                div().size_full().child(
+                    img(image.source)
+                        .size_full()
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover)
+                        .with_loading(move || {
+                            loading_fallback.clone().render_with_metrics(
+                                metrics,
+                                fallback_background,
+                                fallback_foreground,
+                            )
+                        })
+                        .with_fallback(move || {
+                            error_fallback.clone().render_with_metrics(
+                                metrics,
+                                fallback_background,
+                                fallback_foreground,
+                            )
+                        })
+                        .refine_style(&image.style),
+                )
+            }
+            None => div().size_full().child(fallback.render_with_metrics(
+                metrics,
+                fallback_background,
+                fallback_foreground,
+            )),
+        };
 
-        const BG_OPACITY: f32 = 0.2;
+        let group_ring = BoxShadow {
+            color: cx.theme().background,
+            offset: point(px(0.), px(0.)),
+            blur_radius: px(0.),
+            spread_radius: avatar_metrics.group_ring_width,
+            inset: false,
+        };
+        let accessibility = self.id.zip(self.accessibility_label);
 
-        self.base
-            .avatar_size(self.size)
-            .flex()
-            .items_center()
-            .justify_center()
+        let avatar = self
+            .base
+            .relative()
+            .size(metrics.diameter)
             .flex_shrink_0()
             .rounded_full()
-            .overflow_hidden()
-            .bg(cx.theme().tokens.secondary)
-            .text_color(cx.theme().background)
-            .border_1()
-            .border_color(cx.theme().border)
-            .when(self.name.is_none() && self.src.is_none(), |this| {
-                this.text_size(avatar_size(self.size) * 0.6)
-                    .child(self.placeholder)
-            })
-            .map(|this| match self.src {
-                None => this.when(self.name.is_some(), |this| {
-                    let color_ix = gpui::hash(&self.short_name) % COLOR_COUNT;
-                    let color = default_color(color_ix, cx);
-
-                    this.bg(color.opacity(BG_OPACITY))
-                        .text_color(color)
-                        .child(div().avatar_text_size(self.size).child(self.short_name))
-                }),
-                Some(src) => this.child(
-                    img(src)
-                        .avatar_size(self.size)
-                        .rounded_full()
-                        .refine_style(&inner_style),
-                ),
-            })
             .refine_style(&self.style)
+            .child(
+                div()
+                    .size_full()
+                    .rounded_full()
+                    .overflow_hidden()
+                    .refine_style(&media_style)
+                    .child(media),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .rounded_full()
+                    .border(avatar_metrics.outline_width)
+                    .border_color(cx.theme().border)
+                    .refine_style(&media_style),
+            )
+            .when(self.grouped, |this| this.shadow(vec![group_ring]))
+            .when_some(self.badge, |this, badge| {
+                this.child(badge.render_with_metrics(
+                    metrics,
+                    avatar_metrics.group_ring_width,
+                    cx.theme().background,
+                    cx.theme().primary,
+                    cx.theme().primary_foreground,
+                ))
+            });
+
+        match accessibility {
+            Some((id, label)) => avatar
+                .id(id)
+                .role(Role::Image)
+                .aria_label(label)
+                .into_any_element(),
+            None => avatar.into_any_element(),
+        }
     }
-}
-
-fn extract_text_initials(text: &str) -> String {
-    let mut result = text
-        .split(" ")
-        .flat_map(|word| word.chars().next().map(|c| c.to_string()))
-        .take(2)
-        .collect::<Vec<String>>()
-        .join("");
-
-    if result.len() == 1 {
-        result = text.chars().take(2).collect::<String>();
-    }
-
-    result.to_uppercase()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_avatar_text_initials() {
-        assert_eq!(extract_text_initials(&"Jason Lee"), "JL".to_string());
-        assert_eq!(extract_text_initials(&"Foo Bar Dar"), "FB".to_string());
-        assert_eq!(extract_text_initials(&"huacnlee"), "HU".to_string());
+    #[gpui::test]
+    fn avatar_builder_preserves_semantic_slots(_cx: &mut gpui::TestAppContext) {
+        let avatar = Avatar::new("jason", "Jason Lee")
+            .image(AvatarImage::new("avatar.png"))
+            .fallback(AvatarFallback::text("JL"))
+            .badge(AvatarBadge::new().child(IconName::Plus))
+            .large();
+
+        assert_eq!(avatar.accessibility_label, Some("Jason Lee".into()));
+        assert!(avatar.image.is_some());
+        assert!(avatar.fallback.is_some());
+        assert!(avatar.badge.is_some());
+        assert_eq!(avatar.size, Size::Large);
     }
 
     #[gpui::test]
-    fn test_avatar_builder(_cx: &mut gpui::TestAppContext) {
-        let avatar = Avatar::new()
-            .name("Jason Lee")
-            .placeholder(Icon::new(IconName::User))
-            .large();
-
-        assert_eq!(avatar.name, Some(SharedString::from("Jason Lee")));
-        assert_eq!(avatar.short_name, SharedString::from("JL"));
-        assert_eq!(avatar.size, Size::Large);
+    fn decorative_avatar_has_no_accessible_label(_cx: &mut gpui::TestAppContext) {
+        assert!(Avatar::decorative().accessibility_label.is_none());
     }
 }

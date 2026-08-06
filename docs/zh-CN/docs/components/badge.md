@@ -10,7 +10,10 @@ Badge 是一个通用徽标组件，可在头像、图标或其他元素上显�
 ## 导入
 
 ```rust
-use gpui_component::badge::Badge;
+use gpui_component::{
+    avatar::{Avatar, AvatarImage},
+    badge::Badge,
+};
 ```
 
 ## 用法
@@ -36,7 +39,7 @@ Badge::new()
 ```rust
 Badge::new()
     .count(5)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 Badge::new()
     .dot()
@@ -44,7 +47,7 @@ Badge::new()
 
 Badge::new()
     .icon(IconName::Check)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 ```
 
 ### 不同尺寸
@@ -55,16 +58,16 @@ Badge 也实现了 [Sizable] trait：
 Badge::new()
     .small()
     .count(1)
-    .child(Avatar::new().small())
+    .child(Avatar::decorative().small())
 
 Badge::new()
     .count(5)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 Badge::new()
     .large()
     .count(10)
-    .child(Avatar::new().large())
+    .child(Avatar::decorative().large())
 ```
 
 ### 颜色
@@ -75,12 +78,12 @@ use gpui_component::ActiveTheme;
 Badge::new()
     .count(3)
     .color(cx.theme().blue)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 Badge::new()
     .icon(IconName::Star)
     .color(cx.theme().yellow)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 Badge::new()
     .dot()
@@ -110,21 +113,21 @@ Badge::new()
 ### 用在头像上
 
 ```rust
-use gpui_component::avatar::Avatar;
+use gpui_component::avatar::{Avatar, AvatarImage};
 
 Badge::new()
     .count(5)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 Badge::new()
     .icon(IconName::Check)
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 Badge::new()
     .dot()
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 ```
 
 ### 复杂嵌套
@@ -138,7 +141,7 @@ Badge::new()
             .icon(IconName::Check)
             .large()
             .color(cx.theme().cyan)
-            .child(Avatar::new().large().src("https://example.com/avatar.jpg"))
+            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
     )
 
 Badge::new()
@@ -150,7 +153,7 @@ Badge::new()
             .icon(IconName::Star)
             .large()
             .color(cx.theme().yellow)
-            .child(Avatar::new().large().src("https://example.com/avatar.jpg"))
+            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
     )
 ```
 
@@ -185,17 +188,17 @@ Badge::new()
 Badge::new()
     .dot()
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
 
 Badge::new()
     .icon(IconName::CheckCircle)
     .color(cx.theme().blue)
-    .child(Avatar::new().src("https://example.com/verified-user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/verified-user.jpg")))
 
 Badge::new()
     .icon(IconName::AlertTriangle)
     .color(cx.theme().yellow)
-    .child(Avatar::new().src("https://example.com/user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
 ```
 
 ### 显示位置

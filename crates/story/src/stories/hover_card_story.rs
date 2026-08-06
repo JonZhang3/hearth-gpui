@@ -3,7 +3,12 @@ use gpui::{
     Styled as _, Window, div, px, relative,
 };
 use gpui_component::{
-    ActiveTheme, StyledExt, avatar::Avatar, button::Button, h_flex, hover_card::HoverCard, v_flex,
+    ActiveTheme, StyledExt,
+    avatar::{Avatar, AvatarFallback, AvatarImage},
+    button::Button,
+    h_flex,
+    hover_card::HoverCard,
+    v_flex,
 };
 use std::time::Duration;
 
@@ -82,8 +87,11 @@ impl HoverCardStory {
                                 .gap_3()
                                 .items_start()
                                 .child(
-                                    Avatar::new()
-                                        .src("https://avatars.githubusercontent.com/u/5518?s=64"),
+                                    Avatar::new("hover-card-jason", "Jason Lee")
+                                        .image(AvatarImage::new(
+                                            "https://avatars.githubusercontent.com/u/5518?s=64",
+                                        ))
+                                        .fallback(AvatarFallback::text("JL")),
                                 )
                                 .child(
                                     v_flex()

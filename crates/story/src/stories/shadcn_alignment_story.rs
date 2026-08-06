@@ -8,7 +8,7 @@ use gpui_component::{
     StyleRegistry, StyledExt as _, Theme, ThemeMode, WindowExt as _,
     accordion::Accordion,
     alert::Alert,
-    avatar::Avatar,
+    avatar::{Avatar, AvatarFallback},
     button::Button,
     button::Toggle,
     calendar::{Calendar, CalendarState},
@@ -437,7 +437,10 @@ impl Render for ShadcnAlignmentStory {
                     .child(
                         h_flex()
                             .gap_2()
-                            .child(Avatar::new().name("GPUI Component"))
+                            .child(
+                                Avatar::new("alignment-avatar", "GPUI Component")
+                                    .fallback(AvatarFallback::text("GC")),
+                            )
                             .child(Tag::primary().child("Primary"))
                             .child(Tag::success().child("Success"))
                             .child(Tag::danger().child("Danger"))

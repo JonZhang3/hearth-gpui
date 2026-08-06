@@ -41,6 +41,52 @@ pub struct ControlMetrics {
     pub lg: ControlSizeMetrics,
 }
 
+/// Resolved geometry for one Avatar size.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AvatarSizeMetrics {
+    pub diameter: Pixels,
+    pub fallback_text_size: Pixels,
+    pub fallback_icon_size: Pixels,
+    pub badge_size: Pixels,
+    pub badge_icon_size: Option<Pixels>,
+    pub count_icon_size: Pixels,
+}
+
+/// Geometry shared by Avatar, AvatarBadge, AvatarGroup, and AvatarGroupCount.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AvatarMetrics {
+    pub xs: AvatarSizeMetrics,
+    pub sm: AvatarSizeMetrics,
+    pub md: AvatarSizeMetrics,
+    pub lg: AvatarSizeMetrics,
+    pub outline_width: Pixels,
+    pub group_overlap: Pixels,
+    pub group_ring_width: Pixels,
+}
+
+impl AvatarMetrics {
+    /// Returns the resolved geometry for a semantic or custom Avatar size.
+    pub fn for_size(&self, size: Size) -> AvatarSizeMetrics {
+        match size {
+            Size::XSmall => self.xs,
+            Size::Small => self.sm,
+            Size::Medium => self.md,
+            Size::Large => self.lg,
+            Size::Size(diameter) => {
+                let ratio = diameter.as_f32() / self.md.diameter.as_f32();
+                AvatarSizeMetrics {
+                    diameter,
+                    fallback_text_size: self.md.fallback_text_size * ratio,
+                    fallback_icon_size: self.md.fallback_icon_size * ratio,
+                    badge_size: self.md.badge_size * ratio,
+                    badge_icon_size: self.md.badge_icon_size.map(|size| size * ratio),
+                    count_icon_size: self.md.count_icon_size * ratio,
+                }
+            }
+        }
+    }
+}
+
 impl ControlMetrics {
     /// Returns the resolved metrics for a semantic size.
     pub fn for_size(&self, size: Size) -> ControlSizeMetrics {
@@ -213,6 +259,7 @@ pub struct StylePreset {
     pub density: Density,
     pub radii: RadiusMetrics,
     pub controls: ControlMetrics,
+    pub avatars: AvatarMetrics,
     pub overlays: OverlayMetrics,
     pub modals: ModalMetrics,
     pub focus: FocusMetrics,
@@ -249,6 +296,36 @@ impl StylePreset {
         }
         if sizes.windows(2).any(|pair| pair[0].height > pair[1].height) {
             bail!("style preset control heights must be ordered from xs to lg");
+        }
+        let avatar_sizes = [
+            self.avatars.xs,
+            self.avatars.sm,
+            self.avatars.md,
+            self.avatars.lg,
+        ];
+        if avatar_sizes.iter().any(|metrics| {
+            !is_positive(metrics.diameter)
+                || !is_positive(metrics.fallback_text_size)
+                || !is_positive(metrics.fallback_icon_size)
+                || !is_positive(metrics.badge_size)
+                || metrics
+                    .badge_icon_size
+                    .is_some_and(|size| !is_positive(size))
+                || !is_positive(metrics.count_icon_size)
+        }) {
+            bail!("style preset avatar metrics must be finite and positive");
+        }
+        if avatar_sizes
+            .windows(2)
+            .any(|pair| pair[0].diameter > pair[1].diameter)
+        {
+            bail!("style preset avatar diameters must be ordered from xs to lg");
+        }
+        if !is_positive(self.avatars.outline_width)
+            || !is_positive(self.avatars.group_overlap)
+            || !is_positive(self.avatars.group_ring_width)
+        {
+            bail!("style preset avatar outline and group metrics must be positive");
         }
         let radii = [self.radii.sm, self.radii.md, self.radii.lg, self.radii.xl];
         if radii.windows(2).any(|pair| pair[0] > pair[1]) {
@@ -363,6 +440,7 @@ impl StylePreset {
                 control(36., 10., 8., 6., 16.),
                 control(40., 10., 8., 6., 16.),
             ),
+            avatars: avatars(),
             overlays: overlay(8., 4., 4.),
             modals: modal(
                 512., 320., 24., 24., 6., 18., 64., 32., 0.1, 0.1, 0., false, false, false,
@@ -388,6 +466,7 @@ impl StylePreset {
                 control(32., 10., 8., 6., 16.),
                 control(36., 10., 8., 6., 16.),
             ),
+            avatars: avatars(),
             overlays: overlay(6., 4., 4.),
             modals: modal(
                 384., 320., 16., 16., 6., 16., 40., 24., 0.1, 0.1, 16., true, true, false,
@@ -413,6 +492,7 @@ impl StylePreset {
                 control(36., 12., 10., 6., 16.),
                 control(40., 16., 12., 6., 16.),
             ),
+            avatars: avatars(),
             overlays: overlay(12., 6., 6.),
             modals: modal(
                 448., 320., 24., 24., 6., 18., 64., 32., 0.8, 0.05, 0., false, false, true,
@@ -514,6 +594,36 @@ fn controls(
     lg: ControlSizeMetrics,
 ) -> ControlMetrics {
     ControlMetrics { xs, sm, md, lg }
+}
+
+fn avatar_size(
+    diameter: f32,
+    fallback_text_size: f32,
+    fallback_icon_size: f32,
+    badge_size: f32,
+    badge_icon_size: Option<f32>,
+    count_icon_size: f32,
+) -> AvatarSizeMetrics {
+    AvatarSizeMetrics {
+        diameter: px(diameter),
+        fallback_text_size: px(fallback_text_size),
+        fallback_icon_size: px(fallback_icon_size),
+        badge_size: px(badge_size),
+        badge_icon_size: badge_icon_size.map(px),
+        count_icon_size: px(count_icon_size),
+    }
+}
+
+fn avatars() -> AvatarMetrics {
+    AvatarMetrics {
+        xs: avatar_size(16., 10., 10., 6., None, 10.),
+        sm: avatar_size(24., 12., 12., 8., None, 12.),
+        md: avatar_size(32., 14., 16., 10., Some(8.), 16.),
+        lg: avatar_size(40., 14., 20., 12., Some(8.), 20.),
+        outline_width: px(1.),
+        group_overlap: px(8.),
+        group_ring_width: px(2.),
+    }
 }
 
 fn radii(sm: f32, md: f32, lg: f32, xl: f32) -> RadiusMetrics {
@@ -691,6 +801,22 @@ mod tests {
         assert_eq!(maia.modals.default_width, px(448.));
         assert_eq!(maia.modals.overlay_opacity, 0.8);
         assert!(maia.modals.media_round);
+    }
+
+    #[test]
+    fn built_in_styles_define_shadcn_avatar_geometry() {
+        for style in [
+            StylePreset::vega(),
+            StylePreset::nova(),
+            StylePreset::maia(),
+        ] {
+            assert_eq!(style.avatars.sm.diameter, px(24.));
+            assert_eq!(style.avatars.md.diameter, px(32.));
+            assert_eq!(style.avatars.lg.diameter, px(40.));
+            assert_eq!(style.avatars.md.badge_size, px(10.));
+            assert_eq!(style.avatars.group_overlap, px(8.));
+            assert_eq!(style.avatars.group_ring_width, px(2.));
+        }
     }
 
     #[test]

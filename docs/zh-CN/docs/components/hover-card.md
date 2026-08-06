@@ -12,7 +12,10 @@ HoverCard 用于在鼠标悬停到触发元素时显示富内容浮层，适合�
 ## 导入
 
 ```rust
-use gpui_component::hover_card::HoverCard;
+use gpui_component::{
+    avatar::{Avatar, AvatarFallback, AvatarImage},
+    hover_card::HoverCard,
+};
 ```
 
 ## 用法
@@ -56,7 +59,7 @@ HoverCard::new("basic")
 ```rust
 use gpui::{px, relative, Styled as _};
 use gpui_component::{
-    avatar::Avatar,
+    avatar::{Avatar, AvatarFallback, AvatarImage},
     hover_card::HoverCard,
     h_flex,
     v_flex,
@@ -79,8 +82,9 @@ h_flex()
                     .gap_4()
                     .items_start()
                     .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/5518?s=64")
+                        Avatar::new("hover-card-avatar", "Jason Lee")
+                            .image(AvatarImage::new("https://avatars.githubusercontent.com/u/5518?s=64"))
+                            .fallback(AvatarFallback::text("JL"))
                     )
                     .child(
                         v_flex()

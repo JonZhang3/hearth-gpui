@@ -3,11 +3,18 @@ use gpui::{
     Styled, Window,
 };
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, avatar::Avatar, badge::Badge,
-    dock::PanelControl, v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _,
+    avatar::{Avatar, AvatarImage},
+    badge::Badge,
+    dock::PanelControl,
+    v_flex,
 };
 
 use crate::section;
+
+fn avatar(id: &'static str, label: &'static str, source: &'static str) -> Avatar {
+    Avatar::new(id, label).image(AvatarImage::new(source))
+}
 
 pub struct BadgeStory {
     focus_handle: gpui::FocusHandle,
@@ -70,12 +77,16 @@ impl Render for BadgeStory {
             .child(
                 section("Badge with count")
                     .max_w_md()
-                    .child(Badge::new().count(3).child(
-                        Avatar::new().src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                    ))
-                    .child(Badge::new().count(103).child(
-                        Avatar::new().src("https://avatars.githubusercontent.com/u/28998859?v=4"),
-                    )),
+                    .child(Badge::new().count(3).child(avatar(
+                        "badge-count-jason",
+                        "Jason Lee",
+                        "https://avatars.githubusercontent.com/u/5518?v=4",
+                    )))
+                    .child(Badge::new().count(103).child(avatar(
+                        "badge-count-floyd",
+                        "Floyd Wang",
+                        "https://avatars.githubusercontent.com/u/28998859?v=4",
+                    ))),
             )
             .child(
                 section("Badge with icon")
@@ -84,37 +95,51 @@ impl Render for BadgeStory {
                         Badge::new()
                             .icon(IconName::Check)
                             .color(cx.theme().cyan)
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                            ),
+                            .child(avatar(
+                                "badge-icon-jason",
+                                "Jason Lee",
+                                "https://avatars.githubusercontent.com/u/5518?v=4",
+                            )),
                     )
                     .child(
                         Badge::new()
                             .icon(IconName::Star)
                             .color(cx.theme().yellow)
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20092316?v=4"),
-                            ),
+                            .child(avatar(
+                                "badge-icon-wilson",
+                                "Wilson",
+                                "https://avatars.githubusercontent.com/u/20092316?v=4",
+                            )),
                     ),
             )
             .child(
-                section("Badge with dot").max_w_md().child(
-                    Badge::new().dot().count(1).child(
-                        Avatar::new().src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                    ),
-                ),
+                section("Badge with dot")
+                    .max_w_md()
+                    .child(Badge::new().dot().count(1).child(avatar(
+                        "badge-dot-jason",
+                        "Jason Lee",
+                        "https://avatars.githubusercontent.com/u/5518?v=4",
+                    ))),
             )
             .child(
                 section("Badge with color")
                     .max_w_md()
-                    .child(Badge::new().count(3).color(cx.theme().blue).child(
-                        Avatar::new().src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                    ))
-                    .child(Badge::new().dot().color(cx.theme().green).count(1).child(
-                        Avatar::new().src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                    )),
+                    .child(Badge::new().count(3).color(cx.theme().blue).child(avatar(
+                        "badge-blue-jason",
+                        "Jason Lee",
+                        "https://avatars.githubusercontent.com/u/5518?v=4",
+                    )))
+                    .child(
+                        Badge::new()
+                            .dot()
+                            .color(cx.theme().green)
+                            .count(1)
+                            .child(avatar(
+                                "badge-green-jason",
+                                "Jason Lee",
+                                "https://avatars.githubusercontent.com/u/5518?v=4",
+                            )),
+                    ),
             )
             .child(
                 section("Complex use")
@@ -126,9 +151,12 @@ impl Render for BadgeStory {
                                 .large()
                                 .color(cx.theme().cyan)
                                 .child(
-                                    Avatar::new()
-                                        .large()
-                                        .src("https://avatars.githubusercontent.com/u/5518?v=4"),
+                                    avatar(
+                                        "badge-complex-jason",
+                                        "Jason Lee",
+                                        "https://avatars.githubusercontent.com/u/5518?v=4",
+                                    )
+                                    .large(),
                                 ),
                         ),
                     )
@@ -139,9 +167,12 @@ impl Render for BadgeStory {
                                 .large()
                                 .color(cx.theme().yellow)
                                 .child(
-                                    Avatar::new().large().src(
+                                    avatar(
+                                        "badge-complex-wilson",
+                                        "Wilson",
                                         "https://avatars.githubusercontent.com/u/20092316?v=4",
-                                    ),
+                                    )
+                                    .large(),
                                 ),
                         ),
                     )
@@ -150,11 +181,11 @@ impl Render for BadgeStory {
                             Badge::new()
                                 .icon(IconName::Asterisk)
                                 .color(cx.theme().green)
-                                .child(
-                                    Avatar::new().src(
-                                        "https://avatars.githubusercontent.com/u/22312482?v=4",
-                                    ),
-                                ),
+                                .child(avatar(
+                                    "badge-complex-user",
+                                    "User",
+                                    "https://avatars.githubusercontent.com/u/22312482?v=4",
+                                )),
                         ),
                     )
                     .child(
@@ -164,9 +195,12 @@ impl Render for BadgeStory {
                                 .small()
                                 .color(cx.theme().red)
                                 .child(
-                                    Avatar::new().small().src(
+                                    avatar(
+                                        "badge-complex-small",
+                                        "User",
                                         "https://avatars.githubusercontent.com/u/150917089?v=4",
-                                    ),
+                                    )
+                                    .small(),
                                 ),
                         ),
                     ),

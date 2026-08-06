@@ -10,7 +10,10 @@ A versatile badge component that can display counts, dots, or icons on elements.
 ## Import
 
 ```rust
-use gpui_component::badge::Badge;
+use gpui_component::{
+    avatar::{Avatar, AvatarImage},
+    badge::Badge,
+};
 ```
 
 ## Usage
@@ -37,7 +40,7 @@ Badge::new()
 // Number badge (default)
 Badge::new()
     .count(5)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 // Dot badge
 Badge::new()
@@ -47,7 +50,7 @@ Badge::new()
 // Icon badge
 Badge::new()
     .icon(IconName::Check)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 ```
 
 ### Badge Sizes
@@ -59,18 +62,18 @@ The Badge is also implemented with the [Sizable] trait, allowing you to set smal
 Badge::new()
     .small()
     .count(1)
-    .child(Avatar::new().small())
+    .child(Avatar::decorative().small())
 
 // Medium badge (default)
 Badge::new()
     .count(5)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 // Large badge
 Badge::new()
     .large()
     .count(10)
-    .child(Avatar::new().large())
+    .child(Avatar::decorative().large())
 ```
 
 ### Badge Colors
@@ -82,12 +85,12 @@ use gpui_component::ActiveTheme;
 Badge::new()
     .count(3)
     .color(cx.theme().blue)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 Badge::new()
     .icon(IconName::Star)
     .color(cx.theme().yellow)
-    .child(Avatar::new())
+    .child(Avatar::decorative())
 
 Badge::new()
     .dot()
@@ -120,24 +123,24 @@ Badge::new()
 ### Badge on Avatars
 
 ```rust
-use gpui_component::avatar::Avatar;
+use gpui_component::avatar::{Avatar, AvatarImage};
 
 // Basic count badge
 Badge::new()
     .count(5)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 // Status badge with icon
 Badge::new()
     .icon(IconName::Check)
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 
 // Online indicator with dot
 Badge::new()
     .dot()
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/avatar.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
 ```
 
 ### Complex Nested Badges
@@ -152,7 +155,7 @@ Badge::new()
             .icon(IconName::Check)
             .large()
             .color(cx.theme().cyan)
-            .child(Avatar::new().large().src("https://example.com/avatar.jpg"))
+            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
     )
 
 // Multiple status indicators
@@ -165,7 +168,7 @@ Badge::new()
             .icon(IconName::Star)
             .large()
             .color(cx.theme().yellow)
-            .child(Avatar::new().large().src("https://example.com/avatar.jpg"))
+            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
     )
 ```
 
@@ -204,19 +207,19 @@ Badge::new()
 Badge::new()
     .dot()
     .color(cx.theme().green)
-    .child(Avatar::new().src("https://example.com/user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
 
 // Verified status
 Badge::new()
     .icon(IconName::CheckCircle)
     .color(cx.theme().blue)
-    .child(Avatar::new().src("https://example.com/verified-user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/verified-user.jpg")))
 
 // Warning status
 Badge::new()
     .icon(IconName::AlertTriangle)
     .color(cx.theme().yellow)
-    .child(Avatar::new().src("https://example.com/user.jpg"))
+    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
 ```
 
 ### Different Badge Positions

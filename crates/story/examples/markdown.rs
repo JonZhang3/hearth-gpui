@@ -10,7 +10,7 @@ use std::{
 use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Sizable as _,
-    avatar::Avatar,
+    avatar::{Avatar, AvatarFallback, AvatarImage},
     button::Button,
     clipboard::Clipboard,
     h_flex,
@@ -542,16 +542,18 @@ impl MarkdownPlugin for UserCardPlugin {
             .data::<UserCardNode>()
             .expect("user-card markdown node data");
         let id = user.id.as_str();
-        let (name, avatar) = match id {
+        let (name, initials, avatar) = match id {
             "huacnlee" => (
                 "Jason Lee",
+                "JL",
                 "https://avatars.githubusercontent.com/u/5518?v=4",
             ),
             "madcodelife" => (
                 "Floyd Wang",
+                "FW",
                 "https://avatars.githubusercontent.com/u/28998859?v=4",
             ),
-            _ => ("Unknown", ""),
+            _ => ("Unknown", "?", ""),
         };
 
         let following = window.use_keyed_state(
@@ -571,10 +573,12 @@ impl MarkdownPlugin for UserCardPlugin {
             .border_1()
             .border_color(cx.theme().border)
             .child(
-                Avatar::new()
-                    .name(name)
+                Avatar::new(SharedString::from(format!("user-card-avatar-{id}")), name)
+                    .fallback(AvatarFallback::text(initials))
                     .with_size(px(24.))
-                    .when(!avatar.is_empty(), |this| this.src(avatar)),
+                    .when(!avatar.is_empty(), |this| {
+                        this.image(AvatarImage::new(avatar))
+                    }),
             )
             .child(
                 div()
