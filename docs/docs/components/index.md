@@ -11,7 +11,7 @@ collapsed: false
 - [Accordion](accordion) - Collapsible content panels
 - [Alert](alert) - Alert messages with different variants
 - [Avatar](avatar) - User avatars with fallback text
-- [Badge](badge) - Count badges and indicators
+- [Badge](badge) - Inline labels and overlay indicators
 - [Button](button) - Interactive buttons with multiple variants
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content
@@ -29,7 +29,6 @@ collapsed: false
 - [Spinner](spinner) - Loading and status spinners
 - [Stepper](stepper) - Step-by-step progress indicator
 - [Switch](switch) - Toggle on/off control
-- [Tag](tag) - Labels and categories
 - [TextView](text-view) - Markdown and HTML text rendering
 - [Toggle](toggle) - Toggle button states
 - [Tooltip](tooltip) - Helpful hints on hover

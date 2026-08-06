@@ -11,7 +11,7 @@ collapsed: false
 - [Accordion](accordion) - 折叠内容面板
 - [Alert](alert) - 多种变体的提示消息
 - [Avatar](avatar) - 用户头像与回退文本
-- [Badge](badge) - 徽标与数量指示器
+- [Badge](badge) - 内联标签与覆盖角标
 - [Button](button) - 支持多种样式的按钮
 - [Checkbox](checkbox) - 二元选择控件
 - [Icon](icon) - 图标展示组件

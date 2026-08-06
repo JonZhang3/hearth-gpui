@@ -7,7 +7,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme as _, IconName, Side, Sizable as _, StyleRegistry, Theme, TitleBar, WindowExt as _,
-    badge::Badge,
+    badge::OverlayBadge,
     button::Button,
     menu::{AppMenuBar, DropdownMenu as _},
     scroll::ScrollbarShow,
@@ -78,13 +78,16 @@ impl Render for AppTitleBar {
                     )
                     .child(
                         div().relative().child(
-                            Badge::new().count(notifications_count).max(99).child(
-                                Button::new("bell")
-                                    .aria_label("Notifications")
-                                    .small()
-                                    .ghost()
-                                    .icon(IconName::Bell),
-                            ),
+                            OverlayBadge::new()
+                                .count(notifications_count)
+                                .max(99)
+                                .child(
+                                    Button::new("bell")
+                                        .aria_label("Notifications")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::Bell),
+                                ),
                         ),
                     ),
             )

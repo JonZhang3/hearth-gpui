@@ -7,7 +7,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Icon, IconName, Selectable as _, Side, Sizable,
-    badge::Badge,
+    badge::OverlayBadge,
     breadcrumb::{Breadcrumb, BreadcrumbItem},
     button::{Button, ButtonGroup},
     h_flex,
@@ -480,7 +480,7 @@ impl Render for SidebarStory {
                                     })
                                     .when(ix == 0, |this| {
                                         this.suffix(|_, _| {
-                                            Badge::new().dot().count(1).child(
+                                            OverlayBadge::new().dot().count(1).child(
                                                 div().p_0p5().child(Icon::new(IconName::Bell)),
                                             )
                                         })

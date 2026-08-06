@@ -4,12 +4,12 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme, Selectable as _, Sizable, Size,
+    badge::{Badge, BadgeVariants as _},
     button::{Button, ButtonGroup},
     h_flex,
     table::{
         Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow,
     },
-    tag::Tag,
     v_flex,
 };
 
@@ -58,14 +58,21 @@ impl Focusable for TableStory {
     }
 }
 
-fn status_tag(status: &str) -> Tag {
+fn status_badge(status: &str, cx: &App) -> Badge {
     match status {
-        "Paid" => Tag::success().outline().child(status.to_string()),
-        "Pending" => Tag::warning().outline().child(status.to_string()),
-        "Unpaid" => Tag::danger().outline().child(status.to_string()),
-        _ => Tag::new().child(status.to_string()),
+        "Paid" => Badge::new()
+            .outline()
+            .border_color(cx.theme().success)
+            .text_color(cx.theme().success)
+            .child(status.to_string()),
+        "Pending" => Badge::new()
+            .outline()
+            .border_color(cx.theme().warning)
+            .text_color(cx.theme().warning)
+            .child(status.to_string()),
+        "Unpaid" => Badge::new().destructive().child(status.to_string()),
+        _ => Badge::new().secondary().child(status.to_string()),
     }
-    .xsmall()
 }
 
 impl Render for TableStory {
@@ -149,7 +156,7 @@ impl Render for TableStory {
                             |(invoice, status, method, amount, date)| {
                                 TableRow::new()
                                     .child(TableCell::new().w(px(150.)).child(invoice.to_string()))
-                                    .child(TableCell::new().child(status_tag(status)))
+                                    .child(TableCell::new().child(status_badge(status, cx)))
                                     .child(TableCell::new().child(method.to_string()))
                                     .child(TableCell::new().text_right().child(amount.to_string()))
                                     .child(TableCell::new().text_right().child(date.to_string()))

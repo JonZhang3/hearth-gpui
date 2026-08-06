@@ -99,7 +99,6 @@ impl Gallery {
                     StoryContainer::panel::<DataTableStory>(window, cx),
                     StoryContainer::panel::<TableStory>(window, cx),
                     StoryContainer::panel::<TabsStory>(window, cx),
-                    StoryContainer::panel::<TagStory>(window, cx),
                     StoryContainer::panel::<TextareaStory>(window, cx),
                     StoryContainer::panel::<ThemeColorsStory>(window, cx),
                     StoryContainer::panel::<ToggleStory>(window, cx),

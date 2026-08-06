@@ -108,14 +108,15 @@ Sidebar::new()
 ### Badge 与后缀
 
 ```rust
-use gpui_component::{Badge, Switch};
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    switch::Switch,
+};
 
 SidebarMenuItem::new("Notifications")
     .icon(IconName::Bell)
     .suffix(
-        Badge::new()
-            .count(5)
-            .child("5")
+        Badge::new().secondary().child("5")
     )
 ```
 

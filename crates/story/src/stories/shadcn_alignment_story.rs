@@ -9,6 +9,7 @@ use gpui_component::{
     accordion::Accordion,
     alert::Alert,
     avatar::{Avatar, AvatarFallback},
+    badge::{Badge, BadgeVariants as _},
     button::Button,
     button::Toggle,
     calendar::{Calendar, CalendarState},
@@ -33,7 +34,6 @@ use gpui_component::{
     spinner::Spinner,
     switch::Switch,
     table::{Table, TableBody, TableCell, TableHead, TableHeader, TableRow},
-    tag::Tag,
     v_flex,
 };
 
@@ -441,9 +441,14 @@ impl Render for ShadcnAlignmentStory {
                                 Avatar::new("alignment-avatar", "GPUI Component")
                                     .fallback(AvatarFallback::text("GC")),
                             )
-                            .child(Tag::primary().child("Primary"))
-                            .child(Tag::success().child("Success"))
-                            .child(Tag::danger().child("Danger"))
+                            .child(Badge::new().child("Primary"))
+                            .child(
+                                Badge::new()
+                                    .bg(cx.theme().success)
+                                    .text_color(cx.theme().success_foreground)
+                                    .child("Success"),
+                            )
+                            .child(Badge::new().destructive().child("Danger"))
                             .child(Spinner::new()),
                     )
                     .child(Progress::new("align-progress").value(64.))

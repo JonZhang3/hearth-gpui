@@ -10,7 +10,10 @@ TitleBar 用于替换系统默认标题栏，提供可定制的窗口标题区�
 ## 导入
 
 ```rust
-use gpui_component::TitleBar;
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    TitleBar,
+};
 ```
 
 ## 用法
@@ -32,7 +35,7 @@ TitleBar::new()
             .items_center()
             .gap_3()
             .child("App Name")
-            .child(Badge::new().count(5))
+            .child(Badge::new().secondary().child("5"))
     )
     .child(
         div()

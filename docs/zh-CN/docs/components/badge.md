@@ -1,226 +1,136 @@
 ---
 title: Badge
-description: 用于显示未读数、状态点或图标提示的小徽标组件。
+description: 用于展示状态或元数据的紧凑标签，并支持覆盖式角标。
 ---
 
 # Badge
 
-Badge 是一个通用徽标组件，可在头像、图标或其他元素上显示数字、圆点或图标。适合用来表示通知数、状态或上下文提示信息。
+`Badge` 是与 shadcn Vega 对齐的非交互内联标签。当数字、圆点或图标需要覆盖在另一个元素上时，使用 `OverlayBadge`。
 
 ## 导入
 
 ```rust
 use gpui_component::{
-    avatar::{Avatar, AvatarImage},
-    badge::Badge,
+    badge::{Badge, BadgeVariants as _, OverlayBadge},
+    Sizable as _,
 };
 ```
 
-## 用法
-
-### 显示数字
-
-使用 `count` 显示数字徽标。只有当数字大于 0 时才会显示；否则自动隐藏。
-
-默认最大值是 `99`，超过后显示为 `99+`。你也可以通过 `max` 自定义上限。
+## Variants
 
 ```rust
-Badge::new()
-    .count(3)
-    .child(Icon::new(IconName::Bell))
+Badge::new().child("Default")
+Badge::new().secondary().child("Secondary")
+Badge::new().destructive().child("Destructive")
+Badge::new().outline().child("Outline")
+Badge::new().ghost().child("Ghost")
+Badge::new().link().child("Link")
 ```
 
-### 不同变体
+所有 variants 都使用 Color Theme 语义颜色，并自动适配 light 和 dark 模式。
 
-- 默认：显示数字
-- Dot：显示状态圆点
-- Icon：显示图标
+## 图标和 Spinner
+
+使用 `leading` 和 `trailing` 添加紧凑的边缘槽位。槽位应用 Vega 图标间距，不改变 Badge 高度。
 
 ```rust
 Badge::new()
+    .leading(Icon::new(IconName::CircleCheck).xsmall())
+    .child("Verified")
+
+Badge::new()
+    .secondary()
+    .child("Continue")
+    .trailing(Icon::new(IconName::ArrowRight).xsmall())
+
+Badge::new()
+    .outline()
+    .leading(Spinner::new().xsmall())
+    .child("Generating")
+```
+
+## 自定义颜色
+
+`Badge` 实现了 `Styled`。额外的状态色或分类颜色应直接覆盖样式，不需要增加组件专属 variant。
+
+```rust
+Badge::new()
+    .bg(cx.theme().success)
+    .text_color(cx.theme().success_foreground)
+    .child("Success")
+
+Badge::new()
+    .outline()
+    .border_color(cx.theme().warning)
+    .text_color(cx.theme().warning)
+    .child("Pending")
+```
+
+## 交互
+
+Badge 是纯展示组件，不提供 click、focus 或 Button 语义。需要交互时，将它组合到 GPUI `Link` 或 `Button` 中；这是 shadcn `asChild` 在 GPUI 中的原生等价方案。
+
+## OverlayBadge
+
+`OverlayBadge` 将数字、状态圆点或图标定位到目标元素上。
+
+### 数字
+
+```rust
+OverlayBadge::new()
     .count(5)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
-
-Badge::new()
-    .dot()
-    .child(Icon::new(IconName::Inbox))
-
-Badge::new()
-    .icon(IconName::Check)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
-```
-
-### 不同尺寸
-
-Badge 也实现了 [Sizable] trait：
-
-```rust
-Badge::new()
-    .small()
-    .count(1)
-    .child(Avatar::decorative().small())
-
-Badge::new()
-    .count(5)
-    .child(Avatar::decorative())
-
-Badge::new()
-    .large()
-    .count(10)
-    .child(Avatar::decorative().large())
-```
-
-### 颜色
-
-```rust
-use gpui_component::ActiveTheme;
-
-Badge::new()
-    .count(3)
-    .color(cx.theme().blue)
-    .child(Avatar::decorative())
-
-Badge::new()
-    .icon(IconName::Star)
-    .color(cx.theme().yellow)
-    .child(Avatar::decorative())
-
-Badge::new()
-    .dot()
-    .color(cx.theme().green)
-    .child(Icon::new(IconName::Bell))
-```
-
-### 用在图标上
-
-```rust
-use gpui_component::{Icon, IconName};
-
-Badge::new()
-    .count(3)
     .child(Icon::new(IconName::Bell).large())
 
-Badge::new()
-    .count(103)
+OverlayBadge::new()
+    .count(120)
+    .max(99) // 显示 "99+"
     .child(Icon::new(IconName::Inbox).large())
-
-Badge::new()
-    .count(150)
-    .max(999)
-    .child(Icon::new(IconName::Mail))
 ```
 
-### 用在头像上
+数字为零时不会显示角标。
+
+### 圆点和下角图标
 
 ```rust
-use gpui_component::avatar::{Avatar, AvatarImage};
-
-Badge::new()
-    .count(5)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
-
-Badge::new()
-    .icon(IconName::Check)
-    .color(cx.theme().green)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
-
-Badge::new()
+OverlayBadge::new()
     .dot()
     .color(cx.theme().green)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/avatar.jpg")))
+    .child(Avatar::decorative())
+
+OverlayBadge::new()
+    .icon(IconName::Check)
+    .color(cx.theme().cyan)
+    .child(Avatar::decorative())
 ```
 
-### 复杂嵌套
+Number 和 Dot 位于右上角，Icon 位于右下角。
+
+### 尺寸
 
 ```rust
-Badge::new()
-    .count(212)
-    .large()
-    .child(
-        Badge::new()
-            .icon(IconName::Check)
-            .large()
-            .color(cx.theme().cyan)
-            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
-    )
-
-Badge::new()
-    .count(2)
-    .color(cx.theme().green)
-    .large()
-    .child(
-        Badge::new()
-            .icon(IconName::Star)
-            .large()
-            .color(cx.theme().yellow)
-            .child(Avatar::decorative().large().image(AvatarImage::new("https://example.com/avatar.jpg")))
-    )
+OverlayBadge::new().count(2).small().child(target)
+OverlayBadge::new().count(12).child(target)
+OverlayBadge::new().count(212).large().child(target)
 ```
+
+## 从 Tag 和旧 Badge 迁移
+
+| 旧 API | 替代 API |
+|---|---|
+| `Tag::primary()` | `Badge::new()` |
+| `Tag::secondary()` | `Badge::new().secondary()` |
+| `Tag::danger()` | `Badge::new().destructive()` |
+| `Tag::success()`、`warning()`、`info()`、`color()`、`custom()` | 使用 `Badge::new()` 和语义化 `Styled` 覆盖 |
+| `Badge::new().count(...)` | `OverlayBadge::new().count(...)` |
+| `Badge::new().dot()` | `OverlayBadge::new().dot()` |
+| `Badge::new().icon(...)` | `OverlayBadge::new().icon(...)` |
+
+`Tag` 及其自定义尺寸和圆角 API 已删除。常规场景使用固定 Vega Badge 几何，只在特殊视觉需求中使用 `Styled`。
 
 ## API 参考
 
 - [Badge]
-
-## 示例
-
-### 通知提示
-
-```rust
-Badge::new()
-    .count(12)
-    .child(Icon::new(IconName::Mail).large())
-
-Badge::new()
-    .count(3)
-    .color(cx.theme().red)
-    .child(Icon::new(IconName::Bell).large())
-
-Badge::new()
-    .count(1234)
-    .max(999)
-    .color(cx.theme().orange)
-    .child(Icon::new(IconName::AlertTriangle))
-```
-
-### 状态提示
-
-```rust
-Badge::new()
-    .dot()
-    .color(cx.theme().green)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
-
-Badge::new()
-    .icon(IconName::CheckCircle)
-    .color(cx.theme().blue)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/verified-user.jpg")))
-
-Badge::new()
-    .icon(IconName::AlertTriangle)
-    .color(cx.theme().yellow)
-    .child(Avatar::decorative().image(AvatarImage::new("https://example.com/user.jpg")))
-```
-
-### 显示位置
-
-```rust
-// Badge 会根据变体自动选择位置：
-// - Dot：右上角小圆点
-// - Number：右上角数字徽标
-// - Icon：右下角图标徽标
-```
-
-### 数字格式
-
-```rust
-Badge::new().count(5)
-Badge::new().count(99)
-
-Badge::new().count(100)
-Badge::new().count(1000).max(999)
-
-Badge::new().count(0)
-```
+- [OverlayBadge]
 
 [Badge]: https://docs.rs/gpui_component/latest/gpui_component/badge/struct.Badge.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[OverlayBadge]: https://docs.rs/gpui_component/latest/gpui_component/badge/struct.OverlayBadge.html

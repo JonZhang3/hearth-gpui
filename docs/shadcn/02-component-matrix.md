@@ -52,7 +52,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 
 | Family | Components | Alignment work |
 |---|---|---|
-| Status and feedback | Alert, Badge, Progress, Spinner, Skeleton, Tag, Rating | Semantic variants, typography, compact spacing, loading motion, reduced motion |
+| Status and feedback | Alert, Badge, Progress, Spinner, Skeleton, Rating | Semantic variants, typography, compact spacing, loading motion, reduced motion |
 | Identity and labels | Avatar, Label, Kbd, Icon, Breadcrumb | Size vocabulary, icon proportions, fallback surfaces, muted hierarchy |
 | Data surfaces | Table, DataTable, List, Tree, DescriptionList | Header and row hierarchy, hover and selected states, borders, density; retain virtualization |
 | Containers | GroupBox, Settings, Separator, Resizable | Surface and border roles, headings, handles, spacing |

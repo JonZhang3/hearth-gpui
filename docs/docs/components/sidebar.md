@@ -140,14 +140,15 @@ Sidebar::new()
 ### With Badges and Suffixes
 
 ```rust
-use gpui_component::{Badge, Switch};
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    switch::Switch,
+};
 
 SidebarMenuItem::new("Notifications")
     .icon(IconName::Bell)
     .suffix(
-        Badge::new()
-            .count(5)
-            .child("5")
+        Badge::new().secondary().child("5")
     )
 
 SidebarMenuItem::new("Dark Mode")
@@ -397,7 +398,7 @@ Sidebar::new()
                     .child(
                         SidebarMenuItem::new("Analytics")
                             .icon(IconName::TrendingUp)
-                            .suffix(Badge::new().count(2))
+                            .suffix(Badge::new().secondary().child("2"))
                     )
             )
     )
@@ -413,7 +414,7 @@ Sidebar::new()
                     .child(
                         SidebarMenuItem::new("Orders")
                             .icon(IconName::ShoppingCart)
-                            .suffix(Badge::new().dot().variant_destructive())
+                            .suffix(Badge::new().destructive().child("3"))
                     )
                     .child(
                         SidebarMenuItem::new("Products")

@@ -3,10 +3,12 @@ use gpui::{
     Styled, Window,
 };
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _,
+    ActiveTheme as _, ColorName, Icon, IconName, Sizable as _,
     avatar::{Avatar, AvatarImage},
-    badge::Badge,
+    badge::{Badge, BadgeVariants as _, OverlayBadge},
     dock::PanelControl,
+    h_flex,
+    spinner::Spinner,
     v_flex,
 };
 
@@ -17,7 +19,7 @@ fn avatar(id: &'static str, label: &'static str, source: &'static str) -> Avatar
 }
 
 pub struct BadgeStory {
-    focus_handle: gpui::FocusHandle,
+    focus_handle: FocusHandle,
 }
 
 impl BadgeStory {
@@ -38,7 +40,7 @@ impl super::Story for BadgeStory {
     }
 
     fn description() -> &'static str {
-        "A red dot that indicates the number of unread messages."
+        "A compact label for status or metadata, with optional overlay indicators."
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
@@ -61,149 +63,146 @@ impl Render for BadgeStory {
         v_flex()
             .gap_4()
             .child(
-                section("Badge on icon")
-                    .max_w_md()
-                    .child(
-                        Badge::new()
-                            .count(3)
-                            .child(Icon::new(IconName::Bell).large()),
-                    )
-                    .child(
-                        Badge::new()
-                            .count(103)
-                            .child(Icon::new(IconName::Inbox).large()),
-                    ),
+                section("Variants").child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(Badge::new().child("Default"))
+                        .child(Badge::new().secondary().child("Secondary"))
+                        .child(Badge::new().destructive().child("Destructive"))
+                        .child(Badge::new().outline().child("Outline"))
+                        .child(Badge::new().ghost().child("Ghost"))
+                        .child(Badge::new().link().child("Link")),
+                ),
             )
             .child(
-                section("Badge with count")
-                    .max_w_md()
-                    .child(Badge::new().count(3).child(avatar(
-                        "badge-count-jason",
-                        "Jason Lee",
-                        "https://avatars.githubusercontent.com/u/5518?v=4",
-                    )))
-                    .child(Badge::new().count(103).child(avatar(
-                        "badge-count-floyd",
-                        "Floyd Wang",
-                        "https://avatars.githubusercontent.com/u/28998859?v=4",
-                    ))),
-            )
-            .child(
-                section("Badge with icon")
-                    .max_w_md()
-                    .child(
-                        Badge::new()
-                            .icon(IconName::Check)
-                            .color(cx.theme().cyan)
-                            .child(avatar(
-                                "badge-icon-jason",
-                                "Jason Lee",
-                                "https://avatars.githubusercontent.com/u/5518?v=4",
-                            )),
-                    )
-                    .child(
-                        Badge::new()
-                            .icon(IconName::Star)
-                            .color(cx.theme().yellow)
-                            .child(avatar(
-                                "badge-icon-wilson",
-                                "Wilson",
-                                "https://avatars.githubusercontent.com/u/20092316?v=4",
-                            )),
-                    ),
-            )
-            .child(
-                section("Badge with dot")
-                    .max_w_md()
-                    .child(Badge::new().dot().count(1).child(avatar(
-                        "badge-dot-jason",
-                        "Jason Lee",
-                        "https://avatars.githubusercontent.com/u/5518?v=4",
-                    ))),
-            )
-            .child(
-                section("Badge with color")
-                    .max_w_md()
-                    .child(Badge::new().count(3).color(cx.theme().blue).child(avatar(
-                        "badge-blue-jason",
-                        "Jason Lee",
-                        "https://avatars.githubusercontent.com/u/5518?v=4",
-                    )))
-                    .child(
-                        Badge::new()
-                            .dot()
-                            .color(cx.theme().green)
-                            .count(1)
-                            .child(avatar(
-                                "badge-green-jason",
-                                "Jason Lee",
-                                "https://avatars.githubusercontent.com/u/5518?v=4",
-                            )),
-                    ),
-            )
-            .child(
-                section("Complex use")
-                    .max_w_md()
-                    .child(
-                        Badge::new().count(212).large().child(
+                section("With icon").child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(
                             Badge::new()
-                                .icon(IconName::Check)
-                                .large()
-                                .color(cx.theme().cyan)
-                                .child(
-                                    avatar(
-                                        "badge-complex-jason",
-                                        "Jason Lee",
-                                        "https://avatars.githubusercontent.com/u/5518?v=4",
-                                    )
-                                    .large(),
-                                ),
+                                .leading(Icon::new(IconName::CircleCheck).xsmall())
+                                .child("Verified"),
+                        )
+                        .child(
+                            Badge::new()
+                                .secondary()
+                                .child("Continue")
+                                .trailing(Icon::new(IconName::ArrowRight).xsmall()),
+                        )
+                        .child(
+                            Badge::new()
+                                .outline()
+                                .leading(Spinner::new().xsmall())
+                                .child("Generating"),
                         ),
-                    )
-                    .child(
-                        Badge::new().count(2).color(cx.theme().green).large().child(
+                ),
+            )
+            .child(
+                section("Custom colors").child(
+                    h_flex()
+                        .gap_2()
+                        .flex_wrap()
+                        .child(
                             Badge::new()
-                                .icon(IconName::Star)
-                                .large()
-                                .color(cx.theme().yellow)
-                                .child(
-                                    avatar(
-                                        "badge-complex-wilson",
-                                        "Wilson",
-                                        "https://avatars.githubusercontent.com/u/20092316?v=4",
-                                    )
-                                    .large(),
-                                ),
+                                .bg(cx.theme().success)
+                                .text_color(cx.theme().success_foreground)
+                                .child("Success"),
+                        )
+                        .child(
+                            Badge::new()
+                                .bg(cx.theme().warning)
+                                .text_color(cx.theme().warning_foreground)
+                                .child("Warning"),
+                        )
+                        .child(
+                            Badge::new()
+                                .bg(cx.theme().info)
+                                .text_color(cx.theme().info_foreground)
+                                .child("Info"),
+                        )
+                        .child(
+                            Badge::new()
+                                .bg(if cx.theme().is_dark() {
+                                    ColorName::Blue.scale(950).opacity(0.5)
+                                } else {
+                                    ColorName::Blue.scale(50)
+                                })
+                                .text_color(if cx.theme().is_dark() {
+                                    ColorName::Blue.scale(300)
+                                } else {
+                                    ColorName::Blue.scale(600)
+                                })
+                                .child("Category"),
                         ),
-                    )
-                    .child(
-                        Badge::new().count(3).color(cx.theme().green).child(
-                            Badge::new()
-                                .icon(IconName::Asterisk)
+                ),
+            )
+            .child(
+                section("Long text").child(
+                    Badge::new()
+                        .secondary()
+                        .child("A badge with a lot of text remains on one line"),
+                ),
+            )
+            .child(
+                section("Overlay badge").child(
+                    h_flex()
+                        .gap_6()
+                        .child(
+                            OverlayBadge::new()
+                                .count(3)
+                                .child(Icon::new(IconName::Bell).large()),
+                        )
+                        .child(OverlayBadge::new().count(103).child(avatar(
+                            "overlay-badge-count",
+                            "Jason Lee",
+                            "https://avatars.githubusercontent.com/u/5518?v=4",
+                        )))
+                        .child(
+                            OverlayBadge::new()
+                                .dot()
                                 .color(cx.theme().green)
                                 .child(avatar(
-                                    "badge-complex-user",
-                                    "User",
-                                    "https://avatars.githubusercontent.com/u/22312482?v=4",
+                                    "overlay-badge-dot",
+                                    "Floyd Wang",
+                                    "https://avatars.githubusercontent.com/u/28998859?v=4",
+                                )),
+                        )
+                        .child(
+                            OverlayBadge::new()
+                                .icon(IconName::Check)
+                                .color(cx.theme().cyan)
+                                .child(avatar(
+                                    "overlay-badge-icon",
+                                    "Wilson",
+                                    "https://avatars.githubusercontent.com/u/20092316?v=4",
                                 )),
                         ),
-                    )
-                    .child(
-                        Badge::new().dot().child(
-                            Badge::new()
-                                .icon(IconName::Sun)
+                ),
+            )
+            .child(
+                section("Overlay sizes").child(
+                    h_flex()
+                        .gap_6()
+                        .child(
+                            OverlayBadge::new()
+                                .count(2)
                                 .small()
-                                .color(cx.theme().red)
-                                .child(
-                                    avatar(
-                                        "badge-complex-small",
-                                        "User",
-                                        "https://avatars.githubusercontent.com/u/150917089?v=4",
-                                    )
-                                    .small(),
-                                ),
+                                .child(Icon::new(IconName::Inbox).small()),
+                        )
+                        .child(
+                            OverlayBadge::new()
+                                .count(12)
+                                .child(Icon::new(IconName::Inbox).large()),
+                        )
+                        .child(
+                            OverlayBadge::new()
+                                .count(212)
+                                .large()
+                                .child(Icon::new(IconName::Inbox).large()),
                         ),
-                    ),
+                ),
             )
     }
 }

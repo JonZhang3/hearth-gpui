@@ -10,7 +10,10 @@ TitleBar provides a customizable window title bar that can replace the default O
 ## Import
 
 ```rust
-use gpui_component::TitleBar;
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    TitleBar,
+};
 ```
 
 ## Usage
@@ -32,7 +35,7 @@ TitleBar::new()
             .items_center()
             .gap_3()
             .child("App Name")
-            .child(Badge::new().count(5))
+            .child(Badge::new().secondary().child("5"))
     )
     .child(
         div()

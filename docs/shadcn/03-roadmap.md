@@ -152,7 +152,7 @@ Recommended pull-request batches:
 
 Recommended pull-request batches:
 
-1. Alert, Badge, Avatar, Tag, Kbd, Label.
+1. Alert, Badge, Avatar, Kbd, Label.
 2. Progress, Spinner, Skeleton.
 3. Table and DataTable.
 4. List, Tree, DescriptionList, GroupBox, and Settings.

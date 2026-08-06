@@ -6,8 +6,11 @@ use gpui::{
 
 use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_component::label::Label;
-use gpui_component::tag::Tag;
-use gpui_component::{ActiveTheme, IconName, StyledExt, h_flex};
+use gpui_component::{
+    ActiveTheme, IconName, StyledExt,
+    badge::{Badge, BadgeVariants as _},
+    h_flex,
+};
 use gpui_component::{Sizable, button::Button, collapsible::Collapsible, v_flex};
 
 use crate::section;
@@ -124,11 +127,11 @@ impl Render for CollapsibleStory {
                                                             .font_semibold(),
                                                     )
                                                     .child(
-                                                        Tag::info()
+                                                        Badge::new()
                                                             .child("+4.5%")
                                                             .outline()
-                                                            .rounded_full()
-                                                            .small(),
+                                                            .border_color(cx.theme().info)
+                                                            .text_color(cx.theme().info),
                                                     ),
                                             ),
                                         )
