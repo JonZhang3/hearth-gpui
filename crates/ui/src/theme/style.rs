@@ -63,6 +63,25 @@ pub struct OverlayMetrics {
     pub enter_scale: f32,
 }
 
+/// Geometry and presentation used by modal confirmation surfaces.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ModalMetrics {
+    pub default_width: Pixels,
+    pub small_width: Pixels,
+    pub padding: Pixels,
+    pub gap: Pixels,
+    pub header_gap: Pixels,
+    pub title_font_size: Pixels,
+    pub media_size: Pixels,
+    pub media_icon_size: Pixels,
+    pub overlay_opacity: f32,
+    pub ring_opacity: f32,
+    pub footer_padding: Pixels,
+    pub footer_separated: bool,
+    pub footer_tinted: bool,
+    pub media_round: bool,
+}
+
 impl OverlayMetrics {
     /// Returns the initial translation for an overlay entering from a side.
     ///
@@ -195,6 +214,7 @@ pub struct StylePreset {
     pub radii: RadiusMetrics,
     pub controls: ControlMetrics,
     pub overlays: OverlayMetrics,
+    pub modals: ModalMetrics,
     pub focus: FocusMetrics,
     pub disclosure: DisclosureMetrics,
     pub elevation: ElevationMetrics,
@@ -239,6 +259,25 @@ impl StylePreset {
         {
             bail!("style preset overlay enter scale must be between 0 and 1");
         }
+        if !self.modals.overlay_opacity.is_finite()
+            || !(0.0..=1.0).contains(&self.modals.overlay_opacity)
+            || !self.modals.ring_opacity.is_finite()
+            || !(0.0..=1.0).contains(&self.modals.ring_opacity)
+        {
+            bail!("style preset modal opacity must be between 0 and 1");
+        }
+        if [
+            self.modals.default_width,
+            self.modals.small_width,
+            self.modals.title_font_size,
+            self.modals.media_size,
+            self.modals.media_icon_size,
+        ]
+        .iter()
+        .any(|value| !is_positive(*value))
+        {
+            bail!("style preset modal sizes must be finite and positive");
+        }
         if [
             self.radii.sm,
             self.radii.md,
@@ -247,6 +286,10 @@ impl StylePreset {
             self.overlays.padding,
             self.overlays.gap,
             self.overlays.side_offset,
+            self.modals.padding,
+            self.modals.gap,
+            self.modals.header_gap,
+            self.modals.footer_padding,
             self.focus.ring_width,
             self.focus.ring_offset,
             self.disclosure.trigger_padding_x,
@@ -321,6 +364,9 @@ impl StylePreset {
                 control(40., 10., 8., 6., 16.),
             ),
             overlays: overlay(8., 4., 4.),
+            modals: modal(
+                512., 320., 24., 24., 6., 18., 64., 32., 0.1, 0.1, 0., false, false, false,
+            ),
             focus: focus(),
             disclosure: disclosure(0., 12., 0., 16., 8., 16., 8., 14., false, false),
             elevation: ElevationMetrics { enabled: true },
@@ -343,6 +389,9 @@ impl StylePreset {
                 control(36., 10., 8., 6., 16.),
             ),
             overlays: overlay(6., 4., 4.),
+            modals: modal(
+                384., 320., 16., 16., 6., 16., 40., 24., 0.1, 0.1, 16., true, true, false,
+            ),
             focus: focus(),
             disclosure: disclosure(0., 10., 0., 10., 8., 16., 8., 10., false, false),
             elevation: ElevationMetrics { enabled: true },
@@ -365,6 +414,9 @@ impl StylePreset {
                 control(40., 16., 12., 6., 16.),
             ),
             overlays: overlay(12., 6., 6.),
+            modals: modal(
+                448., 320., 24., 24., 6., 18., 64., 32., 0.8, 0.05, 0., false, false, true,
+            ),
             focus: focus(),
             disclosure: disclosure(16., 12., 16., 16., 8., 16., 0., 18., true, true),
             elevation: ElevationMetrics { enabled: true },
@@ -482,6 +534,41 @@ fn overlay(padding: f32, gap: f32, side_offset: f32) -> OverlayMetrics {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn modal(
+    default_width: f32,
+    small_width: f32,
+    padding: f32,
+    gap: f32,
+    header_gap: f32,
+    title_font_size: f32,
+    media_size: f32,
+    media_icon_size: f32,
+    overlay_opacity: f32,
+    ring_opacity: f32,
+    footer_padding: f32,
+    footer_separated: bool,
+    footer_tinted: bool,
+    media_round: bool,
+) -> ModalMetrics {
+    ModalMetrics {
+        default_width: px(default_width),
+        small_width: px(small_width),
+        padding: px(padding),
+        gap: px(gap),
+        header_gap: px(header_gap),
+        title_font_size: px(title_font_size),
+        media_size: px(media_size),
+        media_icon_size: px(media_icon_size),
+        overlay_opacity,
+        ring_opacity,
+        footer_padding: px(footer_padding),
+        footer_separated,
+        footer_tinted,
+        media_round,
+    }
+}
+
 fn focus() -> FocusMetrics {
     FocusMetrics {
         ring_width: px(3.),
@@ -584,6 +671,29 @@ mod tests {
     }
 
     #[test]
+    fn built_in_styles_define_shadcn_modal_geometry() {
+        let vega = StylePreset::vega();
+        let nova = StylePreset::nova();
+        let maia = StylePreset::maia();
+
+        assert_eq!(vega.modals.default_width, px(512.));
+        assert_eq!(vega.modals.small_width, px(320.));
+        assert_eq!(vega.modals.padding, px(24.));
+        assert_eq!(vega.modals.title_font_size, px(18.));
+        assert!(!vega.modals.footer_separated);
+
+        assert_eq!(nova.modals.default_width, px(384.));
+        assert_eq!(nova.modals.padding, px(16.));
+        assert_eq!(nova.modals.title_font_size, px(16.));
+        assert!(nova.modals.footer_separated);
+        assert!(nova.modals.footer_tinted);
+
+        assert_eq!(maia.modals.default_width, px(448.));
+        assert_eq!(maia.modals.overlay_opacity, 0.8);
+        assert!(maia.modals.media_round);
+    }
+
+    #[test]
     fn built_in_styles_cover_control_overlay_and_data_families() {
         let styles = [
             StylePreset::vega(),
@@ -610,6 +720,14 @@ mod tests {
 
         assert_ne!(styles[0].overlays.padding, styles[1].overlays.padding);
         assert_ne!(styles[1].overlays.padding, styles[2].overlays.padding);
+        assert_ne!(
+            styles[0].modals.default_width,
+            styles[1].modals.default_width
+        );
+        assert_ne!(
+            styles[1].modals.default_width,
+            styles[2].modals.default_width
+        );
         assert_ne!(styles[0].data.row_heights, styles[1].data.row_heights);
         assert_ne!(styles[1].data.row_heights, styles[2].data.row_heights);
     }

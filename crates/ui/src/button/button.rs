@@ -7,7 +7,7 @@ use crate::{
     tooltip::{ManagedTooltipExt as _, Tooltip},
 };
 use gpui::{
-    AnyElement, App, Background, ClickEvent, Corners, Div, Edges, ElementId, Hsla,
+    AnyElement, App, Background, ClickEvent, Corners, Div, Edges, ElementId, FocusHandle, Hsla,
     InteractiveElement, Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce,
     Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
     Toggled, Window, div, prelude::FluentBuilder as _, px, relative,
@@ -19,6 +19,14 @@ enum ButtonRounding {
     Preset,
     Full,
     Custom(Pixels),
+}
+
+/// Returns whether a focused button should expose its keyboard focus indicator.
+///
+/// This mirrors CSS `:focus-visible`: programmatic or pointer-driven focus remains
+/// available to assistive technology without producing a visual keyboard ring.
+fn button_focus_visible(is_focused: bool, last_input_was_keyboard: bool) -> bool {
+    is_focused && last_input_was_keyboard
 }
 
 pub trait ButtonVariants: Sized {
@@ -102,6 +110,7 @@ pub struct Button {
     on_hover: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     tab_index: isize,
     tab_stop: bool,
+    focus_handle: Option<FocusHandle>,
 }
 
 impl From<Button> for AnyElement {
@@ -144,6 +153,7 @@ impl Button {
             children: Vec::new(),
             tab_index: 0,
             tab_stop: true,
+            focus_handle: None,
         }
     }
 
@@ -211,6 +221,12 @@ impl Button {
         self
     }
 
+    /// Uses an externally owned focus handle for composite controls.
+    pub(crate) fn focus_handle(mut self, focus_handle: FocusHandle) -> Self {
+        self.focus_handle = Some(focus_handle);
+        self
+    }
+
     /// Set the icon of the button, if the Button have no label, the button well in Icon Button mode.
     pub fn icon(mut self, icon: impl Into<ButtonIcon>) -> Self {
         self.icon = Some(icon.into());
@@ -263,6 +279,26 @@ impl Button {
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_click = Some(Rc::new(handler));
+        self
+    }
+
+    /// Appends an internal click handler without replacing caller-owned behavior.
+    ///
+    /// Component wrappers use this when they must augment a Button activation,
+    /// while the public `on_click` builder intentionally retains last-write-wins
+    /// semantics.
+    pub(crate) fn append_on_click(
+        mut self,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        let appended: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)> = Rc::new(handler);
+        self.on_click = match self.on_click.take() {
+            Some(previous) => Some(Rc::new(move |event, window, cx| {
+                previous(event, window, cx);
+                appended(event, window, cx);
+            })),
+            None => Some(appended),
+        };
         self
     }
 
@@ -370,11 +406,14 @@ impl RenderOnce for Button {
             .or_else(|| self.label.clone())
             .or_else(|| self.tooltip.as_ref().map(|(text, _)| text.clone()));
 
-        let focus_handle = window
-            .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
-            .read(cx)
-            .clone();
+        let focus_handle = self.focus_handle.clone().unwrap_or_else(|| {
+            window
+                .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
+                .read(cx)
+                .clone()
+        });
         let is_focused = focus_handle.is_focused(window);
+        let focus_visible = button_focus_visible(is_focused, window.last_input_was_keyboard());
 
         let rounding = match self.rounding {
             ButtonRounding::Preset => cx.theme().style.radii.md,
@@ -554,7 +593,7 @@ impl RenderOnce for Button {
                     this
                 }
             })
-            .focus_ring(is_focused, px(0.), window, cx);
+            .focus_ring(focus_visible, px(0.), window, cx);
 
         crate::accessibility::accessibility_state(element, false, false, self.disabled)
     }
@@ -780,5 +819,13 @@ mod tests {
         assert_eq!(toggle.pressed, Some(true));
         assert_eq!(popover_trigger.pressed, None);
         assert!(popover_trigger.active);
+    }
+
+    #[test]
+    fn focus_ring_is_limited_to_keyboard_focus() {
+        assert!(button_focus_visible(true, true));
+        assert!(!button_focus_visible(true, false));
+        assert!(!button_focus_visible(false, true));
+        assert!(!button_focus_visible(false, false));
     }
 }

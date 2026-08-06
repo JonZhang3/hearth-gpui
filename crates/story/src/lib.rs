@@ -8,6 +8,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, IconName, Root, TitleBar, WindowExt,
     button::Button,
+    dialog::AlertDialogAction,
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle, register_panel},
     group_box::{GroupBox, GroupBoxVariants as _},
     h_flex,
@@ -229,11 +230,17 @@ pub fn init(cx: &mut App) {
                     .update(cx, |_, window, cx| {
                         window.defer(cx, |window, cx| {
                             window.open_alert_dialog(cx, |alert, _, _| {
-                                alert.title("About").description(markdown(
-                                    "GPUI Component Storybook\n\n\
-                                    Version 0.1.0\n\n\
-                                    https://longbridge.github.io/gpui-component",
-                                ))
+                                alert.content(|content, _, _| {
+                                    content
+                                        .title("About")
+                                        .description_element(markdown(
+                                            "GPUI Component Storybook\n\n\
+                                            Version 0.1.0\n\n\
+                                            https://longbridge.github.io/gpui-component",
+                                        ))
+                                        .aria_description("GPUI Component Storybook version 0.1.0")
+                                        .action(AlertDialogAction::new("about-ok", "OK"))
+                                })
                             });
                         });
                     })

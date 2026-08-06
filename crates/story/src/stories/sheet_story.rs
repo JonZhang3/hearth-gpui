@@ -12,6 +12,7 @@ use gpui_component::{
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,
     date_picker::{DatePicker, DatePickerState},
+    dialog::{AlertDialogAction, AlertDialogCancel},
     h_flex,
     input::{Input, InputState},
     list::{List, ListDelegate, ListItem, ListState},
@@ -304,8 +305,22 @@ impl SheetStory {
                                 .on_click(|_, window, cx| {
                                     window.open_alert_dialog(cx, move |dialog, _, _| {
                                         dialog
-                                            .child("Confirm dialog opened from sheet.")
-                                            .on_ok(|_, window, cx| {
+                                            .content(|content, _, _| {
+                                                content
+                                                    .title("Confirm action")
+                                                    .description(
+                                                        "Confirm dialog opened from sheet.",
+                                                    )
+                                                    .cancel(AlertDialogCancel::new(
+                                                        "sheet-alert-cancel",
+                                                        "Cancel",
+                                                    ))
+                                                    .action(AlertDialogAction::new(
+                                                        "sheet-alert-confirm",
+                                                        "Continue",
+                                                    ))
+                                            })
+                                            .on_action(|_, window, cx| {
                                                 window
                                                     .push_notification("You have pressed ok.", cx);
                                                 true

@@ -111,7 +111,7 @@ Measure release builds against the Phase 0 baseline.
 | Scenario | Risk |
 |---|---|
 | Repeated Tooltip or Menu open and close | Task churn and overlay allocation |
-| Dialog and Sheet enter or exit | Full-window redraw and blur cost |
+| Dialog and Sheet enter or exit | Full-window redraw and compositing cost |
 | Rapid Tabs and Sidebar switching | Animation restart and layout work |
 | 1,000-row Table or List scrolling | Shared style changes affecting virtualization |
 | Skeleton and Progress animation | Continuous repaint cost |

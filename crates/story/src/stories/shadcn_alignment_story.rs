@@ -16,6 +16,7 @@ use gpui_component::{
     collapsible::Collapsible,
     combobox::{Combobox, ComboboxState},
     date_picker::{DatePicker, DatePickerState},
+    dialog::{AlertDialogAction, AlertDialogCancel},
     form::field,
     group_box::GroupBox,
     h_flex,
@@ -621,11 +622,21 @@ impl Render for ShadcnAlignmentStory {
                             .label("AlertDialog")
                             .on_click(|_, window, cx| {
                                 window.open_alert_dialog(cx, |dialog, _, _| {
-                                    dialog
-                                        .confirm()
-                                        .aria_label("Confirm action")
-                                        .title("Confirm action")
-                                        .description("This action requires an explicit decision.")
+                                    dialog.content(|content, _, _| {
+                                        content
+                                            .title("Confirm action")
+                                            .description(
+                                                "This action requires an explicit decision.",
+                                            )
+                                            .cancel(AlertDialogCancel::new(
+                                                "alignment-alert-cancel",
+                                                "Cancel",
+                                            ))
+                                            .action(AlertDialogAction::new(
+                                                "alignment-alert-confirm",
+                                                "Continue",
+                                            ))
+                                    })
                                 });
                             }),
                     )

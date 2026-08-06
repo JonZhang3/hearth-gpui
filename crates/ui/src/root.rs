@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme, ElementExt, Placement, StyledExt,
     animation::{OverlayLifecycle, effective_motion_duration},
-    dialog::Dialog,
+    dialog::{Dialog, DialogPresentation},
     focus_trap::FocusTrapManager,
     input::{Copy, InputState},
     native_menu::FallbackMenuOverlay,
@@ -81,6 +81,7 @@ pub(crate) struct ActiveDialog {
     /// The previous focused handle before opening the Dialog.
     previous_focused_handle: Option<WeakFocusHandle>,
     builder: Rc<dyn Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static>,
+    presentation: DialogPresentation,
     lifecycle: OverlayLifecycle,
 }
 
@@ -89,6 +90,7 @@ impl ActiveDialog {
         id: u64,
         focus_handle: FocusHandle,
         previous_focused_handle: Option<WeakFocusHandle>,
+        presentation: DialogPresentation,
         builder: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     ) -> Self {
         Self {
@@ -96,6 +98,7 @@ impl ActiveDialog {
             focus_handle,
             previous_focused_handle,
             builder: Rc::new(builder),
+            presentation,
             lifecycle: OverlayLifecycle::opened(),
         }
     }
@@ -269,6 +272,7 @@ impl Root {
                 // So we keep the focus handle in the `active_dialog`, this is owned by the `Root`.
                 dialog.focus_handle = active_dialog.focus_handle.clone();
                 dialog.lifecycle_phase = active_dialog.lifecycle.phase();
+                dialog.presentation = active_dialog.presentation;
 
                 dialog.layer_ix = i;
                 // Find the dialog which one needs to show overlay.
@@ -293,6 +297,19 @@ impl Root {
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     {
+        self.open_dialog_with_presentation(DialogPresentation::Standard, build, window, cx);
+    }
+
+    /// Opens a modal using an explicit internal surface presentation.
+    pub(crate) fn open_dialog_with_presentation<F>(
+        &mut self,
+        presentation: DialogPresentation,
+        build: F,
+        window: &mut Window,
+        cx: &mut Context<'_, Root>,
+    ) where
+        F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
+    {
         let mut previous_focused_handle = window.focused(cx).map(|h| h.downgrade());
 
         // Use pending focus restore if available to maintain correct focus chain
@@ -309,6 +326,7 @@ impl Root {
             self.next_overlay_id,
             focus_handle,
             previous_focused_handle,
+            presentation,
             build,
         ));
         // Opening a modal confines selection to it; drop any background
@@ -345,7 +363,14 @@ impl Root {
             self.pending_focus_restore = Some(handle.downgrade());
         }
 
-        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
+        let duration = effective_motion_duration(
+            if active_dialog.presentation == DialogPresentation::Alert {
+                cx.theme().style.motion.fast()
+            } else {
+                cx.theme().style.motion.emphasis()
+            },
+            cx,
+        );
         cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(duration).await;
             let _ = this.update_in(cx, |this, window, cx| {
@@ -396,18 +421,29 @@ impl Root {
                 dialog
                     .lifecycle
                     .begin_close()
-                    .map(|transition| (dialog.id, transition))
+                    .map(|transition| (dialog.id, transition, dialog.presentation))
             })
             .collect::<Vec<_>>();
         if transitions.is_empty() {
             return;
         }
 
-        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
+        let duration = transitions
+            .iter()
+            .map(|(_, _, presentation)| {
+                if *presentation == DialogPresentation::Alert {
+                    cx.theme().style.motion.fast()
+                } else {
+                    cx.theme().style.motion.emphasis()
+                }
+            })
+            .max()
+            .unwrap_or_default();
+        let duration = effective_motion_duration(duration, cx);
         cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(duration).await;
             let _ = this.update_in(cx, |this, window, cx| {
-                for (dialog_id, transition) in transitions {
+                for (dialog_id, transition, _) in transitions {
                     let Some(index) = this
                         .active_dialogs
                         .iter()
@@ -752,6 +788,35 @@ mod tests {
 
         cx.background_executor
             .advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        assert!(root.read_with(cx, |root, _| root.active_dialogs.is_empty()));
+    }
+
+    #[gpui::test]
+    fn alert_dialog_close_uses_fast_modal_duration(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_dialog_with_presentation(
+                DialogPresentation::Alert,
+                |dialog, _, _| dialog.alert_dialog_role(),
+                window,
+                cx,
+            );
+            root.close_dialog(window, cx);
+        });
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(99));
+        cx.run_until_parked();
+        assert_eq!(root.read_with(cx, |root, _| root.active_dialogs.len()), 1);
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(1));
         cx.run_until_parked();
         assert!(root.read_with(cx, |root, _| root.active_dialogs.is_empty()));
     }

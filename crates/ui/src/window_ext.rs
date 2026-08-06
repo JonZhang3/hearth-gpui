@@ -1,6 +1,6 @@
 use crate::{
     Placement, Root,
-    dialog::{AlertDialog, Dialog},
+    dialog::{AlertDialog, Dialog, DialogPresentation},
     input::InputState,
     notification::Notification,
     sheet::Sheet,
@@ -33,19 +33,22 @@ pub trait WindowExt: Sized {
 
     /// Opens an AlertDialog.
     ///
-    /// This is a convenience method for opening an alert dialog with opinionated defaults.
-    /// The footer buttons are center-aligned and include an icon based on the variant.
+    /// The builder uses the same semantic slots, modal behavior, and initial-focus
+    /// policy as a declarative [`AlertDialog`](crate::AlertDialog).
     ///
     /// # Examples
     ///
     /// ```ignore
-    /// use gpui_component::{AlertDialog, alert::AlertVariant};
+    /// use gpui_component::dialog::{AlertDialogAction, AlertDialogCancel, AlertDialogContent};
     ///
     /// window.open_alert_dialog(cx, |alert, _, _| {
-    ///     alert.warning()
-    ///         .title("Unsaved Changes")
-    ///         .description("You have unsaved changes. Are you sure you want to leave?")
-    ///         .show_cancel(true)
+    ///     alert.content(
+    ///         AlertDialogContent::new()
+    ///             .title("Unsaved Changes")
+    ///             .description("You have unsaved changes. Are you sure you want to leave?")
+    ///             .cancel(AlertDialogCancel::new("stay", "Stay"))
+    ///             .action(AlertDialogAction::new("leave", "Leave")),
+    ///     )
     /// });
     /// ```
     fn open_alert_dialog<F>(&mut self, cx: &mut App, build: F)
@@ -146,9 +149,16 @@ impl WindowExt for Window {
     where
         F: Fn(AlertDialog, &mut Window, &mut App) -> AlertDialog + 'static,
     {
-        self.open_dialog(cx, move |_, window, cx| {
-            build(AlertDialog::new(cx), window, cx).into_dialog(window, cx)
-        })
+        Root::update(self, cx, move |root, window, cx| {
+            root.open_dialog_with_presentation(
+                DialogPresentation::Alert,
+                move |_, window, cx| {
+                    build(AlertDialog::new(cx), window, cx).into_dialog(window, cx)
+                },
+                window,
+                cx,
+            );
+        });
     }
 
     #[inline]

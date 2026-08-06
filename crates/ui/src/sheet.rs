@@ -17,7 +17,7 @@ use crate::{
     actions::Cancel,
     animation::OverlayPhase,
     button::Button,
-    dialog::overlay_color,
+    dialog::{modal_overlay, overlay_color},
     h_flex,
     scroll::ScrollableElement as _,
     text::{SelectionScope, SelectionScopeElement as _},
@@ -181,11 +181,7 @@ impl RenderOnce for Sheet {
             .position(point(window_paddings.left, window_paddings.top))
             .snap_to_window()
             .child(
-                div()
-                    .occlude()
-                    .w(size.width)
-                    .h(size.height)
-                    .bg(overlay_color(self.overlay, cx))
+                modal_overlay(size, Some(overlay_color(self.overlay, cx)))
                     .when(self.overlay && !closing, |this| {
                         this.window_control_area(WindowControlArea::Drag)
                             .on_any_mouse_down({

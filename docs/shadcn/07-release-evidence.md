@@ -25,7 +25,7 @@ The local shadcn/ui checkout is clean at the pinned revision. Source comparison 
 | Disclosure/forms | `accordion.tsx`, `collapsible.tsx`, `calendar.tsx`, and `slider.tsx` |
 | Data | `table.tsx` |
 
-The upstream Accordion source uses an overflow-clipped measured-height enter/exit contract and a 200 ms indicator transition. Dialog uses an overlay fade plus content fade/scale with a 200 ms duration and a screen-reader Close name. These behaviors informed the shared GPUI motion/lifecycle contract; GPUI keeps native composition, focus routing, and AccessKit instead of adopting Portal, DOM attributes, or Tailwind classes.
+The upstream Accordion source uses an overflow-clipped measured-height enter/exit contract and a 200 ms indicator transition. AlertDialog uses a 100 ms overlay fade plus content fade/scale and derives its accessible name from the visible title. GPUI matches the duration, opacity, lifecycle, focus routing, and AccessKit behavior. The pinned GPUI renderer has no element-level backdrop filter or layout-independent transform for arbitrary element trees, so AlertDialog intentionally omits backdrop blur and scale instead of using reflowing approximations.
 
 ## Frozen Phase 0 visual baseline
 

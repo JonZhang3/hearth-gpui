@@ -102,6 +102,10 @@ Custom `Size::Size(height)` preserves the requested height and uses medium ancil
 
 `OverlayMetrics` owns content padding, content gap, side offset, and enter scale. Overlay lifecycle, placement, focus restoration, and dismissal remain component behavior.
 
+### Modal
+
+`ModalMetrics` owns AlertDialog default/small widths, content and header spacing, Media geometry, footer treatment, overlay opacity, and surface ring opacity. Vega uses the full 512 px confirmation surface with an unseparated footer, Nova uses compact geometry and a tinted separated footer, and Maia uses comfortable geometry with a stronger backdrop. Dialog and AlertDialog consume these values without branching on preset ids.
+
 ### Focus
 
 `FocusMetrics` owns ring width and offset. Ring color remains `ThemeColor.ring`.
@@ -117,7 +121,7 @@ Custom `Size::Size(height)` preserves the requested height and uses medium ancil
 | `fast` | 100 ms | Immediate overlay and feedback transitions |
 | `normal` | 150 ms | Standard component state transitions |
 | `slow` | 200 ms | Disclosure, indicator, and structural transitions |
-| `emphasis` | 250 ms | Dialog, notification, and deliberate emphasis |
+| `emphasis` | 250 ms | Standard Dialog, notification, and deliberate emphasis |
 | `loading` | 1 s | Repeating Skeleton, Spinner, and indeterminate Progress cycles |
 
 `enter_easing`, `exit_easing`, and `move_easing` select semantic curves from `MotionEasing`; components do not choose curves by preset name. `OverlayMetrics::enter_offset` resolves translation for Top, Right, Bottom, and Left placements. `OverlayLifecycle` owns the interruptible `closed -> opening -> open -> closing -> closed` state machine and rejects stale completion generations.
