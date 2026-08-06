@@ -417,16 +417,19 @@ impl Render for ShadcnAlignmentStory {
                 section("Supporting and native surfaces")
                     .max_w(px(640.))
                     .child(
-                        Alert::new("align-default-alert", "You can add components to your app.")
-                            .title("Heads up!"),
+                        Alert::new("align-default-alert")
+                            .title("Heads up!")
+                            .description("You can add components to your app."),
                     )
-                    .child(Alert::info(
-                        "align-info-alert",
-                        "Semantic colors remain owned by the Color Theme.",
-                    ))
                     .child(
-                        Alert::error("align-error-alert", "Your session has expired.")
-                            .title("Unable to continue"),
+                        Alert::new("align-info-alert")
+                            .description("Semantic colors remain owned by the Color Theme."),
+                    )
+                    .child(
+                        Alert::new("align-error-alert")
+                            .destructive()
+                            .title("Unable to continue")
+                            .description("Your session has expired."),
                     )
                     .child(
                         h_flex()

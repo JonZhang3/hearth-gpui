@@ -440,7 +440,12 @@ impl Render for DivInspector {
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Input::new(&self.rust_state.state).h_full())
                                 .when_some(self.rust_state.error.clone(), |this, err| {
-                                    this.child(Alert::error("rust-error", err).text_xs())
+                                    this.child(
+                                        Alert::new("rust-error")
+                                            .destructive()
+                                            .description(err)
+                                            .text_xs(),
+                                    )
                                 }),
                         ),
                 )
@@ -468,7 +473,12 @@ impl Render for DivInspector {
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Input::new(&self.json_state.state).h_full())
                                 .when_some(self.json_state.error.clone(), |this, err| {
-                                    this.child(Alert::error("json-error", err).text_xs())
+                                    this.child(
+                                        Alert::new("json-error")
+                                            .destructive()
+                                            .description(err)
+                                            .text_xs(),
+                                    )
                                 }),
                         ),
                 )

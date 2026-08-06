@@ -3,26 +3,20 @@ use gpui::{
     Styled, Window,
 };
 use gpui_component::{
-    IconName, Selectable as _, Sizable as _, Size,
-    alert::Alert,
-    button::{Button, ButtonGroup},
-    dock::PanelControl,
-    text::markdown,
-    v_flex,
+    ActiveTheme as _, IconName, Sizable as _, alert::Alert, button::Button, dock::PanelControl,
+    text::markdown, v_flex,
 };
 
 use crate::section;
 
 pub struct AlertStory {
-    size: Size,
     banner_visible: bool,
-    focus_handle: gpui::FocusHandle,
+    focus_handle: FocusHandle,
 }
 
 impl AlertStory {
     fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
-            size: Size::default(),
             banner_visible: true,
             focus_handle: cx.focus_handle(),
         }
@@ -30,11 +24,6 @@ impl AlertStory {
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
-    }
-
-    fn set_size(&mut self, size: Size, _: &mut Window, cx: &mut Context<Self>) {
-        self.size = size;
-        cx.notify();
     }
 }
 
@@ -67,168 +56,118 @@ impl Render for AlertStory {
         v_flex()
             .gap_4()
             .child(
-                ButtonGroup::new("toggle-size")
-                    .outline()
-                    .compact()
-                    .child(
-                        Button::new("xsmall")
-                            .label("XSmall")
-                            .selected(self.size == Size::XSmall),
-                    )
-                    .child(
-                        Button::new("small")
-                            .label("Small")
-                            .selected(self.size == Size::Small),
-                    )
-                    .child(
-                        Button::new("medium")
-                            .label("Medium")
-                            .selected(self.size == Size::Medium),
-                    )
-                    .child(
-                        Button::new("large")
-                            .label("Large")
-                            .selected(self.size == Size::Large),
-                    )
-                    .on_click(cx.listener(|this, selecteds: &Vec<usize>, window, cx| {
-                        let size = match selecteds[0] {
-                            0 => Size::XSmall,
-                            1 => Size::Small,
-                            2 => Size::Medium,
-                            3 => Size::Large,
-                            _ => unreachable!(),
-                        };
-                        this.set_size(size, window, cx);
-                    })),
-            )
-            .child(
-                section("Default").w_2_3().child(
-                    Alert::new(
-                        "alert-default",
-                        markdown(
-                            "This is an alert with icon, title and description (in Markdown).\n\
-                            - This is a **list** item.\n\
-                            - This is another list item.",
+                section("Basic").w_2_3().child(
+                    v_flex()
+                        .w_full()
+                        .gap_4()
+                        .child(
+                            Alert::new("payment-success")
+                                .icon(IconName::CircleCheck)
+                                .title("Payment successful")
+                                .description(
+                                    "Your payment of $29.99 has been processed. A receipt has been sent to your email address.",
+                                ),
+                        )
+                        .child(
+                            Alert::new("feature-available")
+                                .icon(IconName::Info)
+                                .title("New feature available")
+                                .description(
+                                    "We've added dark mode support. You can enable it in your account settings.",
+                                ),
                         ),
-                    )
-                    .with_size(self.size)
-                    .title("Success! Your changes have been saved"),
                 ),
             )
             .child(
-                section("With variant").w_2_3().child(
+                section("Content combinations").w_2_3().child(
+                    v_flex()
+                        .w_full()
+                        .gap_4()
+                        .child(Alert::new("title-only").title("Title only alert"))
+                        .child(
+                            Alert::new("description-only")
+                                .description("This alert has a description but no title or icon."),
+                        )
+                        .child(
+                            Alert::new("without-icon")
+                                .title("No icon")
+                                .description("Title and description align to the leading edge."),
+                        ),
+                ),
+            )
+            .child(
+                section("Destructive").w_2_3().child(
+                    Alert::new("payment-failed")
+                        .destructive()
+                        .icon(IconName::TriangleAlert)
+                        .title("Payment failed")
+                        .description(
+                            "Your payment could not be processed. Please check your payment method and try again.",
+                        ),
+                ),
+            )
+            .child(
+                section("Action").w_2_3().child(
+                    Alert::new("dark-mode-action")
+                        .title("Dark mode is now available")
+                        .description("Enable it under your profile settings to get started.")
+                        .action(Button::new("enable-dark-mode").xsmall().label("Enable")),
+                ),
+            )
+            .child(
+                section("Custom colors").w_2_3().child(
+                    Alert::new("subscription-warning")
+                        .icon(IconName::TriangleAlert)
+                        .title("Your subscription will expire in 3 days.")
+                        .description(
+                            "Renew now to avoid service interruption or upgrade to a paid plan to continue using the service.",
+                        )
+                        .bg(cx.theme().warning.opacity(0.08))
+                        .border_color(cx.theme().warning.opacity(0.5))
+                        .text_color(cx.theme().warning),
+                ),
+            )
+            .child(
+                section("Long content").w_2_3().child(
+                    Alert::new("long-content")
+                        .destructive()
+                        .icon(IconName::TriangleAlert)
+                        .title("Unable to process your payment")
+                        .description_element(markdown(
+                            "Please verify your **billing information** and try again.\n\
+                            - Check your card details\n\
+                            - Ensure sufficient funds\n\
+                            - Verify billing address",
+                        ))
+                        .aria_label(
+                            "Unable to process your payment. Please verify your billing information, card details, funds, and billing address.",
+                        ),
+                ),
+            )
+            .child(
+                section("Banner and closable").w_2_3().child(
                     v_flex()
                         .w_full()
                         .gap_3()
                         .child(
-                            Alert::info("info1", "This is an info alert.")
-                                .with_size(self.size)
-                                .title("Info message")
-                                .on_close(cx.listener(|_, _, _, _| {
-                                    println!("Info alert closed");
+                            Alert::new("closable-banner")
+                                .banner()
+                                .visible(self.banner_visible)
+                                .icon(IconName::Info)
+                                .title("Maintenance scheduled")
+                                .description("The service will be unavailable tonight from 2:00 to 4:00.")
+                                .on_close(cx.listener(|this, _, _, cx| {
+                                    this.banner_visible = false;
+                                    cx.notify();
                                 })),
                         )
                         .child(
-                            Alert::success(
-                                "success-1",
-                                "You have successfully submitted your form.\n\
-                        Thank you for your submission!",
-                            )
-                            .with_size(self.size)
-                            .title("Submit Successful"),
-                        )
-                        .child(
-                            Alert::warning(
-                                "warning-1",
-                                "This is a warning alert with icon, but no title.\n\
-                            This is second line of text to test is the line-height is correct.",
-                            )
-                            .with_size(self.size),
-                        )
-                        .child(
-                            Alert::error(
-                                "error-1",
-                                markdown(
-                                    "Please verify your billing information and try again.\n\
-                            - Check your card details\n\
-                            - Ensure sufficient funds\n\
-                            - Verify billing address",
-                                ),
-                            )
-                            .with_size(self.size)
-                            .title("Unable to process your payment."),
+                            Alert::new("closable-alert")
+                                .icon(IconName::Info)
+                                .title("Closable alert")
+                                .description("The close button is keyboard accessible.")
+                                .on_close(|_, _, _| {}),
                         ),
-                ),
-            )
-            .child(
-                section("Banner").w_2_3().child(
-                    v_flex()
-                        .w_full()
-                        .gap_2()
-                        .child(
-                            Alert::new(
-                                "banner-1",
-                                "This is a banner alert, it will take \
-                       the full width of the container.",
-                            )
-                            .banner()
-                            .on_close(cx.listener(|this, _, _, cx| {
-                                this.banner_visible = !this.banner_visible;
-                                cx.notify();
-                            }))
-                            .visible(self.banner_visible)
-                            .with_size(self.size),
-                        )
-                        .child(
-                            Alert::info(
-                                "banner-info",
-                                "This is a banner alert, it will take the full width of the\
-                    container.",
-                            )
-                            .banner()
-                            .with_size(self.size),
-                        )
-                        .child(
-                            Alert::success(
-                                "banner-success",
-                                "This is a banner alert, it will take the full width of the\
-                    container.",
-                            )
-                            .banner()
-                            .with_size(self.size),
-                        )
-                        .child(
-                            Alert::warning(
-                                "banner-warning",
-                                "This is a banner alert, it will take the full width of the\
-                    container.",
-                            )
-                            .banner()
-                            .with_size(self.size),
-                        )
-                        .child(
-                            Alert::error(
-                                "banner-error",
-                                "This is a banner alert, it will take the full width of the\
-                    container.",
-                            )
-                            .banner()
-                            .with_size(self.size),
-                        ),
-                ),
-            )
-            .child(
-                section("Custom Icon").w_2_3().child(
-                    Alert::new(
-                        "other-1",
-                        "Custom icon with info alert with long \
-                    long long long long long long long long \
-                    long long long long long long long long long \
-                    long long messageeeeeeeee.",
-                    )
-                    .title("Custom Icon")
-                    .with_size(self.size)
-                    .icon(IconName::Calendar),
                 ),
             )
     }

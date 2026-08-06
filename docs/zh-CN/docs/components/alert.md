@@ -5,7 +5,7 @@ description: 用于吸引用户注意的重要提示组件。
 
 # Alert
 
-Alert 是一个通用提示组件，用于展示重要消息。它支持多种变体、可选标题、自定义图标、可关闭行为以及横幅模式，适合通知、状态提示和操作反馈场景。
+Alert 用于展示重要状态或操作提示。图标、标题、描述和操作均为相互独立的可选 Slot。
 
 ## 导入
 
@@ -13,194 +13,123 @@ Alert 是一个通用提示组件，用于展示重要消息。它支持多种�
 use gpui_component::alert::Alert;
 ```
 
-## 用法
-
-### 基础 Alert
+## 基础用法
 
 ```rust
-Alert::new("alert-id", "This is a basic alert message.")
+Alert::new("payment-success")
+    .icon(IconName::CircleCheck)
+    .title("Payment successful")
+    .description(
+        "Your payment of $29.99 has been processed. A receipt has been sent to your email address."
+    )
 ```
 
-### 带标题
+所有内容 Slot 均可省略：
 
 ```rust
-Alert::new("alert-with-title", "Your changes have been saved successfully.")
-    .title("Success!")
+Alert::new("title-only").title("Changes saved")
+
+Alert::new("description-only")
+    .description("This alert has no title or icon.")
 ```
 
-### 不同变体
+## Destructive
+
+错误或失败状态使用 `destructive`。Variant 不会自动添加图标。
 
 ```rust
-Alert::info("info-alert", "This is an informational message.")
-    .title("Information")
-
-Alert::success("success-alert", "Your operation completed successfully.")
-    .title("Success!")
-
-Alert::warning("warning-alert", "Please review your settings before proceeding.")
-    .title("Warning")
-
-Alert::error("error-alert", "An error occurred while processing your request.")
-    .title("Error")
+Alert::new("payment-failed")
+    .destructive()
+    .icon(IconName::TriangleAlert)
+    .title("Payment failed")
+    .description("Your payment could not be processed. Please try again.")
 ```
 
-### Alert 尺寸
+## Action
+
+使用 `action` 将 Button 或其他操作元素放置在右上角。
 
 ```rust
-use gpui_component::{alert::Alert, Sizable as _};
-
-Alert::info("alert", "Message content")
-    .xsmall()
-    .title("XSmall Alert")
-Alert::info("alert", "Message content")
-    .small()
-    .title("Small Alert")
-
-Alert::info("alert", "Message content")
-    .title("Medium Alert")
-
-Alert::info("alert", "Message content")
-    .large()
-    .title("Large Alert")
+Alert::new("dark-mode")
+    .title("Dark mode is now available")
+    .description("Enable it under your profile settings to get started.")
+    .action(Button::new("enable-dark-mode").xsmall().label("Enable"))
 ```
 
-### 可关闭提示
+## 自定义颜色
 
-只要设置 `on_close`，Alert 就会显示关闭按钮：
+Alert 实现了 `Styled`。根节点前景色会被图标和标题继承，Default description 仍使用弱化颜色。
 
 ```rust
-Alert::info("closable-alert", "This alert can be dismissed.")
-    .title("Dismissible")
-    .on_close(|_event, _window, _cx| {
-        println!("Alert was closed");
-    })
+Alert::new("subscription-warning")
+    .icon(IconName::TriangleAlert)
+    .title("Your subscription will expire in 3 days.")
+    .description("Renew now to avoid service interruption.")
+    .bg(cx.theme().warning.opacity(0.08))
+    .border_color(cx.theme().warning.opacity(0.5))
+    .text_color(cx.theme().warning)
 ```
 
-### 横幅模式
+## 可关闭 Alert
 
-横幅模式会占满可用宽度，并且不显示标题：
+`on_close` 会用可访问的纯图标关闭按钮替换自定义 Action。回调负责更新可见状态。
 
 ```rust
-Alert::info("banner-alert", "This is a banner alert that spans the full width.")
+Alert::new("closable")
+    .title("Maintenance scheduled")
+    .description("The service will be unavailable tonight.")
+    .visible(is_visible)
+    .on_close(cx.listener(|this, _, _, cx| {
+        this.is_visible = false;
+        cx.notify();
+    }))
+```
+
+## Banner
+
+Banner 外观会移除边框和圆角，但不会隐藏任何内容 Slot。
+
+```rust
+Alert::new("maintenance-banner")
     .banner()
-
-Alert::success("banner-success", "Operation completed successfully!")
-    .banner()
-
-Alert::warning("banner-warning", "System maintenance scheduled for tonight.")
-    .banner()
-
-Alert::error("banner-error", "Service temporarily unavailable.")
-    .banner()
+    .icon(IconName::Info)
+    .title("Maintenance scheduled")
+    .description("The service will be unavailable tonight.")
 ```
 
-### 自定义图标
+## 富文本内容
+
+`title` 和 `description` 会保留普通字符串并生成可访问性信息。任意 GPUI 元素使用 `title_element` 或 `description_element`。由于任意元素无法可靠还原为文本，需要通过 `aria_label` 概括所有重要内容。
 
 ```rust
-use gpui_component::IconName;
-
-Alert::new("custom-icon", "Meeting scheduled for tomorrow at 3 PM.")
-    .title("Calendar Reminder")
-    .icon(IconName::Calendar)
+Alert::new("validation-error")
+    .destructive()
+    .title("Validation failed")
+    .description_element(markdown(
+        "Please correct the following errors:\n\
+        - Email address is required\n\
+        - Password must be at least 8 characters"
+    ))
+    .aria_label(
+        "Validation failed. Email address is required. Password must be at least 8 characters."
+    )
 ```
 
-### 使用 Markdown 内容
+## 可访问性
 
-可以配合 `TextView` 渲染 Markdown 或 HTML 内容：
-
-```rust
-use gpui_component::text::markdown;
-
-Alert::error(
-    "error-with-markdown",
-    markdown(
-        "Please verify your billing information and try again.\n\
-        - Check your card details\n\
-        - Ensure sufficient funds\n\
-        - Verify billing address"
-    ),
-)
-.title("Payment Failed")
-```
-
-### 条件显示
+Alert 暴露 AccessKit Alert role。文本标题会成为可访问名称，文本描述会成为可访问描述；只有描述时，描述会作为名称。自定义元素 Slot 无法提供合适文本信息时，使用 `aria_label` 显式命名。
 
 ```rust
-Alert::info("conditional-alert", "This alert may be hidden.")
-    .title("Conditional")
-    .visible(should_show_alert)
+Alert::new("sync-status")
+    .aria_label("Synchronization failed")
+    .destructive()
+    .description_element(custom_status_view)
 ```
 
 ## API 参考
 
 - [Alert]
-
-## 示例
-
-### 表单校验错误
-
-```rust
-Alert::error(
-    "validation-error",
-    "Please correct the following errors before submitting:\n\
-    - Email address is required\n\
-    - Password must be at least 8 characters\n\
-    - Terms of service must be accepted"
-)
-.title("Validation Failed")
-```
-
-### 成功提示
-
-```rust
-Alert::success("save-success", "Your profile has been updated successfully.")
-    .title("Changes Saved")
-    .on_close(|_, _, _| {
-        // Auto-dismiss after showing
-    })
-```
-
-### 系统状态横幅
-
-```rust
-Alert::warning(
-    "maintenance-banner",
-    "Scheduled maintenance will occur tonight from 2:00 AM to 4:00 AM EST. \
-    Some services may be temporarily unavailable."
-)
-.banner()
-.large()
-```
-
-### 交互式提示
-
-```rust
-Alert::info("update-available", "A new version of the application is available.")
-    .title("Update Available")
-    .icon(IconName::Download)
-    .on_close(cx.listener(|this, _, _, cx| {
-        this.handle_update_notification(cx);
-    }))
-```
-
-### 多行格式化内容
-
-```rust
-use gpui_component::text::markdown;
-
-Alert::warning(
-    "security-alert",
-    markdown(
-        "**Security Notice**: Unusual activity detected on your account.\n\n\
-        Recent activity:\n\
-        - Login from new device (Chrome on Windows)\n\
-        - Location: San Francisco, CA\n\
-        - Time: Today at 2:30 PM\n\n\
-        If this wasn't you, please [change your password](/) immediately."
-    )
-)
-.title("Security Alert")
-.icon(IconName::Shield)
-```
+- [AlertVariant]
 
 [Alert]: https://docs.rs/gpui-component/latest/gpui_component/alert/struct.Alert.html
+[AlertVariant]: https://docs.rs/gpui-component/latest/gpui_component/alert/enum.AlertVariant.html

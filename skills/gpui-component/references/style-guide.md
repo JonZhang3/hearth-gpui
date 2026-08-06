@@ -188,19 +188,14 @@ Use a `Variants` trait with default method impls:
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum AlertVariant {
     #[default]
-    Info,
-    Success,
-    Warning,
-    Error,
+    Default,
+    Destructive,
 }
 
 pub trait AlertVariants: Sized {
     fn with_variant(self, variant: AlertVariant) -> Self;
 
-    fn info(self) -> Self { self.with_variant(AlertVariant::Info) }
-    fn success(self) -> Self { self.with_variant(AlertVariant::Success) }
-    fn warning(self) -> Self { self.with_variant(AlertVariant::Warning) }
-    fn error(self) -> Self { self.with_variant(AlertVariant::Error) }
+    fn destructive(self) -> Self { self.with_variant(AlertVariant::Destructive) }
 }
 
 impl AlertVariants for MyAlert {
