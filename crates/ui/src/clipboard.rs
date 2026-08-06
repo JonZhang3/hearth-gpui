@@ -5,10 +5,7 @@ use gpui::{
     prelude::FluentBuilder,
 };
 
-use crate::{
-    IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
-};
+use crate::{IconName, Sizable as _, button::Button};
 
 /// An element that provides clipboard copy functionality.
 #[derive(IntoElement)]

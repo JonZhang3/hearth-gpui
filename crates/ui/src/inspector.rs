@@ -15,9 +15,9 @@ use ropey::Rope;
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, IconName, Selectable, Sizable, TITLE_BAR_HEIGHT,
+    ActiveTheme, IconName, Sizable, TITLE_BAR_HEIGHT,
     alert::Alert,
-    button::{Button, ButtonVariants},
+    button::{Button, Toggle},
     clipboard::Clipboard,
     description_list::DescriptionList,
     h_flex,
@@ -522,12 +522,10 @@ fn render_inspector(
                         .gap_2()
                         .text_sm()
                         .child(
-                            Button::new("inspect")
+                            Toggle::new("inspect")
                                 .icon(IconName::Inspector)
-                                .selected(inspector.is_picking())
-                                .toggled(inspector.is_picking())
+                                .checked(inspector.is_picking())
                                 .small()
-                                .ghost()
                                 .on_click(cx.listener(|this, _, window, _| {
                                     this.start_picking();
                                     window.refresh();

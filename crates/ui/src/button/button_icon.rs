@@ -1,13 +1,11 @@
 use crate::{Icon, Sizable, Size, progress::ProgressCircle, spinner::Spinner};
-use gpui::{App, IntoElement, RenderOnce, Window, prelude::FluentBuilder};
+use gpui::{App, IntoElement, RenderOnce, Window};
 
 /// Button icon which can be an Icon, Spinner, or Progress use for `icon` method of Button.
 #[doc(hidden)]
 #[derive(IntoElement)]
 pub struct ButtonIcon {
     icon: ButtonIconVariant,
-    loading_icon: Option<Icon>,
-    loading: bool,
     size: Size,
 }
 
@@ -25,20 +23,8 @@ impl ButtonIcon {
     pub fn new(icon: impl Into<ButtonIconVariant>) -> Self {
         Self {
             icon: icon.into(),
-            loading_icon: None,
-            loading: false,
             size: Size::Medium,
         }
-    }
-
-    pub(crate) fn loading_icon(mut self, icon: Option<Icon>) -> Self {
-        self.loading_icon = icon;
-        self
-    }
-
-    pub(crate) fn loading(mut self, loading: bool) -> Self {
-        self.loading = loading;
-        self
     }
 }
 
@@ -82,12 +68,14 @@ impl From<ProgressCircle> for ButtonIconVariant {
 impl ButtonIconVariant {
     /// Returns true if the ButtonIconKind is an Icon.
     #[inline]
+    #[cfg(test)]
     pub(crate) fn is_spinner(&self) -> bool {
         matches!(self, Self::Spinner(_))
     }
 
     /// Returns true if the ButtonIconKind is a Progress or ProgressCircle.
     #[inline]
+    #[cfg(test)]
     pub(crate) fn is_progress(&self) -> bool {
         matches!(self, Self::Progress(_))
     }
@@ -115,18 +103,7 @@ impl RenderOnce for ButtonIconVariant {
 
 impl RenderOnce for ButtonIcon {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        if self.loading {
-            if self.icon.is_spinner() || self.icon.is_progress() {
-                self.icon.with_size(self.size).into_any_element()
-            } else {
-                Spinner::new()
-                    .when_some(self.loading_icon, |this, icon| this.icon(icon))
-                    .with_size(self.size)
-                    .into_any_element()
-            }
-        } else {
-            self.icon.with_size(self.size).into_any_element()
-        }
+        self.icon.with_size(self.size).into_any_element()
     }
 }
 
@@ -137,14 +114,8 @@ mod tests {
 
     #[gpui::test]
     fn test_button_icon_builder(_cx: &mut gpui::TestAppContext) {
-        let custom_icon = Icon::new(IconName::Loader);
-        let icon = ButtonIcon::new(IconName::Plus)
-            .loading(true)
-            .loading_icon(Some(custom_icon))
-            .large();
+        let icon = ButtonIcon::new(IconName::Plus).large();
 
-        assert!(icon.loading);
-        assert!(icon.loading_icon.is_some());
         assert_eq!(icon.size, Size::Large);
     }
 

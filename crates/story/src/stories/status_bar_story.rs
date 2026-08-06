@@ -3,14 +3,9 @@ use gpui::{
     Styled, Window,
 };
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dock::PanelControl,
-    h_flex,
-    progress::ProgressCircle,
-    separator::Separator,
-    status_bar::StatusBar,
-    v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _, button::Button,
+    dock::PanelControl, h_flex, progress::ProgressCircle, separator::Separator,
+    status_bar::StatusBar, v_flex,
 };
 
 use crate::section;

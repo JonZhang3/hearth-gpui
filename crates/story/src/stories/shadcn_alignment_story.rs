@@ -4,13 +4,13 @@ use gpui::{
     Styled, Window, div, px,
 };
 use gpui_component::{
-    ActiveTheme as _, Disableable as _, IconName, IndexPath, Placement, Selectable as _,
-    Sizable as _, StyleRegistry, StyledExt as _, Theme, ThemeMode, WindowExt as _,
+    ActiveTheme as _, Disableable as _, IconName, IndexPath, Placement, Sizable as _,
+    StyleRegistry, StyledExt as _, Theme, ThemeMode, WindowExt as _,
     accordion::Accordion,
     alert::Alert,
     avatar::Avatar,
+    button::Button,
     button::Toggle,
-    button::{Button, ButtonVariants as _},
     calendar::{Calendar, CalendarState},
     checkbox::Checkbox,
     collapsible::Collapsible,
@@ -200,8 +200,7 @@ impl Render for ShadcnAlignmentStory {
                             .small()
                             .outline()
                             .label("Light")
-                            .selected(active_mode == ThemeMode::Light)
-                            .toggled(active_mode == ThemeMode::Light)
+                            .pressed(active_mode == ThemeMode::Light)
                             .on_click(|_, window, cx| {
                                 Theme::change(ThemeMode::Light, Some(window), cx);
                             }),
@@ -211,8 +210,7 @@ impl Render for ShadcnAlignmentStory {
                             .small()
                             .outline()
                             .label("Dark")
-                            .selected(active_mode == ThemeMode::Dark)
-                            .toggled(active_mode == ThemeMode::Dark)
+                            .pressed(active_mode == ThemeMode::Dark)
                             .on_click(|_, window, cx| {
                                 Theme::change(ThemeMode::Dark, Some(window), cx);
                             }),
@@ -228,8 +226,7 @@ impl Render for ShadcnAlignmentStory {
                         .small()
                         .outline()
                         .label(preset.name.clone())
-                        .selected(is_selected)
-                        .toggled(is_selected)
+                        .pressed(is_selected)
                         .on_click(move |_, _, cx| {
                             if let Err(error) = Theme::set_style(&preset_id, cx) {
                                 tracing::error!("Failed to select Style Preset: {error}");
@@ -249,7 +246,7 @@ impl Render for ShadcnAlignmentStory {
                     .child(Button::new("align-default").label("Default"))
                     .child(Button::new("align-outline").outline().label("Outline"))
                     .child(Button::new("align-secondary").secondary().label("Secondary"))
-                    .child(Button::new("align-destructive").danger().label("Destructive"))
+                    .child(Button::new("align-destructive").destructive().label("Destructive"))
                     .child(Button::new("align-ghost").ghost().label("Ghost"))
                     .child(Button::new("align-link").link().label("Link"))
                     .child(
@@ -264,7 +261,12 @@ impl Render for ShadcnAlignmentStory {
                     )
                     .child(Button::new("align-cjk").label("中文操作"))
                     .child(Button::new("align-long").label("Long desktop action"))
-                    .child(Button::new("align-loading").loading(true).label("Loading"))
+                    .child(
+                        Button::new("align-loading")
+                            .icon(Spinner::new())
+                            .label("Loading")
+                            .disabled(true),
+                    )
                     .child(Button::new("align-disabled").disabled(true).label("Disabled")),
             )
             .child(

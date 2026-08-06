@@ -48,7 +48,7 @@ impl Default for DialogButtonProps {
     fn default() -> Self {
         Self {
             ok_text: None,
-            ok_variant: ButtonVariant::Primary,
+            ok_variant: ButtonVariant::Default,
             cancel_text: None,
             cancel_variant: ButtonVariant::default(),
             show_cancel: false,

@@ -5,7 +5,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Theme, WindowExt as _,
-    button::{Button, ButtonVariants},
+    button::Button,
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::{Notification, NotificationType},
@@ -145,7 +145,7 @@ impl Render for NotificationStory {
                 section("Notification with Type")
                     .child(
                         Button::new("show-notify-info")
-                            .info()
+                            .outline()
                             .label("Info")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -159,7 +159,6 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-success")
-                            .success()
                             .label("Success")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -173,7 +172,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-warning")
-                            .warning()
+                            .secondary()
                             .label("Warning")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -187,7 +186,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-error")
-                            .danger()
+                            .destructive()
                             .label("Error")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -204,7 +203,7 @@ impl Render for NotificationStory {
                 section("Type with Title and Description")
                     .child(
                         Button::new("show-typed-info")
-                            .info()
+                            .outline()
                             .label("Info")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -217,24 +216,21 @@ impl Render for NotificationStory {
                                 )
                             })),
                     )
-                    .child(
-                        Button::new("show-typed-success")
-                            .success()
-                            .label("Success")
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                window.push_notification(
-                                    Notification::success(
-                                        "Your payment of $99.00 was processed and a \
+                    .child(Button::new("show-typed-success").label("Success").on_click(
+                        cx.listener(|_, _, window, cx| {
+                            window.push_notification(
+                                Notification::success(
+                                    "Your payment of $99.00 was processed and a \
                                         receipt has been emailed to you.",
-                                    )
-                                    .title("Payment received"),
-                                    cx,
                                 )
-                            })),
-                    )
+                                .title("Payment received"),
+                                cx,
+                            )
+                        }),
+                    ))
                     .child(
                         Button::new("show-typed-warning")
-                            .warning()
+                            .secondary()
                             .label("Warning")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -249,7 +245,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-typed-error")
-                            .danger()
+                            .destructive()
                             .label("Error")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -325,7 +321,7 @@ impl Render for NotificationStory {
                                     .title("Uh oh! Something went wrong.")
                                     .message("There was a problem with your request.")
                                     .action(|_, _, cx| {
-                                        Button::new("try-again").primary().label("Retry").on_click(
+                                        Button::new("try-again").label("Retry").on_click(
                                             cx.listener(|this, _, window, cx| {
                                                 println!("You have clicked the try again action.");
                                                 this.dismiss(window, cx);

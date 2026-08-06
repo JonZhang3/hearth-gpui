@@ -10,11 +10,7 @@ use gpui::{
     prelude::FluentBuilder as _,
 };
 
-use crate::{
-    Disableable, IconName, Sizable, Size, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    h_flex,
-};
+use crate::{Disableable, IconName, Sizable, Size, StyledExt as _, button::Button, h_flex};
 
 use super::{Input, InputState, MaskPattern};
 
@@ -321,7 +317,6 @@ impl RenderOnce for NumberInput {
                     })
                     .with_size(self.size)
                     .icon(IconName::Minus)
-                    .compact()
                     .tab_stop(false)
                     .disabled(self.disabled)
                     .border_color(cx.theme().input)
@@ -366,7 +361,6 @@ impl RenderOnce for NumberInput {
                     })
                     .with_size(self.size)
                     .icon(IconName::Plus)
-                    .compact()
                     .tab_stop(false)
                     .disabled(self.disabled)
                     .border_color(cx.theme().input)

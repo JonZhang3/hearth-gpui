@@ -11,7 +11,7 @@ use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Sizable as _,
     avatar::Avatar,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     clipboard::Clipboard,
     h_flex,
     highlighter::Language,

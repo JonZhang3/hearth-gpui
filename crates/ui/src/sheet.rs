@@ -16,7 +16,7 @@ use crate::{
     StyledExt as _, WindowExt as _,
     actions::Cancel,
     animation::OverlayPhase,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     dialog::overlay_color,
     h_flex,
     scroll::ScrollableElement as _,

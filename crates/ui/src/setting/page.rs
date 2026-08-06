@@ -9,7 +9,7 @@ use rust_i18n::t;
 
 use crate::{
     ActiveTheme, Icon, IconName, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
+    button::Button,
     h_flex,
     label::Label,
     scroll::ScrollableElement,

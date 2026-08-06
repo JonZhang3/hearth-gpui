@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::{Tab, TabVariant};
 use crate::animation::Lerp;
-use crate::button::{Button, ButtonVariants as _};
+use crate::button::Button;
 use crate::menu::{DropdownMenu as _, PopupMenuItem};
 use crate::{ActiveTheme, ElementExt, Icon, Selectable, Sizable, Size, StyledExt, h_flex};
 
@@ -505,7 +505,7 @@ impl RenderOnce for TabBar {
                     Button::new("more")
                         .xsmall()
                         .ghost()
-                        .dropdown_caret(true)
+                        .icon(crate::IconName::ChevronDown)
                         .dropdown_menu(move |mut this, _, _| {
                             this = this.scrollable(true);
                             for (ix, (label, icon, disabled)) in item_metas.iter().enumerate() {

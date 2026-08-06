@@ -10,8 +10,8 @@ use gpui::{
 use ropey::Rope;
 
 use crate::{
-    ActiveTheme, Disableable, ElementExt, IconName, Selectable, Sizable,
-    button::{Button, ButtonVariants},
+    ActiveTheme, Disableable, ElementExt, IconName, Sizable,
+    button::{Button, Toggle},
     h_flex,
     input::{
         Enter, Escape, IndentInline, Input, InputEvent, InputState, RopeExt as _, Search,
@@ -498,18 +498,17 @@ impl Render for SearchPanel {
                                 Input::new(&self.search_input)
                                     .focus_bordered(false)
                                     .suffix(
-                                        Button::new("case-insensitive")
-                                            .selected(!self.case_insensitive)
-                                            .toggled(!self.case_insensitive)
+                                        Toggle::new("case-insensitive")
+                                            .checked(!self.case_insensitive)
                                             .xsmall()
-                                            .compact()
-                                            .text()
                                             .icon(IconName::CaseSensitive)
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.case_insensitive = !this.case_insensitive;
-                                                this.update_search_query(cx);
-                                                cx.notify();
-                                            })),
+                                            .on_click(cx.listener(
+                                                |this, checked: &bool, _, cx| {
+                                                    this.case_insensitive = !*checked;
+                                                    this.update_search_query(cx);
+                                                    cx.notify();
+                                                },
+                                            )),
                                     )
                                     .small()
                                     .w_full()
@@ -524,14 +523,12 @@ impl Render for SearchPanel {
                     )
                     .when(allow_replace, |this| {
                         this.child(
-                            Button::new("replace-mode")
+                            Toggle::new("replace-mode")
                                 .xsmall()
-                                .ghost()
                                 .icon(IconName::Replace)
-                                .selected(self.replace_mode)
-                                .toggled(self.replace_mode)
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.replace_mode = !this.replace_mode;
+                                .checked(self.replace_mode)
+                                .on_click(cx.listener(|this, checked: &bool, window, cx| {
+                                    this.replace_mode = *checked;
                                     if this.replace_mode {
                                         this.replace_input
                                             .read(cx)

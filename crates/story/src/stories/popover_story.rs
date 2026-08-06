@@ -5,7 +5,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme, StyledExt, WindowExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{Input, InputState},
     list::{List, ListDelegate, ListItem, ListState},
@@ -121,17 +121,14 @@ impl Render for Form {
             .child("This is a form container.")
             .child("Click submit to dismiss the popover.")
             .child(Input::new(&self.input1))
-            .child(
-                Button::new("submit")
-                    .label("Submit")
-                    .primary()
-                    .on_click(cx.listener(move |_, _, _, cx| {
-                        let _ = parent.update(cx, |this, cx| {
-                            this.form_popover_open = false;
-                            cx.notify();
-                        });
-                    })),
-            )
+            .child(Button::new("submit").label("Submit").on_click(cx.listener(
+                move |_, _, _, cx| {
+                    let _ = parent.update(cx, |this, cx| {
+                        this.form_popover_open = false;
+                        cx.notify();
+                    });
+                },
+            )))
     }
 }
 
@@ -297,19 +294,15 @@ impl Render for PopoverStory {
                                 .gap_2()
                                 .child("Hello, this is a Popover on the Bottom Right.")
                                 .child(Separator::horizontal())
-                                .child(
-                                    Button::new("info1")
-                                        .primary()
-                                        .label("Dismiss")
-                                        .w(px(80.))
-                                        .on_click(cx.listener(|_, _, window, cx| {
-                                            window.push_notification(
-                                                "You have clicked dismiss via DismissEvent.",
-                                                cx,
-                                            );
-                                            cx.emit(DismissEvent);
-                                        })),
-                                )
+                                .child(Button::new("info1").label("Dismiss").w(px(80.)).on_click(
+                                    cx.listener(|_, _, window, cx| {
+                                        window.push_notification(
+                                            "You have clicked dismiss via DismissEvent.",
+                                            cx,
+                                        );
+                                        cx.emit(DismissEvent);
+                                    }),
+                                ))
                         }),
                 ),
             )

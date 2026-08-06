@@ -91,17 +91,8 @@ fn print_allocation_snapshot(name: &str, snapshot: AllocationSnapshot, printed: 
     );
 }
 use gpui_component::{
-    Disableable as _, Sizable as _,
-    button::{Button, ButtonVariants as _},
-    checkbox::Checkbox,
-    h_flex,
-    popover::Popover,
-    progress::Progress,
-    radio::Radio,
-    skeleton::Skeleton,
-    spinner::Spinner,
-    switch::Switch,
-    v_flex,
+    Disableable as _, Sizable as _, button::Button, checkbox::Checkbox, h_flex, popover::Popover,
+    progress::Progress, radio::Radio, skeleton::Skeleton, spinner::Spinner, switch::Switch, v_flex,
 };
 
 /// Representative render workload for high-frequency control state changes.
@@ -121,7 +112,7 @@ impl Render for ControlMatrixBench {
                     .child(
                         Button::new(("bench-button", index))
                             .small()
-                            .when((index + variant_offset) % 4 == 0, |button| button.primary())
+                            .when((index + variant_offset) % 4 == 0, |button| button)
                             .when((index + variant_offset) % 4 == 1, |button| button.outline())
                             .disabled(index % 11 == 0)
                             .label("Control"),

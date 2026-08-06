@@ -11,6 +11,7 @@
 | Independent selection | `Theme::set_style` and `Theme::set_color_theme` preserve the other selection |
 | Validation | Empty ids/names, invalid control ordering, invalid overlay scale, duplicates, and unknown ids are rejected atomically |
 | Core controls | Button, Toggle, Checkbox, Radio, Switch, Input, Select, Combobox, NumberInput, OtpInput, and DatePicker consume shared metrics where applicable |
+| Button family | Button uses the Vega variant, size, icon-slot, rounded, pressed, focus, and disabled contracts; loading is explicit Spinner composition; ButtonGroup supports actions, nested groups, text, separators, orientation, and group naming |
 | State contracts | Checkbox exposes checked/unchecked/mixed; Checkbox, Radio, Input, OtpInput, and Field expose invalid; Input exposes read-only without blocking selection/copy; OTP supports normalized paste and AccessKit SetValue |
 | Icon-button names | `Button::aria_label` names icon-only controls without adding visible text; Dialog, Sheet, Notification, Search, and Inspector close buttons use the localized Close label |
 | Focus | Shared focus ring width and offset are Style metrics; Color Theme retains ring color |

@@ -1,16 +1,16 @@
-use gpui::Corners;
 use gpui::{
     Anchor, App, Context, Edges, ElementId, InteractiveElement as _, IntoElement, ParentElement,
     RenderOnce, SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
 };
+use gpui::{Corners, Pixels};
 
 use crate::{
-    Disableable, Selectable, Sizable, Size, StyledExt as _,
+    Disableable, IconName, Selectable, Sizable, Size, StyledExt as _,
     menu::{DropdownMenu, PopupMenu},
     tooltip::ComponentTooltip,
 };
 
-use super::{Button, ButtonRounded, ButtonVariant, ButtonVariants};
+use super::{Button, ButtonVariant, ButtonVariants};
 
 #[derive(IntoElement)]
 pub struct DropdownButton {
@@ -22,12 +22,9 @@ pub struct DropdownButton {
     selected: bool,
     disabled: bool,
     // The button props
-    compact: bool,
-    outline: bool,
-    loading: bool,
     variant: ButtonVariant,
     size: Size,
-    rounded: ButtonRounded,
+    radius: Option<Pixels>,
     anchor: Anchor,
     tooltip: ComponentTooltip,
 }
@@ -42,12 +39,9 @@ impl DropdownButton {
             menu: None,
             selected: false,
             disabled: false,
-            compact: false,
-            outline: false,
-            loading: false,
             variant: ButtonVariant::default(),
             size: Size::default(),
-            rounded: ButtonRounded::default(),
+            radius: None,
             anchor: Anchor::TopRight,
             tooltip: ComponentTooltip::default(),
         }
@@ -86,30 +80,8 @@ impl DropdownButton {
     }
 
     /// Set the rounded style of the button.
-    pub fn rounded(mut self, rounded: impl Into<ButtonRounded>) -> Self {
-        self.rounded = rounded.into();
-        self
-    }
-
-    /// Set the button to compact style.
-    ///
-    /// See also: [`Button::compact`]
-    pub fn compact(mut self) -> Self {
-        self.compact = true;
-        self
-    }
-
-    /// Set the button to outline style.
-    ///
-    /// See also: [`Button::outline`]
-    pub fn outline(mut self) -> Self {
-        self.outline = true;
-        self
-    }
-
-    /// Set the button to loading state.
-    pub fn loading(mut self, loading: bool) -> Self {
-        self.loading = loading;
+    pub fn rounded(mut self, radius: Pixels) -> Self {
+        self.radius = Some(radius);
         self
     }
 }
@@ -163,7 +135,7 @@ impl RenderOnce for DropdownButton {
             .when_some(self.button, |this, button| {
                 this.child(
                     button
-                        .rounded(self.rounded)
+                        .when_some(self.radius, |this, radius| this.rounded(radius))
                         .border_corners(Corners {
                             top_left: true,
                             top_right: rounded,
@@ -176,19 +148,16 @@ impl RenderOnce for DropdownButton {
                             right: true,
                             bottom: true,
                         })
-                        .loading(self.loading)
                         .selected(self.selected)
-                        .disabled(self.disabled || self.loading)
-                        .when(self.compact, |this| this.compact())
-                        .when(self.outline, |this| this.outline())
+                        .disabled(self.disabled)
                         .with_size(self.size)
                         .with_variant(self.variant),
                 )
                 .when_some(self.menu, |this, menu| {
                     this.child(
                         Button::new("popup")
-                            .dropdown_caret(true)
-                            .rounded(self.rounded)
+                            .icon(IconName::ChevronDown)
+                            .when_some(self.radius, |this, radius| this.rounded(radius))
                             .border_edges(Edges {
                                 left: rounded,
                                 top: true,
@@ -202,9 +171,7 @@ impl RenderOnce for DropdownButton {
                                 bottom_right: true,
                             })
                             .selected(self.selected)
-                            .disabled(self.disabled || self.loading)
-                            .when(self.compact, |this| this.compact())
-                            .when(self.outline, |this| this.outline())
+                            .disabled(self.disabled)
                             .with_size(self.size)
                             .with_variant(self.variant)
                             .dropdown_menu_with_anchor(self.anchor, menu),
@@ -224,25 +191,19 @@ mod tests {
         let button = Button::new("inner").label("Action");
         let dropdown = DropdownButton::new("complex-dropdown")
             .button(button)
-            .primary()
             .outline()
             .large()
-            .compact()
-            .loading(false)
             .disabled(false)
             .selected(false)
-            .rounded(ButtonRounded::Medium)
+            .rounded(gpui::px(8.))
             .dropdown_menu_with_anchor(Anchor::BottomLeft, |menu, _, _| menu);
 
         assert!(dropdown.button.is_some());
-        assert_eq!(dropdown.variant, ButtonVariant::Primary);
-        assert!(dropdown.outline);
+        assert_eq!(dropdown.variant, ButtonVariant::Outline);
         assert_eq!(dropdown.size, Size::Large);
-        assert!(dropdown.compact);
-        assert!(!dropdown.loading);
         assert!(!dropdown.disabled);
         assert!(!dropdown.selected);
-        assert!(matches!(dropdown.rounded, ButtonRounded::Medium));
+        assert_eq!(dropdown.radius, Some(gpui::px(8.)));
         assert!(dropdown.menu.is_some());
         assert_eq!(dropdown.anchor, Anchor::BottomLeft);
     }

@@ -1,6 +1,6 @@
 use crate::{
     ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     menu::{ContextMenuExt, PopupMenu},
     sidebar::SidebarItem,

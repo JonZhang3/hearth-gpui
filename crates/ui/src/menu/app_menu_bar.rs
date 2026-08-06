@@ -1,7 +1,7 @@
 use crate::{
     Selectable, Sizable,
     actions::{Cancel, SelectLeft, SelectRight},
-    button::{Button, ButtonVariants},
+    button::Button,
     global_state::GlobalState,
     h_flex,
     menu::PopupMenu,
@@ -265,7 +265,6 @@ impl Render for AppMenu {
                 Button::new("menu")
                     .small()
                     .py_0p5()
-                    .compact()
                     .ghost()
                     .label(self.name.clone())
                     .selected(is_selected)

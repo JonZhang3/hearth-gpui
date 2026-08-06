@@ -2,7 +2,6 @@ use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
     ActiveTheme, Icon, IconName, IndexPath, Sizable as _,
     button::Button,
-    button::ButtonVariants as _,
     combobox::*,
     h_flex,
     searchable_list::{

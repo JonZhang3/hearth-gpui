@@ -5,7 +5,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable, Size,
-    button::{Button, ButtonGroup, ButtonVariants},
+    button::{Button, ButtonGroup},
     checkbox::Checkbox,
     h_flex,
     tab::{Tab, TabBar},
@@ -108,7 +108,6 @@ impl Render for TabsStory {
                     .child(
                         ButtonGroup::new("toggle-size")
                             .outline()
-                            .compact()
                             .child(
                                 Button::new("xsmall")
                                     .label("XSmall")
@@ -285,19 +284,14 @@ impl Render for TabsStory {
                     .child(
                         h_flex()
                             .gap_2()
-                            .child(
-                                Button::new("add-tab")
-                                    .outline()
-                                    .compact()
-                                    .label("Add Tab")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.add_dynamic_tab(window, cx);
-                                    })),
-                            )
+                            .child(Button::new("add-tab").outline().label("Add Tab").on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.add_dynamic_tab(window, cx);
+                                }),
+                            ))
                             .child(
                                 Button::new("remove-tab")
                                     .outline()
-                                    .compact()
                                     .label("Remove Last")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.remove_last_dynamic_tab(window, cx);

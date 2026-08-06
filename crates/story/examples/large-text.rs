@@ -1,7 +1,7 @@
 use gpui::*;
 use gpui_component::{
     ActiveTheme, Selectable, Sizable, WindowExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{self, Input, InputEvent, InputState, TabSize},
     v_flex,

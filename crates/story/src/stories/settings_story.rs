@@ -5,7 +5,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, Size, Theme, ThemeMode,
-    button::{Button, ButtonVariants},
+    button::Button,
     group_box::GroupBoxVariant,
     h_flex,
     label::Label,
@@ -375,7 +375,7 @@ impl SettingsStory {
                                             .with_size(options.size)
                                             .map(|this| {
                                                 if current == value {
-                                                    this.primary()
+                                                    this
                                                 } else {
                                                     this.outline()
                                                 }

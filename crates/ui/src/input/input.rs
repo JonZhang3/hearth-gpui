@@ -9,7 +9,7 @@ use gpui::{
 };
 use rust_i18n::t;
 
-use crate::button::{Button, ButtonVariants as _};
+use crate::button::Button;
 use crate::input::clear_button;
 use crate::native_menu::NativeMenu;
 use crate::spinner::Spinner;
@@ -224,7 +224,7 @@ impl Input {
                 IconName::EyeOff
             })
             .xsmall()
-            .text()
+            .ghost()
             .tab_stop(false)
             .on_click({
                 let state = state.clone();

@@ -331,11 +331,13 @@ impl SheetStory {
                     h_flex()
                         .gap_6()
                         .items_center()
-                        .child(Button::new("confirm").primary().label("Confirm").on_click(
-                            |_, window, cx| {
-                                window.close_sheet(cx);
-                            },
-                        ))
+                        .child(
+                            Button::new("confirm")
+                                .label("Confirm")
+                                .on_click(|_, window, cx| {
+                                    window.close_sheet(cx);
+                                }),
+                        )
                         .child(
                             Button::new("cancel")
                                 .label("Cancel")

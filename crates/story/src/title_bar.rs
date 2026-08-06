@@ -8,7 +8,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme as _, IconName, Side, Sizable as _, StyleRegistry, Theme, TitleBar, WindowExt as _,
     badge::Badge,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     menu::{AppMenuBar, DropdownMenu as _},
     scroll::ScrollbarShow,
 };
@@ -83,7 +83,6 @@ impl Render for AppTitleBar {
                                     .aria_label("Notifications")
                                     .small()
                                     .ghost()
-                                    .compact()
                                     .icon(IconName::Bell),
                             ),
                         ),

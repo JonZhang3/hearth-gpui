@@ -8,9 +8,7 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
-    button::{Button, ButtonVariants as _},
-    theme::Density,
+    ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, button::Button, theme::Density,
     v_flex,
 };
 

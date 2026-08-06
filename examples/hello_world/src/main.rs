@@ -13,7 +13,6 @@ impl Render for Example {
             .child("Hello, World!")
             .child(
                 Button::new("ok")
-                    .primary()
                     .label("Let's Go!")
                     .on_click(|_, _, _| println!("Clicked!")),
             )

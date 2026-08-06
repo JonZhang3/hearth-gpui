@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     Icon, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},

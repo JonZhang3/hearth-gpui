@@ -10,8 +10,8 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, Disableable as _, IconName, Selectable, Sizable, Size, StyledExt as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme, Disableable as _, IconName, Sizable, Size, StyledExt as _,
+    button::{Button, Toggle},
     h_flex, v_flex,
 };
 
@@ -659,14 +659,10 @@ impl Calendar {
                         .justify_center()
                         .gap_3()
                         .child(
-                            Button::new("month")
-                                .ghost()
+                            Toggle::new("month")
                                 .label(state.month_name(0))
-                                .compact()
-                                .tab_stop(false)
                                 .with_size(self.size)
-                                .selected(view_mode.is_month())
-                                .toggled(view_mode.is_month())
+                                .checked(view_mode.is_month())
                                 .on_click(window.listener_for(
                                     &self.state,
                                     move |view, _, window, cx| {
@@ -680,14 +676,10 @@ impl Calendar {
                                 )),
                         )
                         .child(
-                            Button::new("year")
-                                .ghost()
+                            Toggle::new("year")
                                 .label(current_year.to_string())
-                                .compact()
-                                .tab_stop(false)
                                 .with_size(self.size)
-                                .selected(view_mode.is_year())
-                                .toggled(view_mode.is_year())
+                                .checked(view_mode.is_year())
                                 .on_click(window.listener_for(
                                     &self.state,
                                     |view, _, window, cx| {

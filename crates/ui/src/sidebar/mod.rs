@@ -1,9 +1,6 @@
 use crate::{
-    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-    h_flex,
-    scroll::ScrollableElement,
-    v_flex,
+    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt, button::Button, h_flex,
+    scroll::ScrollableElement, v_flex,
 };
 use gpui::{
     AbsoluteLength, AnyElement, App, ClickEvent, DefiniteLength, EdgesRefinement, ElementId,

@@ -63,7 +63,11 @@ impl Render for Phase0Capture {
                         h_flex()
                             .gap_3()
                             .child(Button::new("phase0-default").label("Default"))
-                            .child(Button::new("phase0-primary").primary().label("Primary"))
+                            .child(
+                                Button::new("phase0-secondary")
+                                    .secondary()
+                                    .label("Secondary"),
+                            )
                             .child(Button::new("phase0-outline").outline().label("Outline"))
                             .child(
                                 Button::new("phase0-disabled")

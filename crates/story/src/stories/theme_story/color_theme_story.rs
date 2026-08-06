@@ -1,7 +1,7 @@
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, IndexPath, StyledExt as _, ThemeColor,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
     menu::PopupMenuItem,
@@ -707,7 +707,6 @@ impl Render for ThemeColorsStory {
                     .child(div().w(px(300.)).child(Select::new(&self.select_state)))
                     .child(
                         Button::new("set_theme")
-                            .primary()
                             .label("Set Theme")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 use gpui_component::{Theme, ThemeRegistry};

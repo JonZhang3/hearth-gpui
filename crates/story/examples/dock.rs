@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result};
 use gpui::*;
 use gpui_component::{
     IconName, Root, Sizable,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     dock::{ClosePanel, DockArea, DockAreaState, DockEvent, DockItem, DockPlacement, ToggleZoom},
     menu::DropdownMenu,
     status_bar::StatusBar,

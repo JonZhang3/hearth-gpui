@@ -8,7 +8,7 @@ use rust_i18n::t;
 
 use crate::{
     Disableable, Icon, Sizable, Size, StyledExt,
-    button::{Button, ButtonVariants},
+    button::Button,
     h_flex,
     icon::IconName,
     menu::{DropdownMenu as _, PopupMenuItem},
@@ -125,7 +125,6 @@ impl Pagination {
 
         Button::new(id)
             .ghost()
-            .compact()
             .with_size(self.size)
             .disabled(self.disabled || disabled)
             .tooltip(label.clone())
@@ -204,7 +203,6 @@ impl RenderOnce for Pagination {
                                 }
                             })
                             .label(page.to_string())
-                            .compact()
                             .disabled(is_disabled)
                             .when(!is_selected, |this| {
                                 this.when_some(on_click.clone(), |this, handler| {
@@ -221,7 +219,6 @@ impl RenderOnce for Pagination {
                     )))
                     .ghost()
                     .with_size(self.size)
-                    .compact()
                     .disabled(self.disabled)
                     .icon(IconName::Ellipsis)
                     .dropdown_menu({

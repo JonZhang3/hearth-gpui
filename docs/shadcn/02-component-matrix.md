@@ -18,7 +18,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 
 | GPUI Component | shadcn reference | Primary work | Acceptance focus |
 |---|---|---|---|
-| Button, ButtonIcon, ButtonGroup, DropdownButton | `button`, `button-group` | Normalize variant, size, icon gap, focus, pressed, loading, and disabled states | Stable dimensions; desktop cursor; all variants in light and dark |
+| Button, ButtonIcon, ButtonGroup, DropdownButton | `button`, `button-group` | Vega variants and dimensions, leading/trailing icon slots, explicit Spinner composition, action-group layout, focus, pressed, and disabled states | Stable dimensions; desktop cursor; all variants in light and dark; child callbacks remain independent |
 | Toggle | `toggle`, `toggle-group` | Align on, off, hover, focus, outline, and grouped radii | Selected state is visually persistent and accessible |
 | Checkbox | `checkbox` | Align control size, radius, mark, invalid ring, and checked transition | Checked, unchecked, indeterminate, disabled, invalid |
 | Radio | `radio-group` | Align ring, indicator, focus, invalid, and disabled states | Arrow-key behavior and group selection remain native |

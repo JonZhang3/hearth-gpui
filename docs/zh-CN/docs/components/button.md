@@ -1,301 +1,82 @@
 ---
 title: Button
-description: 显示一个按钮，或外观表现为按钮的组件。
+description: 使用 shadcn Vega 视觉基准展示操作。
 ---
 
 # Button
 
-[Button] 是一个支持多种变体、尺寸和状态的按钮组件。它支持图标、加载态，也可以与 [ButtonGroup] 组合使用。
+`Button` 的几何尺寸、变体、交互状态与组合方式以 shadcn Vega 为默认基准。
 
-## 导入
+## 变体
 
 ```rust
-use gpui_component::button::{Button, ButtonGroup};
+Button::new("default").label("Default");
+Button::new("outline").outline().label("Outline");
+Button::new("secondary").secondary().label("Secondary");
+Button::new("ghost").ghost().label("Ghost");
+Button::new("destructive").destructive().label("Destructive");
+Button::new("link").link().label("Link");
 ```
 
-## 用法
+`Default` 是主要操作样式。真实导航应使用 `Link` 组件，不应改变 Button 的可访问性角色。
 
-### 基础按钮
+需要保持按压状态的操作可以使用 `.pressed(bool)`。它会保留 Button 的键盘行为并通过 `aria-pressed` 暴露状态；普通选项组仍应使用 `Toggle` 或 `ToggleGroup`。
+
+## 尺寸
 
 ```rust
-Button::new("my-button")
-    .label("Click me")
-    .on_click(|_, _, _| {
-        println!("Button clicked!");
-    })
+Button::new("xs").xsmall().label("Extra Small");
+Button::new("sm").small().label("Small");
+Button::new("md").label("Default");
+Button::new("lg").large().label("Large");
 ```
 
-### 变体
+纯图标按钮的宽高相同，并且必须设置 `aria_label`。
 
 ```rust
-// Primary button
-Button::new("btn-primary").primary().label("Primary")
-
-// Secondary button (default)
-Button::new("btn-secondary").label("Secondary")
-
-// Danger button
-Button::new("btn-danger").danger().label("Delete")
-
-// Warning button
-Button::new("btn-warning").warning().label("Warning")
-
-// Success button
-Button::new("btn-success").success().label("Success")
-
-// Info button
-Button::new("btn-info").info().label("Info")
-
-// Ghost button
-Button::new("btn-ghost").ghost().label("Ghost")
-
-// Link button
-Button::new("btn-link").link().label("Link")
-
-// Text button
-Button::new("btn-text").text().label("Text")
+Button::new("move-up")
+    .outline()
+    .icon(IconName::ArrowUp)
+    .aria_label("Move up");
 ```
 
-### Outline 按钮
+## 图标与加载状态
 
-`outline` 不是独立变体，而是可以和其它变体叠加使用：
-
-```rust
-Button::new("btn").primary().outline().label("Primary Outline")
-Button::new("btn").danger().outline().label("Danger Outline")
-```
-
-### 紧凑模式
-
-`compact` 会减少按钮内边距，使按钮更紧凑：
+`icon` 是前置插槽，`trailing_icon` 是后置插槽。加载状态通过 `Spinner` 显式组合，并在任务执行期间禁用按钮。
 
 ```rust
-Button::new("btn")
-    .label("Compact")
-    .compact()
-```
-
-### 尺寸
-
-Button 支持 [Sizable] trait：
-
-```rust
-Button::new("btn").xsmall().label("Extra Small")
-Button::new("btn").small().label("Small")
-Button::new("btn").label("Medium") // default
-Button::new("btn").large().label("Large")
-```
-
-### 图标
-
-`icon` 方法支持多种图标类型：
-
-- **[Icon] / [IconName]** - 静态图标
-- **[Spinner]** - 加载中的旋转图标
-- **[ProgressCircle]** - 环形进度图标
-
-这些图标会自动适配按钮尺寸，也可以继续定制颜色和其他属性。
-
-#### 基础图标
-
-```rust
-use gpui_component::{Icon, IconName};
-
-Button::new("btn")
-    .icon(IconName::Check)
-    .label("Confirm")
-
-Button::new("btn")
-    .icon(Icon::new(IconName::Heart))
-    .label("Like")
-
-Button::new("btn")
-    .aria_label("搜索")
-    .icon(IconName::Search)
-```
-
-仅图标按钮必须设置 `aria_label`，因为图标本身不提供可访问名称。`aria_label` 只修改 AccessKit 标签，不增加可见文本，也不改变图标按钮尺寸。未设置 `aria_label` 时，可见的 `label` 仍作为默认可访问名称。
-
-#### Spinner
-
-```rust
-use gpui_component::spinner::Spinner;
-
-Button::new("btn")
+Button::new("generating")
+    .outline()
     .icon(Spinner::new())
-    .label("Loading...")
-
-Button::new("btn")
-    .icon(Spinner::new().color(cx.theme().blue))
-    .label("Processing")
-
-Button::new("btn")
-    .icon(Spinner::new().icon(IconName::LoaderCircle))
-    .label("Syncing")
+    .label("Generating")
+    .disabled(true);
 ```
 
-#### ProgressCircle
+## 圆角
+
+`rounded_full` 根据最终控件高度计算胶囊圆角；`rounded(px(...))` 用于显式覆盖。
 
 ```rust
-use gpui_component::progress::ProgressCircle;
-
-Button::new("btn")
-    .icon(ProgressCircle::new("install-progress").value(45.0))
-    .label("Installing...")
-
-Button::new("btn")
-    .primary()
-    .icon(
-        ProgressCircle::new("download-progress")
-            .value(75.0)
-            .color(cx.theme().primary_foreground)
-    )
-    .label("Downloading")
-```
-
-### 动态更新图标
-
-图标可以随组件状态动态变化：
-
-```rust
-struct InstallButton {
-    progress: f32,
-    is_installing: bool,
-}
-
-impl InstallButton {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let button = Button::new("install-btn")
-            .label(if self.is_installing {
-                "Installing..."
-            } else {
-                "Install"
-            });
-
-        if self.is_installing {
-            button.icon(
-                ProgressCircle::new("install-progress")
-                    .value(self.progress)
-            )
-        } else {
-            button.icon(IconName::Download)
-        }
-    }
-}
-```
-
-### 加载态
-
-按钮进入 `loading(true)` 时，会自动处理图标切换：
-
-```rust
-Button::new("btn")
-    .icon(Spinner::new())
-    .label("Processing")
-    .loading(true)
-
-Button::new("btn")
-    .icon(IconName::Save)
-    .label("Saving")
-    .loading(true)
-```
-
-### 下拉箭头
-
-`.dropdown_caret(true)` 可以在按钮右侧增加一个下拉箭头：
-
-```rust
-Button::new("btn")
-    .label("Options")
-    .dropdown_caret(true)
-```
-
-### 状态
-
-Button 常见状态包括 `disabled`、`loading` 和 `selected`：
-
-```rust
-Button::new("btn")
-    .label("Disabled")
-    .disabled(true)
-
-Button::new("btn")
-    .label("Loading")
-    .loading(true)
-
-Button::new("btn")
-    .label("Selected")
-    .selected(true)
+Button::new("round")
+    .outline()
+    .rounded_full()
+    .icon(IconName::ArrowUp)
+    .aria_label("Move up");
 ```
 
 ## Button Group
 
-```rust
-ButtonGroup::new("btn-group")
-    .child(Button::new("btn1").label("One"))
-    .child(Button::new("btn2").label("Two"))
-    .child(Button::new("btn3").label("Three"))
-```
-
-### 切换式按钮组
+`ButtonGroup` 用于组合操作，并保留每个 Button 自身的回调。它支持嵌套 Group、文本、分隔线、方向和可访问名称。选择行为应使用 `Toggle` 或 `ToggleGroup`。
 
 ```rust
-ButtonGroup::new("toggle-group")
-    .multiple(true)
-    .child(Button::new("btn1").label("Option 1").selected(true))
-    .child(Button::new("btn2").label("Option 2"))
-    .child(Button::new("btn3").label("Option 3"))
-    .on_click(|selected_indices, _, _| {
-        println!("Selected: {:?}", selected_indices);
-    })
-```
-
-## 自定义变体
-
-```rust
-use gpui_component::button::ButtonCustomVariant;
-
-let custom = ButtonCustomVariant::new(cx)
-    .color(cx.theme().magenta)
-    .foreground(cx.theme().primary_foreground)
-    .border(cx.theme().magenta)
-    .hover(cx.theme().magenta.opacity(0.1))
-    .active(cx.theme().magenta);
-
-Button::new("custom-btn")
-    .custom(custom)
-    .label("Custom Button")
-```
-
-## 示例
-
-### Tooltip
-
-```rust
-Button::new("btn")
-    .label("Hover me")
-    .tooltip("This is a helpful tooltip")
-```
-
-### 自定义子内容
-
-```rust
-Button::new("btn")
-    .child(
-        h_flex()
-            .items_center()
-            .gap_2()
-            .child("Custom Content")
-            .child(IconName::ChevronDown)
-            .child(IconName::Eye)
+ButtonGroup::new("message-actions")
+    .aria_label("Message actions")
+    .child(Button::new("back").outline().icon(IconName::ArrowLeft).aria_label("Back"))
+    .group(
+        ButtonGroup::new("archive-report")
+            .child(Button::new("archive").outline().label("Archive"))
+            .child(Button::new("report").outline().label("Report")),
     )
+    .separator(ButtonGroupSeparator::new())
+    .text(ButtonGroupText::new("More"));
 ```
-
-[Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
-[ButtonGroup]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.ButtonGroup.html
-[ButtonCustomVariant]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.ButtonCustomVariant.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
-[Spinner]: https://docs.rs/gpui-component/latest/gpui_component/spinner/struct.Spinner.html
-[ProgressCircle]: https://docs.rs/gpui-component/latest/gpui_component/progress/struct.ProgressCircle.html
-[Icon]: https://docs.rs/gpui-component/latest/gpui_component/icon/struct.Icon.html
-[IconName]: https://docs.rs/gpui-component/latest/gpui_component/icon/enum.IconName.html

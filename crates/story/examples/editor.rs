@@ -11,7 +11,7 @@ use autocorrect::ignorer::Ignorer;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme, IconName, Sizable, WindowExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     highlighter::{Diagnostic, DiagnosticSeverity, Language, LanguageConfig, LanguageRegistry},
     input::{

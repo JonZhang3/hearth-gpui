@@ -1,298 +1,399 @@
-use gpui::Corners;
-use gpui::InteractiveElement;
-use gpui::ParentElement;
-use gpui::{App, Axis, Edges, ElementId, IntoElement, Window};
 use gpui::{
-    RenderOnce, StatefulInteractiveElement as _, StyleRefinement, Styled, div,
-    prelude::FluentBuilder as _,
+    AnyElement, App, Axis, Corners, Edges, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 use std::{cell::Cell, rc::Rc};
 
 use crate::{
-    Disableable, Sizable, Size, StyledExt,
-    button::{Button, ButtonVariant, ButtonVariants},
+    ActiveTheme as _, Disableable, Selectable as _, Sizable, Size, StyledExt as _,
+    button::{Button, ButtonVariant},
 };
 
-/// A ButtonGroup element, to wrap multiple buttons in a group.
+/// Content that visually participates in a button group without being interactive.
+#[derive(IntoElement)]
+pub struct ButtonGroupText {
+    style: StyleRefinement,
+    children: Vec<AnyElement>,
+}
+
+impl ButtonGroupText {
+    /// Creates a text item from any GPUI element.
+    pub fn new(content: impl IntoElement) -> Self {
+        Self {
+            style: StyleRefinement::default(),
+            children: vec![content.into_any_element()],
+        }
+    }
+}
+
+impl Styled for ButtonGroupText {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl ParentElement for ButtonGroupText {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl RenderOnce for ButtonGroupText {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let metrics = cx.theme().style.controls.md;
+        div()
+            .h(metrics.height)
+            .px(metrics.padding_x)
+            .flex()
+            .items_center()
+            .border_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().muted)
+            .text_color(cx.theme().muted_foreground)
+            .text_sm()
+            .font_medium()
+            .rounded(cx.theme().style.radii.md)
+            .refine_style(&self.style)
+            .children(self.children)
+    }
+}
+
+/// A visual separator between sections of a button group.
+#[derive(Default, IntoElement)]
+pub struct ButtonGroupSeparator {
+    style: StyleRefinement,
+}
+
+impl ButtonGroupSeparator {
+    /// Creates a separator whose direction follows its parent group.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn render_for(self, orientation: Axis, cx: &App) -> AnyElement {
+        div()
+            .bg(cx.theme().border)
+            .when(orientation == Axis::Horizontal, |this| {
+                this.w(px(1.)).self_stretch()
+            })
+            .when(orientation == Axis::Vertical, |this| {
+                this.h(px(1.)).w_full()
+            })
+            .refine_style(&self.style)
+            .into_any_element()
+    }
+}
+
+impl Styled for ButtonGroupSeparator {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl RenderOnce for ButtonGroupSeparator {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        self.render_for(Axis::Horizontal, cx)
+    }
+}
+
+enum ButtonGroupItem {
+    Button(Box<Button>),
+    Group(Box<ButtonGroup>),
+    Text(ButtonGroupText),
+    Separator(ButtonGroupSeparator),
+}
+
+/// Composes related actions while preserving each child's own behavior.
 #[derive(IntoElement)]
 pub struct ButtonGroup {
     id: ElementId,
     style: StyleRefinement,
-    children: Vec<Button>,
-    pub(super) multiple: bool,
-    pub(super) disabled: bool,
-    pub(super) layout: Axis,
-
-    // The button props
-    pub(super) compact: bool,
-    pub(super) outline: bool,
-    pub(super) variant: Option<ButtonVariant>,
-    pub(super) size: Option<Size>,
-
-    on_click: Option<Box<dyn Fn(&Vec<usize>, &mut Window, &mut App) + 'static>>,
-}
-
-impl Disableable for ButtonGroup {
-    fn disabled(mut self, disabled: bool) -> Self {
-        self.disabled = disabled;
-        self
-    }
+    items: Vec<ButtonGroupItem>,
+    orientation: Axis,
+    aria_label: Option<SharedString>,
+    legacy_variant: Option<ButtonVariant>,
+    legacy_size: Option<Size>,
+    legacy_disabled: bool,
+    legacy_multiple: bool,
+    legacy_on_click: Option<Box<dyn Fn(&Vec<usize>, &mut Window, &mut App) + 'static>>,
 }
 
 impl ButtonGroup {
-    /// Creates a new ButtonGroup.
+    /// Creates a horizontal action group.
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
             style: StyleRefinement::default(),
-            children: Vec::new(),
-            variant: None,
-            size: None,
-            compact: false,
-            outline: false,
-            multiple: false,
-            disabled: false,
-            layout: Axis::Horizontal,
-            on_click: None,
+            items: Vec::new(),
+            orientation: Axis::Horizontal,
+            aria_label: None,
+            legacy_variant: None,
+            legacy_size: None,
+            legacy_disabled: false,
+            legacy_multiple: false,
+            legacy_on_click: None,
         }
     }
 
-    /// Adds a button as a child to the ButtonGroup.
+    /// Adds a button and preserves its click handler and accessibility state.
     pub fn child(mut self, child: Button) -> Self {
-        self.children.push(child.disabled(self.disabled));
+        self.items.push(ButtonGroupItem::Button(Box::new(child)));
         self
     }
 
-    /// Adds multiple buttons as children to the ButtonGroup.
+    /// Adds multiple buttons.
     pub fn children(mut self, children: impl IntoIterator<Item = Button>) -> Self {
-        self.children.extend(children);
+        for child in children {
+            self = self.child(child);
+        }
         self
     }
 
-    /// With the multiple selection mode, default is false (single selection).
-    pub fn multiple(mut self, multiple: bool) -> Self {
-        self.multiple = multiple;
+    /// Adds a nested group as a separate action cluster.
+    pub fn group(mut self, group: ButtonGroup) -> Self {
+        self.items.push(ButtonGroupItem::Group(Box::new(group)));
         self
     }
 
-    /// Set the layout of the button group. Default is `Axis::Horizontal`.
-    pub fn layout(mut self, layout: Axis) -> Self {
-        self.layout = layout;
+    /// Adds non-interactive group text.
+    pub fn text(mut self, text: ButtonGroupText) -> Self {
+        self.items.push(ButtonGroupItem::Text(text));
         self
     }
 
-    /// With the compact mode for the ButtonGroup.
-    ///
-    /// See also: [`Button::compact()`]
-    pub fn compact(mut self) -> Self {
-        self.compact = true;
+    /// Adds a separator following the group orientation.
+    pub fn separator(mut self, separator: ButtonGroupSeparator) -> Self {
+        self.items.push(ButtonGroupItem::Separator(separator));
         self
     }
 
-    /// With the outline mode for the ButtonGroup.
-    ///
-    /// See also: [`Button::outline()`]
+    /// Sets the group orientation.
+    pub fn orientation(mut self, orientation: Axis) -> Self {
+        self.orientation = orientation;
+        self
+    }
+
+    /// Legacy alias for [`Self::orientation`].
+    #[doc(hidden)]
+    pub fn layout(self, orientation: Axis) -> Self {
+        self.orientation(orientation)
+    }
+
+    /// Legacy style propagation retained while internal stories migrate.
+    #[doc(hidden)]
     pub fn outline(mut self) -> Self {
-        self.outline = true;
+        self.legacy_variant = Some(ButtonVariant::Outline);
         self
     }
 
-    /// Sets the on_click handler for the ButtonGroup.
-    ///
-    /// The handler first argument is a vector of the selected button indices.
-    ///
-    /// The `&Vec<usize>` is the indices of the clicked (selected in `multiple` mode) buttons.
-    /// For example: `[0, 2, 3]` is means the first, third and fourth buttons are clicked.
-    ///
-    /// ```ignore
-    /// ButtonGroup::new("size-button")
-    ///    .child(Button::new("large").label("Large").selected(self.size == Size::Large))
-    ///    .child(Button::new("medium").label("Medium").selected(self.size == Size::Medium))
-    ///    .child(Button::new("small").label("Small").selected(self.size == Size::Small))
-    ///    .on_click(cx.listener(|view, clicks: &Vec<usize>, _, cx| {
-    ///        if clicks.contains(&0) {
-    ///            view.size = Size::Large;
-    ///        } else if clicks.contains(&1) {
-    ///            view.size = Size::Medium;
-    ///        } else if clicks.contains(&2) {
-    ///            view.size = Size::Small;
-    ///        }
-    ///        cx.notify();
-    ///    }))
-    /// ```
+    /// Legacy compact mode now resolves to the Vega extra-small metrics.
+    #[doc(hidden)]
+    pub fn compact(mut self) -> Self {
+        self.legacy_size = Some(Size::XSmall);
+        self
+    }
+
+    /// Legacy group selection mode retained for internal story controls.
+    #[doc(hidden)]
+    pub fn multiple(mut self, multiple: bool) -> Self {
+        self.legacy_multiple = multiple;
+        self
+    }
+
+    /// Legacy group callback retained for internal story controls.
+    #[doc(hidden)]
     pub fn on_click(
         mut self,
         handler: impl Fn(&Vec<usize>, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.on_click = Some(Box::new(handler));
+        self.legacy_on_click = Some(Box::new(handler));
+        self
+    }
+
+    /// Sets an accessible name for the group.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 }
 
 impl Sizable for ButtonGroup {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
-        self.size = Some(size.into());
+        self.legacy_size = Some(size.into());
+        self
+    }
+}
+
+impl Disableable for ButtonGroup {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.legacy_disabled = disabled;
         self
     }
 }
 
 impl Styled for ButtonGroup {
-    fn style(&mut self) -> &mut gpui::StyleRefinement {
+    fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
     }
 }
 
-impl ButtonVariants for ButtonGroup {
-    fn with_variant(mut self, variant: ButtonVariant) -> Self {
-        self.variant = Some(variant);
-        self
-    }
-}
-
 impl RenderOnce for ButtonGroup {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let children_len = self.children.len();
-        let mut selected_ixs: Vec<usize> = Vec::new();
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let orientation = self.orientation;
+        let has_nested_group = self
+            .items
+            .iter()
+            .any(|item| matches!(item, ButtonGroupItem::Group(_)));
+        let item_count = self.items.len();
+        let button_items = self
+            .items
+            .iter()
+            .map(|item| matches!(item, ButtonGroupItem::Button(_)))
+            .collect::<Vec<_>>();
+        let mut rendered = Vec::with_capacity(item_count);
         let state = Rc::new(Cell::new(None));
+        let selected_indices = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| match item {
+                ButtonGroupItem::Button(button) if button.is_selected() => Some(index),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
 
-        for (ix, child) in self.children.iter().enumerate() {
-            if child.selected {
-                selected_ixs.push(ix);
-            }
+        for (index, item) in self.items.into_iter().enumerate() {
+            let previous_is_button = index > 0 && button_items[index - 1];
+            let next_is_button = index + 1 < item_count && button_items[index + 1];
+            let element = match item {
+                ButtonGroupItem::Button(button) => {
+                    let first = !previous_is_button;
+                    let last = !next_is_button;
+                    (*button)
+                        .border_corners(group_corners(orientation, first, last))
+                        .border_edges(group_edges(orientation, first))
+                        .when_some(self.legacy_variant, |this, variant| {
+                            crate::button::ButtonVariants::with_variant(this, variant)
+                        })
+                        .when_some(self.legacy_size, |this, size| this.with_size(size))
+                        .when(self.legacy_disabled, |button| button.disabled(true))
+                        .when(self.legacy_on_click.is_some(), |this| {
+                            let state = Rc::clone(&state);
+                            let pressed = this.is_selected();
+                            this.pressed(pressed)
+                                .on_click(move |_, _, _| state.set(Some(index)))
+                        })
+                        .into_any_element()
+                }
+                ButtonGroupItem::Group(group) => group
+                    .when(self.legacy_disabled, |group| group.disabled(true))
+                    .into_any_element(),
+                ButtonGroupItem::Text(text) => text.into_any_element(),
+                ButtonGroupItem::Separator(separator) => separator.render_for(orientation, cx),
+            };
+            rendered.push(element);
         }
-
-        let vertical = self.layout == Axis::Vertical;
 
         div()
             .id(self.id)
+            .role(Role::Group)
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
             .flex()
-            .when(vertical, |this| this.flex_col().justify_center())
-            .when(!vertical, |this| this.items_center())
+            .when(orientation == Axis::Vertical, |this| this.flex_col())
+            .when(has_nested_group, |this| this.gap(px(8.)))
             .refine_style(&self.style)
-            .children(
-                self.children
-                    .into_iter()
-                    .enumerate()
-                    .map(|(child_index, child)| {
-                        let state = Rc::clone(&state);
-                        // The group as a whole is a toggle control, so every
-                        // child advertises its pressed state.
-                        let selected = child.selected;
-                        let child = child.toggled(selected);
-                        let child = if children_len == 1 {
-                            child
-                        } else if child_index == 0 {
-                            // First
-                            child
-                                .border_corners(Corners {
-                                    top_left: true,
-                                    top_right: vertical,
-                                    bottom_left: !vertical,
-                                    bottom_right: false,
-                                })
-                                .border_edges(Edges {
-                                    left: true,
-                                    top: true,
-                                    right: true,
-                                    bottom: true,
-                                })
-                        } else if child_index == children_len - 1 {
-                            // Last
-                            child
-                                .border_edges(Edges {
-                                    left: vertical,
-                                    top: !vertical,
-                                    right: true,
-                                    bottom: true,
-                                })
-                                .border_corners(Corners {
-                                    top_left: false,
-                                    top_right: !vertical,
-                                    bottom_left: vertical,
-                                    bottom_right: true,
-                                })
-                        } else {
-                            // Middle
-                            child
-                                .border_corners(Corners {
-                                    top_left: false,
-                                    top_right: false,
-                                    bottom_left: false,
-                                    bottom_right: false,
-                                })
-                                .border_edges(Edges {
-                                    left: vertical,
-                                    top: !vertical,
-                                    right: true,
-                                    bottom: true,
-                                })
-                        }
-                        .when_some(self.size, |this, size| this.with_size(size))
-                        .when_some(self.variant, |this, variant| this.with_variant(variant))
-                        .when(self.compact, |this| this.compact())
-                        .when(self.outline, |this| this.outline())
-                        .when(self.on_click.is_some(), |this| {
-                            this.on_click(move |_, _, _| {
-                                state.set(Some(child_index));
-                            })
-                        });
-
-                        child
-                    }),
-            )
+            .children(rendered)
             .when_some(
-                self.on_click.filter(|_| !self.disabled),
+                self.legacy_on_click.filter(|_| !self.legacy_disabled),
                 move |this, on_click| {
                     this.on_click(move |_, window, cx| {
-                        let mut selected_ixs = selected_ixs.clone();
-                        if let Some(ix) = state.get() {
-                            if self.multiple {
-                                if let Some(pos) = selected_ixs.iter().position(|&i| i == ix) {
-                                    selected_ixs.remove(pos);
+                        let mut indices = selected_indices.clone();
+                        if let Some(index) = state.get() {
+                            if self.legacy_multiple {
+                                if let Some(position) =
+                                    indices.iter().position(|item| *item == index)
+                                {
+                                    indices.remove(position);
                                 } else {
-                                    selected_ixs.push(ix);
+                                    indices.push(index);
                                 }
                             } else {
-                                selected_ixs.clear();
-                                selected_ixs.push(ix);
+                                indices.clear();
+                                indices.push(index);
                             }
                         }
-
-                        on_click(&selected_ixs, window, cx);
+                        on_click(&indices, window, cx);
                     })
                 },
             )
     }
 }
 
+fn group_corners(orientation: Axis, first: bool, last: bool) -> Corners<bool> {
+    if orientation == Axis::Vertical {
+        Corners {
+            top_left: first,
+            top_right: first,
+            bottom_left: last,
+            bottom_right: last,
+        }
+    } else {
+        Corners {
+            top_left: first,
+            top_right: last,
+            bottom_left: first,
+            bottom_right: last,
+        }
+    }
+}
+
+fn group_edges(orientation: Axis, first: bool) -> Edges<bool> {
+    if orientation == Axis::Vertical {
+        Edges {
+            left: true,
+            top: first,
+            right: true,
+            bottom: true,
+        }
+    } else {
+        Edges {
+            left: first,
+            top: true,
+            right: true,
+            bottom: true,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::Axis;
 
     #[gpui::test]
-    fn test_button_group_builder(_cx: &mut gpui::TestAppContext) {
-        let group = ButtonGroup::new("complex-group")
-            .child(Button::new("btn1").label("One"))
-            .child(Button::new("btn2").label("Two"))
-            .child(Button::new("btn3").label("Three"))
-            .primary()
-            .large()
-            .outline()
-            .compact()
-            .multiple(true)
-            .layout(Axis::Vertical)
-            .disabled(false)
-            .on_click(|_, _, _| {});
+    fn button_group_accepts_composable_items(_cx: &mut gpui::TestAppContext) {
+        let group = ButtonGroup::new("actions")
+            .aria_label("Message actions")
+            .child(Button::new("archive").label("Archive"))
+            .separator(ButtonGroupSeparator::new())
+            .text(ButtonGroupText::new("More"))
+            .group(ButtonGroup::new("more").child(Button::new("report").label("Report")));
 
-        assert_eq!(group.children.len(), 3);
-        assert_eq!(group.variant, Some(ButtonVariant::Primary));
-        assert_eq!(group.size, Some(Size::Large));
-        assert!(group.outline);
-        assert!(group.compact);
-        assert!(group.multiple);
-        assert_eq!(group.layout, Axis::Vertical);
-        assert!(!group.disabled);
-        assert!(group.on_click.is_some());
+        assert_eq!(group.items.len(), 4);
+        assert_eq!(group.aria_label.as_deref(), Some("Message actions"));
+    }
+
+    #[gpui::test]
+    fn disabled_state_remains_reversible_for_nested_groups(_cx: &mut gpui::TestAppContext) {
+        let group = ButtonGroup::new("parent")
+            .group(ButtonGroup::new("nested").child(Button::new("action")))
+            .disabled(true)
+            .disabled(false);
+
+        let ButtonGroupItem::Group(nested) = &group.items[0] else {
+            panic!("expected nested button group");
+        };
+        assert!(!group.legacy_disabled);
+        assert!(!nested.legacy_disabled);
     }
 }

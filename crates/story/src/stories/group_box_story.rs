@@ -5,7 +5,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme as _, StyledExt,
-    button::{Button, ButtonVariants},
+    button::Button,
     checkbox::Checkbox,
     group_box::{GroupBox, GroupBoxVariants as _},
     h_flex,
@@ -67,7 +67,7 @@ impl Render for GroupBoxStory {
                         .child(Checkbox::new("all").label("All"))
                         .child(Checkbox::new("news-letter").label("News Letter"))
                         .child(Checkbox::new("account-activity").label("Account Activity"))
-                        .child(Button::new("ok").primary().label("Update Subscriptions")),
+                        .child(Button::new("ok").label("Update Subscriptions")),
                 ),
             )
             .child(
@@ -88,7 +88,7 @@ impl Render for GroupBoxStory {
                                 .child("Include private contributions on my profile")
                                 .child(Switch::new("toggle-1").checked(false)),
                         )
-                        .child(Button::new("btn-1").primary().label("Save")),
+                        .child(Button::new("btn-1").label("Save")),
                 ),
             )
             .child(

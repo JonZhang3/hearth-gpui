@@ -18,7 +18,7 @@ use crate::{
     ActiveTheme as _, Disableable as _, Edges, Icon, IconName, Sizable as _, StyledExt,
     TITLE_BAR_HEIGHT,
     animation::{OverlayLifecycle, OverlayPhase, effective_motion_duration},
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex, v_flex,
 };
 

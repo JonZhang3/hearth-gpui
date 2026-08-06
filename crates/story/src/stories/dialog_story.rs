@@ -5,7 +5,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Icon, IconName, WindowExt as _,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     checkbox::Checkbox,
     date_picker::{DatePicker, DatePickerState},
     dialog::{
@@ -232,9 +232,10 @@ impl DialogStory {
                                             .child(DialogClose::new().child(
                                                 Button::new("cancel").label("Cancel").outline(),
                                             ))
-                                            .child(DialogAction::new().child(
-                                                Button::new("confirm").primary().label("Confirm"),
-                                            )),
+                                            .child(
+                                                DialogAction::new()
+                                                    .child(Button::new("confirm").label("Confirm")),
+                                            ),
                                     ),
                             )
                     }
@@ -325,9 +326,8 @@ impl DialogStory {
                                             .child(Button::new("cancel").label("Later").outline()),
                                     )
                                     .child(
-                                        DialogAction::new().child(
-                                            Button::new("ok").label("Restart Now").primary(),
-                                        ),
+                                        DialogAction::new()
+                                            .child(Button::new("ok").label("Restart Now")),
                                     ),
                             )
                             .on_ok(|_, window, cx| {
@@ -368,9 +368,8 @@ impl DialogStory {
                                             .child(Button::new("cancel").label("Cancel").outline()),
                                     )
                                     .child(
-                                        DialogAction::new().child(
-                                            Button::new("confirm").label("Confirm").primary(),
-                                        ),
+                                        DialogAction::new()
+                                            .child(Button::new("confirm").label("Confirm")),
                                     ),
                             )
                     });
@@ -485,7 +484,6 @@ impl DialogStory {
                                             .child(
                                                 Button::new("done")
                                                     .flex_1()
-                                                    .primary()
                                                     .label("Done")
                                                     .on_click(|_, window, cx| {
                                                         window.close_dialog(cx);
@@ -541,9 +539,8 @@ impl DialogStory {
                                             .child(Button::new("cancel").label("Cancel").outline()),
                                     )
                                     .child(
-                                        DialogAction::new().child(
-                                            Button::new("confirm").primary().label("Confirm"),
-                                        ),
+                                        DialogAction::new()
+                                            .child(Button::new("confirm").label("Confirm")),
                                     ),
                             )
                     }
