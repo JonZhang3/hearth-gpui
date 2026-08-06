@@ -382,17 +382,16 @@ impl Render for ShadcnAlignmentStory {
                 section("Disclosure and dynamic content")
                     .max_w(px(640.))
                     .child(
-                        Accordion::new("align-accordion")
-                            .bordered(false)
-                            .item(|item| {
-                                item.open(true)
-                                    .title("Expanded item")
+                        Accordion::single("align-accordion")
+                            .open_values(["expanded"])
+                            .item("expanded", |item| {
+                                item.title("Expanded item")
                                     .aria_label("Expanded item")
                                     .child(
                                         "Measured content remains mounted through its exit motion.",
                                     )
                             })
-                            .item(|item| {
+                            .item("collapsed", |item| {
                                 item.title("Collapsed item")
                                     .aria_label("Collapsed item")
                                     .child("This content is excluded while collapsed.")

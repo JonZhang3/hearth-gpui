@@ -1,23 +1,16 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, prelude::FluentBuilder as _,
+    Render, SharedString, Styled as _, Window,
 };
 use gpui_component::{
-    IconName, Selectable, Sizable, Size,
-    accordion::Accordion,
-    button::{Button, ButtonGroup},
-    checkbox::Checkbox,
-    h_flex,
-    switch::Switch,
-    v_flex,
+    IconName, accordion::Accordion, checkbox::Checkbox, h_flex, switch::Switch, v_flex,
 };
 
 use crate::section;
 
 pub struct AccordionStory {
-    open_ixs: Vec<usize>,
-    size: Size,
-    bordered: bool,
+    open_values: Vec<SharedString>,
+    framed: bool,
     disabled: bool,
     multiple: bool,
     show_icon: bool,
@@ -45,9 +38,8 @@ impl AccordionStory {
 
     fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
-            bordered: false,
-            open_ixs: vec![0, 1, 2],
-            size: Size::default(),
+            framed: false,
+            open_values: vec!["accessibility".into(), "composition".into(), "third".into()],
             disabled: false,
             multiple: true,
             show_icon: false,
@@ -55,13 +47,13 @@ impl AccordionStory {
         }
     }
 
-    fn toggle_accordion(&mut self, open_ixs: Vec<usize>, _: &mut Window, cx: &mut Context<Self>) {
-        self.open_ixs = open_ixs;
-        cx.notify();
-    }
-
-    fn set_size(&mut self, size: Size, _: &mut Window, cx: &mut Context<Self>) {
-        self.size = size;
+    fn set_open_values(
+        &mut self,
+        open_values: Vec<SharedString>,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_values = open_values;
         cx.notify();
     }
 }
@@ -83,41 +75,6 @@ impl Render for AccordionStory {
                     .gap_4()
                     .flex_wrap()
                     .child(
-                        ButtonGroup::new("toggle-size")
-                            .outline()
-                            .compact()
-                            .child(
-                                Button::new("xsmall")
-                                    .label("XSmall")
-                                    .selected(self.size == Size::XSmall),
-                            )
-                            .child(
-                                Button::new("small")
-                                    .label("Small")
-                                    .selected(self.size == Size::Small),
-                            )
-                            .child(
-                                Button::new("medium")
-                                    .label("Medium")
-                                    .selected(self.size == Size::Medium),
-                            )
-                            .child(
-                                Button::new("large")
-                                    .label("Large")
-                                    .selected(self.size == Size::Large),
-                            )
-                            .on_click(cx.listener(|this, selecteds: &Vec<usize>, window, cx| {
-                                let size = match selecteds[0] {
-                                    0 => Size::XSmall,
-                                    1 => Size::Small,
-                                    2 => Size::Medium,
-                                    3 => Size::Large,
-                                    _ => unreachable!(),
-                                };
-                                this.set_size(size, window, cx);
-                            })),
-                    )
-                    .child(
                         h_flex()
                             .gap_2()
                             .child(
@@ -126,6 +83,9 @@ impl Render for AccordionStory {
                                     .checked(self.multiple)
                                     .on_click(cx.listener(|this, checked, _, cx| {
                                         this.multiple = *checked;
+                                        if !checked {
+                                            this.open_values.truncate(1);
+                                        }
                                         cx.notify();
                                     })),
                             )
@@ -148,11 +108,11 @@ impl Render for AccordionStory {
                                     })),
                             )
                             .child(
-                                Checkbox::new("bordered")
-                                    .label("Bordered")
-                                    .checked(self.bordered)
+                                Checkbox::new("framed")
+                                    .label("Framed")
+                                    .checked(self.framed)
                                     .on_click(cx.listener(|this, checked, _, cx| {
-                                        this.bordered = *checked;
+                                        this.framed = *checked;
                                         cx.notify();
                                     })),
                             ),
@@ -160,49 +120,77 @@ impl Render for AccordionStory {
             )
             .child(
                 section("Normal").max_w_md().child(
-                    Accordion::new("test")
-                        .bordered(self.bordered)
-                        .with_size(self.size)
-                        .disabled(self.disabled)
-                        .multiple(self.multiple)
-                        .item(|this| {
-                            this.open(self.open_ixs.contains(&0))
-                                .when(self.show_icon, |this| this.icon(IconName::Info))
-                                .title("Is it accessible?")
-                                .child("Yes. It adheres to the WAI-ARIA design pattern.")
-                        })
-                        .item(|this| {
-                            this.open(self.open_ixs.contains(&1))
-                            .when(self.show_icon, |this| this.icon(IconName::Inbox))
-                            .title("Is it styled with complex elements?")
-                            .child(
-                                v_flex()
-                                    .gap_4()
-                                    .child(
-                                        "We can put any view here, like a v_flex with a text view",
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .gap_4()
-                                            .child(Switch::new("switch1").label("Switch"))
-                                            .child(
-                                                Checkbox::new("checkbox1").label("Or a Checkbox"),
-                                            ),
-                                    ),
-                            )
-                        })
-                        .item(|this| {
-                            this.open(self.open_ixs.contains(&2))
-                                .when(self.show_icon, |this| this.icon(IconName::Moon))
-                                .title("This is third accordion")
+                    (if self.multiple {
+                        Accordion::multiple("test")
+                    } else {
+                        Accordion::single("test")
+                    })
+                    .framed(self.framed)
+                    .disabled(self.disabled)
+                    .open_values(self.open_values.clone())
+                    .item("accessibility", |this| {
+                        let item = if self.show_icon {
+                            this.icon(IconName::Info)
+                        } else {
+                            this
+                        };
+                        item.title("Is it accessible?")
+                            .child("Yes. It adheres to the WAI-ARIA design pattern.")
+                    })
+                    .item("composition", |this| {
+                        let item = if self.show_icon {
+                            this.icon(IconName::Inbox)
+                        } else {
+                            this
+                        };
+                        item.title("Is it styled with complex elements?").child(
+                            v_flex()
+                                .gap_4()
+                                .child("We can put any view here, like a v_flex with a text view")
                                 .child(
-                                    "This is the third accordion content. \
+                                    h_flex()
+                                        .gap_4()
+                                        .child(Switch::new("switch1").label("Switch"))
+                                        .child(Checkbox::new("checkbox1").label("Or a Checkbox")),
+                                ),
+                        )
+                    })
+                    .item("third", |this| {
+                        let item = if self.show_icon {
+                            this.icon(IconName::Moon)
+                        } else {
+                            this
+                        };
+                        item.title("This is third accordion").child(
+                            "This is the third accordion content. \
                                 It can be any view, like a text view or a button.",
-                                )
+                        )
+                    })
+                    .on_open_change(cx.listener(
+                        |this, values: &[SharedString], window, cx| {
+                            this.set_open_values(values.to_vec(), window, cx);
+                        },
+                    )),
+                ),
+            )
+            .child(
+                section("Single").max_w_md().child(
+                    Accordion::single("single-example")
+                        .framed(self.framed)
+                        .disabled(self.disabled)
+                        .default_open_values(["shipping"])
+                        .item("shipping", |item| {
+                            item.title("What are your shipping options?")
+                                .child("We offer standard, express, and overnight shipping.")
                         })
-                        .on_toggle_click(cx.listener(|this, open_ixs: &[usize], window, cx| {
-                            this.toggle_accordion(open_ixs.to_vec(), window, cx);
-                        })),
+                        .item("returns", |item| {
+                            item.title("What is your return policy?")
+                                .child("Returns are accepted within 30 days of delivery.")
+                        })
+                        .item("support", |item| {
+                            item.title("How can I contact customer support?")
+                                .child("Contact support by email or live chat.")
+                        }),
                 ),
             )
     }

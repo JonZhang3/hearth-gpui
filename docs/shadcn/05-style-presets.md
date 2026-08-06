@@ -49,6 +49,7 @@ pub struct StylePreset {
     pub controls: ControlMetrics,
     pub overlays: OverlayMetrics,
     pub focus: FocusMetrics,
+    pub disclosure: DisclosureMetrics,
     pub elevation: ElevationMetrics,
     pub motion: MotionMetrics,
     pub data: DataMetrics,
@@ -104,6 +105,10 @@ Custom `Size::Size(height)` preserves the requested height and uses medium ancil
 ### Focus
 
 `FocusMetrics` owns ring width and offset. Ring color remains `ThemeColor.ring`.
+
+### Disclosure
+
+`DisclosureMetrics` owns Accordion trigger/content padding, title gap, indicator size, trigger/frame radius, default frame policy, and optional open-state tint. Accordion consumes these semantic metrics without branching on preset ids: Vega and Nova resolve to plain divided lists, while Maia resolves to a unified rounded frame.
 
 ### Motion
 

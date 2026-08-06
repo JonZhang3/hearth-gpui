@@ -19,7 +19,7 @@
 | Overlay correctness | Exit content remains mounted and blocks input; stale close completion, duplicate dismissal, nested Dialog close-all, and interrupted reopen paths have focused tests |
 | Loading motion | Skeleton uses a restrained pulse; Spinner and indeterminate Progress use shared loading duration and easing |
 | Navigation | Tabs and Sidebar consume named motion durations |
-| Disclosure | Accordion and keyed Collapsible measure dynamic content height, animate with shared Style motion, retain exit content, and ignore stale close completion after reopen; Accordion triggers support focus-visible, `Enter`/`Space`, expanded state, and explicit accessible names |
+| Disclosure | Accordion uses required stable values, controlled/uncontrolled group state, single/multiple selection, Preset-owned geometry, full disclosure keyboard navigation, and disabled AccessKit state; keyed Collapsible measures dynamic height with the 200 ms slow motion token, retains exit content, and rejects stale close completion after reopen |
 | Data surfaces | Table and DataTable row heights and cell padding consume Style data metrics |
 | P2/P3 surfaces | Existing radius and elevation consumers use shared semantic Style metrics while retaining GPUI-native behavior |
 | Gallery | Settings menu selects all registered presets; Color Theme and Style id persist independently |
@@ -61,7 +61,7 @@ The macOS verification host is macOS 27.0 on Apple M1 Pro. A temporary applicati
 | Phase 1 | Complete | Independent Color/Style ownership, registry, metrics, motion lifecycle, reduced motion, validation, and tests are implemented |
 | Phase 2 | Partial | TextArea and NumberInput are present in the P0 Story; deterministic IME and keyboard tests pass, while fixed pointer/focus captures and live IME/keyboard checks on all platforms remain |
 | Phase 3 | Partial | Fixed open/closing Popover references cover four placements and constrained edges; complete live nested-focus/dismissal review and non-Popover family placement review on all platforms remain |
-| Phase 4 | Partial | Disclosure motion, deterministic Accordion focus and `Enter`/`Space` activation, Calendar/DatePicker/Slider fixed states, and English/Simplified Chinese/Traditional Chinese layout captures are complete; live keyboard/drag/date-range interaction review remains |
+| Phase 4 | Partial | Disclosure motion, controlled/uncontrolled Accordion state, deterministic activation and Arrow/Home/End focus navigation, Calendar/DatePicker/Slider fixed states, and English/Simplified Chinese/Traditional Chinese layout captures are complete; live cross-platform keyboard/drag/date-range review remains |
 | Phase 5 | Partial | The 1,000-row uniform-list comparison plus Table default/hover/selected/active and empty/loading layout references are recorded; live focused-row and full DataTable interaction review remain |
 | Phase 6 | Partial | Windows/Linux interaction and accessibility review plus the three-platform CI result remain release blockers |
 

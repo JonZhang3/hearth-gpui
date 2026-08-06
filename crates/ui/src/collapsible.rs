@@ -117,7 +117,7 @@ fn render_animated_content(
     let state_key = format!("{id}-content-{index}-motion");
     let state = window.use_keyed_state(state_key, cx, |_, _| CollapsibleMotionState::new(open));
     let close_epoch = state.update(cx, |state, _| state.update_open(open));
-    let duration = cx.theme().style.motion.normal();
+    let duration = cx.theme().style.motion.slow();
     let effective_duration = effective_motion_duration(duration, cx);
     if let Some(close_epoch) = close_epoch {
         cx.spawn({

@@ -94,6 +94,21 @@ pub struct FocusMetrics {
     pub ring_offset: Pixels,
 }
 
+/// Geometry and appearance shared by disclosure components.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DisclosureMetrics {
+    pub trigger_padding_x: Pixels,
+    pub trigger_padding_y: Pixels,
+    pub content_padding_x: Pixels,
+    pub content_padding_bottom: Pixels,
+    pub title_gap: Pixels,
+    pub indicator_size: Pixels,
+    pub trigger_radius: Pixels,
+    pub frame_radius: Pixels,
+    pub framed_by_default: bool,
+    pub open_tint: bool,
+}
+
 /// Shared elevation policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ElevationMetrics {
@@ -181,6 +196,7 @@ pub struct StylePreset {
     pub controls: ControlMetrics,
     pub overlays: OverlayMetrics,
     pub focus: FocusMetrics,
+    pub disclosure: DisclosureMetrics,
     pub elevation: ElevationMetrics,
     pub motion: MotionMetrics,
     pub data: DataMetrics,
@@ -233,11 +249,21 @@ impl StylePreset {
             self.overlays.side_offset,
             self.focus.ring_width,
             self.focus.ring_offset,
+            self.disclosure.trigger_padding_x,
+            self.disclosure.trigger_padding_y,
+            self.disclosure.content_padding_x,
+            self.disclosure.content_padding_bottom,
+            self.disclosure.title_gap,
+            self.disclosure.trigger_radius,
+            self.disclosure.frame_radius,
         ]
         .iter()
         .any(|value| !is_non_negative(*value))
         {
             bail!("style preset surface metrics must be finite and non-negative");
+        }
+        if !is_positive(self.disclosure.indicator_size) {
+            bail!("style preset disclosure indicator size must be finite and positive");
         }
         if self
             .data
@@ -296,6 +322,7 @@ impl StylePreset {
             ),
             overlays: overlay(8., 4., 4.),
             focus: focus(),
+            disclosure: disclosure(0., 12., 0., 16., 8., 16., 8., 14., false, false),
             elevation: ElevationMetrics { enabled: true },
             motion: motion(),
             data: data([26., 30., 32., 40.], [4., 6., 8., 12.], [2., 3., 4., 8.]),
@@ -317,6 +344,7 @@ impl StylePreset {
             ),
             overlays: overlay(6., 4., 4.),
             focus: focus(),
+            disclosure: disclosure(0., 10., 0., 10., 8., 16., 8., 10., false, false),
             elevation: ElevationMetrics { enabled: true },
             motion: motion(),
             data: data([24., 28., 30., 36.], [4., 6., 8., 10.], [2., 2., 3., 6.]),
@@ -338,6 +366,7 @@ impl StylePreset {
             ),
             overlays: overlay(12., 6., 6.),
             focus: focus(),
+            disclosure: disclosure(16., 12., 16., 16., 8., 16., 0., 18., true, true),
             elevation: ElevationMetrics { enabled: true },
             motion: motion(),
             data: data([28., 32., 36., 44.], [6., 8., 10., 14.], [3., 4., 6., 9.]),
@@ -460,6 +489,33 @@ fn focus() -> FocusMetrics {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn disclosure(
+    trigger_padding_x: f32,
+    trigger_padding_y: f32,
+    content_padding_x: f32,
+    content_padding_bottom: f32,
+    title_gap: f32,
+    indicator_size: f32,
+    trigger_radius: f32,
+    frame_radius: f32,
+    framed_by_default: bool,
+    open_tint: bool,
+) -> DisclosureMetrics {
+    DisclosureMetrics {
+        trigger_padding_x: px(trigger_padding_x),
+        trigger_padding_y: px(trigger_padding_y),
+        content_padding_x: px(content_padding_x),
+        content_padding_bottom: px(content_padding_bottom),
+        title_gap: px(title_gap),
+        indicator_size: px(indicator_size),
+        trigger_radius: px(trigger_radius),
+        frame_radius: px(frame_radius),
+        framed_by_default,
+        open_tint,
+    }
+}
+
 fn motion() -> MotionMetrics {
     MotionMetrics {
         fast: Duration::from_millis(100),
@@ -510,6 +566,21 @@ mod tests {
         assert!(vega.validate().is_ok());
         assert!(nova.validate().is_ok());
         assert!(maia.validate().is_ok());
+    }
+
+    #[test]
+    fn built_in_styles_define_distinct_disclosure_geometry() {
+        let vega = StylePreset::vega();
+        let nova = StylePreset::nova();
+        let maia = StylePreset::maia();
+
+        assert_eq!(vega.disclosure.trigger_padding_y, px(12.));
+        assert_eq!(nova.disclosure.trigger_padding_y, px(10.));
+        assert_eq!(maia.disclosure.trigger_padding_x, px(16.));
+        assert!(!vega.disclosure.framed_by_default);
+        assert!(!nova.disclosure.framed_by_default);
+        assert!(maia.disclosure.framed_by_default);
+        assert!(maia.disclosure.open_tint);
     }
 
     #[test]
@@ -604,6 +675,10 @@ mod tests {
 
         let mut preset = StylePreset::vega();
         preset.motion.fast = Duration::from_millis(500);
+        assert!(preset.validate().is_err());
+
+        let mut preset = StylePreset::vega();
+        preset.disclosure.indicator_size = px(0.);
         assert!(preset.validate().is_err());
     }
 
