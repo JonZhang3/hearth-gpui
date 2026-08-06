@@ -16,4 +16,4 @@ Read [CLAUDE.md](CLAUDE.md) before starting any task. It is the authority for pr
 
 - Alignment architecture and workflow: [docs/shadcn/README.md](docs/shadcn/README.md)
 - Style Preset contracts and values: [docs/shadcn/05-style-presets.md](docs/shadcn/05-style-presets.md)
-- Project skills: [`skills/`](skills/) and [`.claude/skills/`](.claude/skills/)
+- Project skills: [`skills/`](skills/), [`.claude/skills/`](.claude/skills/), and Codex repository skills in [`.agents/skills/`](.agents/skills/)
