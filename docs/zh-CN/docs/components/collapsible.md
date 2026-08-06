@@ -19,6 +19,7 @@ use gpui_component::collapsible::Collapsible;
 
 ```rust
 Collapsible::new()
+    .id("account-details")
     .max_w_128()
     .gap_1()
     .open(self.open)
@@ -52,6 +53,6 @@ Collapsible::new()
     )
 ```
 
-可以通过 `open` 方法控制当前是否展开。若值为 `false`，则通过 `content` 添加的子内容会被隐藏。
+通过 `open` 控制展开状态。设置稳定的 `id` 后，组件会测量动态内容高度，并使用共享 Style motion 完成进入和退出动画；关闭内容会保留到退出结束，关闭过程中重新打开会安全中断旧任务，reduced motion 会移除等待时间。未设置 `id` 时保留原有即时显示/隐藏行为。
 
 [Collapsible]: https://docs.rs/gpui-component/latest/gpui_component/collapsible/struct.Collapsible.html

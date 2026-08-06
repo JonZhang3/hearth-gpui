@@ -218,26 +218,13 @@ impl Render for MenuStory {
                                         menu.link("Crates", "https://crates.io")
                                             .link("Rust Docs", "https://docs.rs")
                                             .separator()
-                                            .submenu(
-                                                "Nested",
-                                                window,
-                                                cx,
-                                                |menu, window, cx| {
-                                                    menu.link("Docs.rs", "https://docs.rs")
-                                                        .separator()
-                                                        .submenu(
-                                                            "Deeper",
-                                                            window,
-                                                            cx,
-                                                            |menu, _, _| {
-                                                                menu.link(
-                                                                    "GPUI",
-                                                                    "https://gpui.rs",
-                                                                )
-                                                            },
-                                                        )
-                                                },
-                                            )
+                                            .submenu("Nested", window, cx, |menu, window, cx| {
+                                                menu.link("Docs.rs", "https://docs.rs")
+                                                    .separator()
+                                                    .submenu("Deeper", window, cx, |menu, _, _| {
+                                                        menu.link("GPUI", "https://gpui.rs")
+                                                    })
+                                            })
                                     })
                             }),
                     )
@@ -254,7 +241,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)
@@ -354,7 +341,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)
@@ -379,7 +366,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)

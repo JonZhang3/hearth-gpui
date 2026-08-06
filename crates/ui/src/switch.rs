@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt, h_flex, text::Text,
-    tooltip::ComponentTooltip,
+    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt, animation::effective_motion_duration,
+    h_flex, text::Text, tooltip::ComponentTooltip,
 };
 use gpui::{
     Animation, AnimationExt as _, App, Background, ElementId, Hsla, InteractiveElement,
@@ -8,7 +8,7 @@ use gpui::{
     StatefulInteractiveElement as _, StyleRefinement, Styled, Toggled, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 /// A Switch element that can be toggled on or off.
 #[derive(IntoElement)]
@@ -101,6 +101,7 @@ impl Disableable for Switch {
 impl RenderOnce for Switch {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
+        let disabled = self.disabled;
         let on_click = self.on_click.clone();
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
 
@@ -125,114 +126,116 @@ impl RenderOnce for Switch {
             (bg, toggle_bg)
         };
 
-        let (bg_width, bg_height) = match self.size {
-            Size::XSmall | Size::Small => (px(28.), px(16.)),
-            _ => (px(36.), px(20.)),
-        };
-        let bar_width = match self.size {
-            Size::XSmall | Size::Small => px(12.),
-            _ => px(16.),
-        };
+        let control_metrics = cx.theme().style.controls.for_size(self.size);
+        let bg_height = control_metrics.height * 0.5;
+        let bg_width = bg_height * 1.75;
         let inset = px(2.);
-        let radius = if cx.theme().radius >= px(4.) {
+        let bar_width = bg_height - inset * 2.;
+        let radius = if cx.theme().style.radii.md >= px(4.) {
             bg_height
         } else {
-            cx.theme().radius
+            cx.theme().style.radii.md
         };
 
-        div().refine_style(&self.style).child(
-            h_flex()
-                .id(self.id.clone())
-                .role(Role::Switch)
-                .aria_toggled(if checked {
-                    Toggled::True
-                } else {
-                    Toggled::False
-                })
-                .when_some(
-                    self.label.as_ref().map(|l| l.get_text(cx)),
-                    |this, label| this.aria_label(label),
-                )
-                .gap_2()
-                .items_start()
-                .when(self.label_side.is_left(), |this| this.flex_row_reverse())
-                .child(
-                    // Switch Bar
-                    div()
-                        .id(self.id.clone())
-                        .w(bg_width)
-                        .h(bg_height)
-                        .rounded(radius)
-                        .flex()
-                        .items_center()
-                        .border(inset)
-                        .border_color(cx.theme().transparent)
-                        .bg(bg)
-                        .map(|this| self.tooltip.apply(this))
-                        .child(
-                            // Switch Toggle
-                            div()
-                                .rounded(radius)
-                                .bg(toggle_bg)
-                                .size(bar_width)
-                                .map(|this| {
-                                    let prev_checked = toggle_state.read(cx);
-                                    if !self.disabled && *prev_checked != checked {
-                                        let duration = Duration::from_secs_f64(0.15);
-                                        cx.spawn({
-                                            let toggle_state = toggle_state.clone();
-                                            async move |cx| {
-                                                cx.background_executor().timer(duration).await;
-                                                _ = toggle_state
-                                                    .update(cx, |this, _| *this = checked);
-                                            }
-                                        })
-                                        .detach();
+        let element = h_flex()
+            .refine_style(&self.style)
+            .id(self.id.clone())
+            .role(Role::Switch)
+            .aria_toggled(if checked {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
+            .when_some(
+                self.label.as_ref().map(|l| l.get_text(cx)),
+                |this, label| this.aria_label(label),
+            )
+            .gap_2()
+            .items_start()
+            .when(self.label_side.is_left(), |this| this.flex_row_reverse())
+            .child(
+                // Switch Bar
+                div()
+                    .id(self.id.clone())
+                    .w(bg_width)
+                    .h(bg_height)
+                    .rounded(radius)
+                    .flex()
+                    .items_center()
+                    .border(inset)
+                    .border_color(cx.theme().transparent)
+                    .bg(bg)
+                    .map(|this| self.tooltip.apply(this))
+                    .child(
+                        // Switch Toggle
+                        div()
+                            .rounded(radius)
+                            .bg(toggle_bg)
+                            .size(bar_width)
+                            .map(|this| {
+                                let prev_checked = toggle_state.read(cx);
+                                if !self.disabled && *prev_checked != checked {
+                                    let duration = cx.theme().style.motion.normal();
+                                    let timer_duration = effective_motion_duration(duration, cx);
+                                    let easing = cx.theme().style.motion.move_easing;
+                                    cx.spawn({
+                                        let toggle_state = toggle_state.clone();
+                                        async move |cx| {
+                                            cx.background_executor().timer(timer_duration).await;
+                                            _ = toggle_state.update(cx, |this, _| *this = checked);
+                                        }
+                                    })
+                                    .detach();
 
-                                        this.with_animation(
-                                            ElementId::NamedInteger("move".into(), checked as u64),
-                                            Animation::new(duration),
-                                            move |this, delta| {
-                                                let max_x = bg_width - bar_width - inset * 2;
-                                                let x = if checked {
-                                                    max_x * delta
-                                                } else {
-                                                    max_x - max_x * delta
-                                                };
-                                                this.left(x)
-                                            },
-                                        )
-                                        .into_any_element()
-                                    } else {
-                                        let max_x = bg_width - bar_width - inset * 2;
-                                        let x = if checked { max_x } else { px(0.) };
-                                        this.left(x).into_any_element()
-                                    }
-                                }),
-                        ),
-                )
-                .when_some(self.label, |this, label| {
-                    this.child(div().line_height(bg_height).child(label).map(
-                        |this| match self.size {
+                                    this.with_animation(
+                                        ElementId::NamedInteger("move".into(), checked as u64),
+                                        Animation::new(duration)
+                                            .with_easing(move |delta| easing.sample(delta)),
+                                        move |this, delta| {
+                                            let max_x = bg_width - bar_width - inset * 2;
+                                            let x = if checked {
+                                                max_x * delta
+                                            } else {
+                                                max_x - max_x * delta
+                                            };
+                                            this.left(x)
+                                        },
+                                    )
+                                    .into_any_element()
+                                } else {
+                                    let max_x = bg_width - bar_width - inset * 2;
+                                    let x = if checked { max_x } else { px(0.) };
+                                    this.left(x).into_any_element()
+                                }
+                            }),
+                    ),
+            )
+            .when_some(self.label, |this, label| {
+                this.child(
+                    div()
+                        .line_height(bg_height)
+                        .child(label)
+                        .map(|this| match self.size {
                             Size::XSmall | Size::Small => this.text_sm(),
                             _ => this.text_base(),
-                        },
-                    ))
-                })
-                .when_some(
-                    on_click
-                        .as_ref()
-                        .map(|c| c.clone())
-                        .filter(|_| !self.disabled),
-                    |this, on_click| {
-                        let toggle_state = toggle_state.clone();
-                        this.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
-                            cx.stop_propagation();
-                            _ = toggle_state.update(cx, |this, _| *this = checked);
-                            on_click(&!checked, window, cx);
-                        })
-                    },
-                ),
-        )
+                        }),
+                )
+            })
+            .when_some(
+                on_click
+                    .as_ref()
+                    .map(|c| c.clone())
+                    .filter(|_| !self.disabled),
+                |this, on_click| {
+                    let toggle_state = toggle_state.clone();
+                    this.on_mouse_down(gpui::MouseButton::Left, move |_, window, cx| {
+                        cx.stop_propagation();
+                        _ = toggle_state.update(cx, |this, _| *this = checked);
+                        on_click(&!checked, window, cx);
+                    })
+                },
+            );
+
+        crate::accessibility::accessibility_state(element, false, false, disabled)
     }
 }

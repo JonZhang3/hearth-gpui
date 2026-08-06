@@ -360,6 +360,16 @@ dialog.content(|content, window, cx| {
 })
 ```
 
+## 可访问性
+
+使用 `aria_label` 将对话框标题设置为明确的 AccessKit 名称。可见 `title` 仍是视觉内容，因为它可以是任意 element。
+
+```rust
+dialog
+    .aria_label("编辑个人资料")
+    .title("编辑个人资料")
+```
+
 ## 最佳实践
 
 1. 优先使用 `DialogHeader`、`DialogTitle`、`DialogDescription` 和 `DialogFooter`

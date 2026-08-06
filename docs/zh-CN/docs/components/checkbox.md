@@ -138,4 +138,13 @@ v_flex()
     )
 ```
 
+## 不确定与无效状态
+
+```rust
+Checkbox::new("partial").label("已选择部分项目").indeterminate(true)
+Checkbox::new("invalid").label("必须接受条款").invalid(true)
+```
+
+`indeterminate(true)` 在视觉和可访问性上优先于 `checked`，映射为 AccessKit `Toggled::Mixed`，激活后产生选中值。`invalid(true)` 使用语义化 danger 边框和焦点环，并映射为 AccessKit `Invalid::True`。
+
 [Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html

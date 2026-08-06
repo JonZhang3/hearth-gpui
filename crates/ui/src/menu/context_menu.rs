@@ -7,7 +7,11 @@ use gpui::{
     Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
 
-use crate::menu::PopupMenu;
+use crate::{
+    ActiveTheme as _,
+    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
+    menu::PopupMenu,
+};
 
 /// A extension trait for adding a context menu to an element.
 pub trait ContextMenuExt: InteractiveElement + ParentElement + Styled {
@@ -116,9 +120,46 @@ impl<E: ParentElement + Styled + IntoElement + 'static> IntoElement for ContextM
 
 struct ContextMenuSharedState {
     menu_view: Option<Entity<PopupMenu>>,
-    open: bool,
+    lifecycle: OverlayLifecycle,
     position: Point<Pixels>,
     _subscription: Option<Subscription>,
+}
+
+impl ContextMenuSharedState {
+    /// Starts an interruptible open or close transition and refreshes the window on completion.
+    fn set_open(shared_state: &Rc<RefCell<Self>>, open: bool, window: &mut Window, cx: &mut App) {
+        let transition = {
+            let mut state = shared_state.borrow_mut();
+            if open {
+                state.lifecycle.begin_open()
+            } else {
+                state.lifecycle.begin_close()
+            }
+        };
+        let Some(transition) = transition else {
+            return;
+        };
+
+        window.refresh();
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        let shared_state = shared_state.clone();
+        window
+            .spawn(cx, async move |cx| {
+                cx.background_executor().timer(duration).await;
+                let completed = {
+                    let mut state = shared_state.borrow_mut();
+                    if open {
+                        state.lifecycle.complete_open(transition)
+                    } else {
+                        state.lifecycle.complete_close(transition)
+                    }
+                };
+                if completed {
+                    cx.update(|window, _| window.refresh()).ok();
+                }
+            })
+            .detach();
+    }
 }
 
 pub struct ContextMenuState {
@@ -132,7 +173,7 @@ impl Default for ContextMenuState {
             element: None,
             shared_state: Rc::new(RefCell::new(ContextMenuSharedState {
                 menu_view: None,
-                open: false,
+                lifecycle: OverlayLifecycle::default(),
                 position: Default::default(),
                 _subscription: None,
             })),
@@ -166,19 +207,60 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
             window,
             cx,
             |this, state: &mut ContextMenuState, window, cx| {
-                let (position, open) = {
+                let (position, phase, animation_key) = {
                     let shared_state = state.shared_state.borrow();
-                    (shared_state.position, shared_state.open)
+                    (
+                        shared_state.position,
+                        shared_state.lifecycle.phase(),
+                        shared_state.lifecycle.animation_key(),
+                    )
                 };
                 let menu_view = state.shared_state.borrow().menu_view.clone();
                 let mut menu_element = None;
-                if open {
+                if phase != OverlayPhase::Closed {
                     let has_menu_item = menu_view
                         .as_ref()
                         .map(|menu| !menu.read(cx).is_empty())
                         .unwrap_or(false);
 
                     if has_menu_item {
+                        let closing = phase == OverlayPhase::Closing;
+                        let motion = cx.theme().style.motion;
+                        let offset = cx.theme().style.overlays.side_offset;
+                        let menu_surface = div()
+                            .relative()
+                            .when_some(menu_view, |this, menu| {
+                                // Focus only while the menu accepts input.
+                                if !closing && !menu.focus_handle(cx).contains_focused(window, cx) {
+                                    menu.focus_handle(cx).focus(window, cx);
+                                }
+
+                                this.child(menu.clone())
+                            })
+                            .when(closing, |this| {
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
+                            });
+                        let menu_surface = Transition::new(motion.fast())
+                            .ease_token(if closing {
+                                motion.exit_easing
+                            } else {
+                                motion.enter_easing
+                            })
+                            .slide_y(
+                                if closing { px(0.) } else { -offset },
+                                if closing { -offset } else { px(0.) },
+                            )
+                            .fade(
+                                if closing { 1.0 } else { 0.0 },
+                                if closing { 0.0 } else { 1.0 },
+                            )
+                            .apply(
+                                menu_surface,
+                                ElementId::NamedInteger(
+                                    "context-menu-motion".into(),
+                                    animation_key,
+                                ),
+                            );
                         menu_element = Some(
                             deferred(
                                 anchored().child(
@@ -193,17 +275,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                 .position(position)
                                                 .snap_to_window_with_margin(px(8.))
                                                 .anchor(anchor)
-                                                .when_some(menu_view, |this, menu| {
-                                                    // Focus the menu, so that can be handle the action.
-                                                    if !menu
-                                                        .focus_handle(cx)
-                                                        .contains_focused(window, cx)
-                                                    {
-                                                        menu.focus_handle(cx).focus(window, cx);
-                                                    }
-
-                                                    this.child(menu.clone())
-                                                }),
+                                                .child(menu_surface),
                                         ),
                                 ),
                             )
@@ -298,8 +370,8 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                             shared_state.menu_view = None;
                             shared_state._subscription = None;
                             shared_state.position = event.position;
-                            shared_state.open = true;
                         }
+                        ContextMenuSharedState::set_open(&shared_state, true, window, cx);
 
                         // Use defer to build the menu in the next frame, avoiding race conditions
                         window.defer(cx, {
@@ -319,9 +391,13 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                 // Set up the subscription for dismiss handling
                                 let _subscription = window.subscribe(&menu, cx, {
                                     let shared_state = shared_state.clone();
-                                    move |_, _: &DismissEvent, window, _cx| {
-                                        shared_state.borrow_mut().open = false;
-                                        window.refresh();
+                                    move |_, _: &DismissEvent, window, cx| {
+                                        ContextMenuSharedState::set_open(
+                                            &shared_state,
+                                            false,
+                                            window,
+                                            cx,
+                                        );
                                     }
                                 });
 
@@ -350,6 +426,7 @@ mod tests {
         point, px,
     };
     use std::cell::Cell;
+    use std::time::Duration;
 
     actions!(context_menu_test, [RemoveTab]);
 
@@ -441,5 +518,35 @@ mod tests {
         cx.update(|window, cx| {
             assert_eq!(window.focused(cx).as_ref(), Some(&content_focus));
         });
+    }
+
+    #[gpui::test]
+    fn reopen_invalidates_pending_context_menu_close(cx: &mut TestAppContext) {
+        cx.update(|cx| cx.set_global(Theme::default()));
+        let cx = cx.add_empty_window();
+        let shared_state = Rc::new(RefCell::new(ContextMenuSharedState {
+            menu_view: None,
+            lifecycle: OverlayLifecycle::default(),
+            position: Point::default(),
+            _subscription: None,
+        }));
+
+        cx.update(|window, cx| {
+            ContextMenuSharedState::set_open(&shared_state, true, window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        assert_eq!(shared_state.borrow().lifecycle.phase(), OverlayPhase::Open);
+
+        cx.update(|window, cx| {
+            ContextMenuSharedState::set_open(&shared_state, false, window, cx);
+            ContextMenuSharedState::set_open(&shared_state, true, window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+
+        assert_eq!(shared_state.borrow().lifecycle.phase(), OverlayPhase::Open);
     }
 }

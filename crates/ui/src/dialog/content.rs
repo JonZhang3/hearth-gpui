@@ -13,7 +13,10 @@ pub struct DialogContent {
 
 impl DialogContent {
     pub fn new() -> Self {
-        Self { style: StyleRefinement::default(), children: Vec::new() }
+        Self {
+            style: StyleRefinement::default(),
+            children: Vec::new(),
+        }
     }
 }
 
@@ -34,7 +37,7 @@ impl RenderOnce for DialogContent {
         v_flex()
             .w_full()
             .flex_1()
-            .rounded(cx.theme().radius_lg)
+            .rounded(cx.theme().style.radii.lg)
             .refine_style(&self.style)
             .children(self.children)
     }

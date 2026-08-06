@@ -2,8 +2,9 @@ use std::rc::Rc;
 
 use gpui::{
     AlignItems, AnyElement, AnyView, App, Axis, Div, ElementId, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, Rems, RenderOnce, SharedString, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder as _, px,
+    IntoElement, ParentElement, Pixels, Rems, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 
 use crate::{ActiveTheme as _, AxisExt, Size, StyledExt, h_flex, v_flex};
@@ -39,6 +40,18 @@ pub enum FieldBuilder {
 impl Default for FieldBuilder {
     fn default() -> Self {
         Self::String(SharedString::default())
+    }
+}
+
+impl FieldBuilder {
+    /// Returns text that can be attached to the field's accessibility group.
+    /// Custom elements and views remain visual-only because their text cannot
+    /// be inspected without changing the public builder contract.
+    fn accessible_text(&self) -> Option<SharedString> {
+        match self {
+            Self::String(value) => Some(value.clone()),
+            Self::Element(_) | Self::View(_) => None,
+        }
     }
 }
 
@@ -85,10 +98,12 @@ pub struct Field {
     label: Option<FieldBuilder>,
     label_indent: bool,
     description: Option<FieldBuilder>,
+    error: Option<FieldBuilder>,
     /// Used to render the actual form field, e.g.: Input, Switch...
     children: Vec<AnyElement>,
     visible: bool,
     required: bool,
+    invalid: bool,
     /// Alignment of the form field.
     align_items: Option<AlignItems>,
     col_span: u16,
@@ -104,9 +119,11 @@ impl Field {
             style: StyleRefinement::default(),
             label: None,
             description: None,
+            error: None,
             children: Vec::new(),
             visible: true,
             required: false,
+            invalid: false,
             label_indent: true,
             align_items: None,
             col_span: 1,
@@ -158,6 +175,32 @@ impl Field {
         self.description = Some(FieldBuilder::Element(Rc::new(move |window, cx| {
             description(window, cx).into_any_element()
         })));
+        self
+    }
+
+    /// Sets an error message and marks the field invalid.
+    pub fn error(mut self, error: impl Into<FieldBuilder>) -> Self {
+        self.error = Some(error.into());
+        self.invalid = true;
+        self
+    }
+
+    /// Sets an error message using a render function and marks the field invalid.
+    pub fn error_fn<F, E>(mut self, error: F) -> Self
+    where
+        E: IntoElement,
+        F: Fn(&mut Window, &mut App) -> E + 'static,
+    {
+        self.error = Some(FieldBuilder::Element(Rc::new(move |window, cx| {
+            error(window, cx).into_any_element()
+        })));
+        self.invalid = true;
+        self
+    }
+
+    /// Set whether the field is invalid without requiring a rendered message.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
         self
     }
 
@@ -236,6 +279,15 @@ impl Styled for Field {
 impl RenderOnce for Field {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let layout = self.props.layout;
+        let invalid = self.invalid;
+        let accessibility_label = self.label.as_ref().and_then(FieldBuilder::accessible_text);
+        let accessibility_description = if self.invalid {
+            self.error.as_ref().and_then(FieldBuilder::accessible_text)
+        } else {
+            self.description
+                .as_ref()
+                .and_then(FieldBuilder::accessible_text)
+        };
 
         let label_width = if layout.is_vertical() {
             None
@@ -269,7 +321,13 @@ impl RenderOnce for Field {
             gap / 2.
         };
 
-        v_flex()
+        let element = v_flex()
+            .id(self.id.clone())
+            .role(gpui::Role::Group)
+            .when_some(accessibility_label, |this, label| this.aria_label(label))
+            .when_some(accessibility_description, |this, description| {
+                this.aria_description(description)
+            })
             .flex_1()
             .gap(gap / 2.)
             .col_span(self.col_span)
@@ -279,7 +337,6 @@ impl RenderOnce for Field {
             .child(
                 // This warp for aligning the Label + Input
                 wrap_div(layout)
-                    .id(self.id)
                     .gap(inner_gap)
                     .when_some(self.align_items, |this, align| {
                         this.map(|this| match align {
@@ -299,6 +356,7 @@ impl RenderOnce for Field {
                                     this.text_size(size)
                                 })
                                 .font_medium()
+                                .when(self.invalid, |this| this.text_color(cx.theme().danger))
                                 .gap_1()
                                 .items_center()
                                 .when_some(self.label, |this, builder| {
@@ -344,7 +402,36 @@ impl RenderOnce for Field {
                                 .text_color(cx.theme().muted_foreground)
                                 .child(builder.render(window, cx)),
                         )
+                    })
+                    .when_some(self.error, |this, builder| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .font_medium()
+                                .text_color(cx.theme().danger)
+                                .child(builder.render(window, cx)),
+                        )
                     }),
-            )
+            );
+
+        crate::accessibility::accessibility_state(element, invalid, false, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_marks_field_invalid_and_supplies_accessible_text() {
+        let field = Field::new()
+            .label("Email")
+            .error("Enter a valid email address");
+
+        assert!(field.invalid);
+        assert_eq!(
+            field.error.as_ref().and_then(FieldBuilder::accessible_text),
+            Some("Enter a valid email address".into())
+        );
     }
 }

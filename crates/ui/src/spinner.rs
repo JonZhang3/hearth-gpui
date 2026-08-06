@@ -1,17 +1,15 @@
-use crate::{Icon, IconName, Sizable, Size};
+use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size};
 use gpui::{
     Animation, AnimationExt as _, App, Hsla, IntoElement, ParentElement, RenderOnce, Styled as _,
-    Transformation, Window, div, ease_in_out, percentage, prelude::FluentBuilder as _,
+    Transformation, Window, div, percentage, prelude::FluentBuilder as _,
 };
-use instant::Duration;
 
 /// A cycling loading spinner.
 #[derive(IntoElement)]
 pub struct Spinner {
     size: Size,
     icon: Icon,
-    speed: Duration,
-    easing: Box<dyn Fn(f32) -> f32>,
+    easing: Option<Box<dyn Fn(f32) -> f32>>,
     color: Option<Hsla>,
 }
 
@@ -20,8 +18,7 @@ impl Spinner {
     pub fn new() -> Self {
         Self {
             size: Size::Medium,
-            speed: Duration::from_secs_f64(0.8),
-            easing: Box::new(ease_in_out),
+            easing: None,
             icon: Icon::new(IconName::Loader),
             color: None,
         }
@@ -45,7 +42,7 @@ impl Spinner {
 
     /// Set the easing function.
     pub fn ease(mut self, easing: impl Fn(f32) -> f32 + 'static) -> Self {
-        self.easing = Box::new(easing);
+        self.easing = Some(Box::new(easing));
         self
     }
 }
@@ -58,7 +55,13 @@ impl Sizable for Spinner {
 }
 
 impl RenderOnce for Spinner {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let motion = cx.theme().style.motion;
+        let easing = self.easing.unwrap_or_else(|| {
+            let easing = motion.move_easing;
+            Box::new(move |delta| easing.sample(delta))
+        });
+
         div()
             .child(
                 self.icon
@@ -66,7 +69,9 @@ impl RenderOnce for Spinner {
                     .when_some(self.color, |this, color| this.text_color(color))
                     .with_animation(
                         "circle",
-                        Animation::new(self.speed).repeat().with_easing(self.easing),
+                        Animation::new(motion.loading())
+                            .repeat()
+                            .with_easing(easing),
                         |this, delta| this.transform(Transformation::rotate(percentage(delta))),
                     ),
             )

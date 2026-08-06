@@ -311,7 +311,7 @@ impl StockTableDelegate {
 
         div()
             .h_full()
-            .table_cell_size(self.size)
+            .table_cell_size(self.size, cx)
             .when(col.align == TextAlign::Right, |this| {
                 this.h_flex().justify_end()
             })
@@ -333,7 +333,7 @@ impl StockTableDelegate {
     fn render_value_cell(&self, col: &Column, val: f64, cx: &mut App) -> AnyElement {
         let this = div()
             .h_full()
-            .table_cell_size(self.size)
+            .table_cell_size(self.size, cx)
             .child(format!("{:.3}", val));
         // Val is a 0.0 .. n.0
         // 30% to red, 30% to green, others to default
@@ -420,7 +420,7 @@ impl TableDelegate for StockTableDelegate {
         div()
             .child(col.name.clone())
             .when(col_ix >= 3 && col_ix <= 10, |this| {
-                this.table_cell_size(self.size)
+                this.table_cell_size(self.size, cx)
             })
             .when(col.align == TextAlign::Center, |this| {
                 this.h_flex().w_full().justify_center()

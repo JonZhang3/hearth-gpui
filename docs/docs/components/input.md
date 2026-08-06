@@ -256,3 +256,12 @@ v_flex()
     .child(Input::new(&self.name_input))
     .child(Input::new(&self.email_input))
 ```
+
+## Read-only and invalid states
+
+```rust
+Input::new(&input).read_only(true)
+Input::new(&invalid_input).invalid(true)
+```
+
+Read-only inputs remain focusable, selectable, and copyable. User edits, paste, cut, undo, redo, IME replacement, clear actions, and AccessKit `SetValue` are blocked; programmatic `InputState` updates remain available. The state maps to AccessKit `ReadOnly`. Invalid inputs use the semantic danger border and map to AccessKit `Invalid::True`.

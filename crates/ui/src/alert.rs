@@ -3,12 +3,14 @@ use std::rc::Rc;
 use gpui::{
     App, ClickEvent, ElementId, Empty, Hsla, InteractiveElement, IntoElement, ParentElement as _,
     RenderOnce, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder as _, px, rems, transparent_white,
+    div, prelude::FluentBuilder as _, px, rems,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize, Icon, IconName, Sizable, Size, StyledExt, h_flex,
+    ActiveTheme as _, Icon, IconName, Sizable, Size, StyledExt,
     text::{Text, TextViewStyle},
+    theme::Density,
+    v_flex,
 };
 
 /// The variant of the [`Alert`].
@@ -33,23 +35,13 @@ impl AlertVariant {
         }
     }
 
-    fn bg(&self, cx: &App) -> Hsla {
+    fn description_fg(&self, cx: &App) -> Hsla {
         match self {
-            Self::Default => cx.theme().background,
-            Self::Info => cx.theme().info.mix_oklab(transparent_white(), 0.04),
-            Self::Success => cx.theme().success.mix_oklab(transparent_white(), 0.04),
-            Self::Warning => cx.theme().warning.mix_oklab(transparent_white(), 0.04),
-            Self::Error => cx.theme().danger.mix_oklab(transparent_white(), 0.04),
-        }
-    }
-
-    fn border_color(&self, cx: &App) -> Hsla {
-        match self {
-            Self::Default => cx.theme().border,
-            Self::Info => cx.theme().info.mix_oklab(transparent_white(), 0.3),
-            Self::Success => cx.theme().success.mix_oklab(transparent_white(), 0.3),
-            Self::Warning => cx.theme().warning.mix_oklab(transparent_white(), 0.3),
-            Self::Error => cx.theme().danger.mix_oklab(transparent_white(), 0.3),
+            Self::Default => cx.theme().muted_foreground,
+            Self::Info => cx.theme().info.opacity(0.9),
+            Self::Success => cx.theme().success.opacity(0.9),
+            Self::Warning => cx.theme().warning.opacity(0.9),
+            Self::Error => cx.theme().danger.opacity(0.9),
         }
     }
 }
@@ -176,59 +168,69 @@ impl RenderOnce for Alert {
             return Empty.into_any_element();
         }
 
-        let (radius, padding_x, padding_y, gap) = match self.size {
-            Size::XSmall => (cx.theme().radius, px(12.), px(6.), px(6.)),
-            Size::Small => (cx.theme().radius, px(12.), px(8.), px(6.)),
-            Size::Large => (cx.theme().radius_lg, px(20.), px(14.), px(12.)),
-            _ => (cx.theme().radius, px(16.), px(10.), px(12.)),
+        let (padding_x, padding_y, gap) = match self.size {
+            Size::XSmall => (px(10.), px(6.), px(6.)),
+            Size::Small => (px(12.), px(8.), px(8.)),
+            Size::Large => (px(20.), px(14.), px(12.)),
+            _ => match cx.theme().style.density {
+                Density::Compact => (px(10.), px(8.), px(8.)),
+                Density::Standard | Density::Comfortable => (px(16.), px(12.), px(10.)),
+            },
         };
 
-        let bg = self.variant.bg(cx);
-        let fg = self.variant.fg(cx);
-        let border_color = self.variant.border_color(cx);
+        let emphasis_fg = self.variant.fg(cx);
+        let description_fg = self.variant.description_fg(cx);
+        let closable = self.on_close.is_some();
 
-        h_flex()
+        v_flex()
             .id(self.id)
             .role(Role::Alert)
+            .relative()
             .w_full()
-            .text_color(fg)
-            .bg(bg)
+            .text_color(cx.theme().foreground)
+            .bg(cx.theme().tokens.background)
             .px(padding_x)
             .py(padding_y)
-            .gap(gap)
-            .justify_between()
+            .when(closable, |this| this.pr(px(72.)))
             .text_sm()
             .border_1()
-            .border_color(border_color)
-            .when(!self.banner, |this| this.rounded(radius).items_start())
+            .border_color(cx.theme().border)
+            .when(!self.banner, |this| this.rounded(cx.theme().style.radii.lg))
             .refine_style(&self.style)
             .child(
                 div()
                     .flex()
-                    .flex_1()
+                    .items_start()
                     .when(self.banner, |this| this.items_center())
                     .overflow_hidden()
                     .gap(gap)
                     .child(
                         div()
-                            .when(!self.banner, |this| this.mt(px(5.)))
-                            .child(self.icon),
+                            .when(!self.banner, |this| this.mt(px(2.)))
+                            .child(self.icon.text_color(emphasis_fg)),
                     )
                     .child(
-                        div()
+                        v_flex()
                             .flex_1()
                             .overflow_hidden()
-                            .gap_3()
+                            .gap(px(2.))
                             .when(!self.banner, |this| {
                                 this.when_some(self.title, |this, title| {
                                     this.child(
-                                        div().w_full().truncate().font_semibold().child(title),
+                                        div()
+                                            .w_full()
+                                            .truncate()
+                                            .font_medium()
+                                            .text_color(emphasis_fg)
+                                            .child(title),
                                     )
                                 })
                             })
                             .child(
-                                self.message
-                                    .style(TextViewStyle::default().paragraph_gap(rems(0.2))),
+                                div().text_color(description_fg).child(
+                                    self.message
+                                        .style(TextViewStyle::default().paragraph_gap(rems(0.2))),
+                                ),
                             ),
                     ),
             )
@@ -236,10 +238,13 @@ impl RenderOnce for Alert {
                 this.child(
                     div()
                         .id("close")
+                        .absolute()
+                        .top(px(10.))
+                        .right(px(12.))
                         .p_0p5()
-                        .rounded(cx.theme().radius)
-                        .hover(|this| this.bg(bg.opacity(0.8)))
-                        .active(|this| this.bg(bg.opacity(0.9)))
+                        .rounded(cx.theme().style.radii.md)
+                        .hover(|this| this.bg(cx.theme().accent))
+                        .active(|this| this.bg(cx.theme().accent.opacity(0.8)))
                         .on_click(move |ev, window, cx| {
                             on_close(ev, window, cx);
                         })
@@ -251,5 +256,28 @@ impl RenderOnce for Alert {
                 )
             })
             .into_any_element()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[gpui::test]
+    fn alert_variants_keep_neutral_surface_and_semantic_text(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let window = cx.add_empty_window();
+        window.update(|_, cx| {
+            assert_eq!(AlertVariant::Default.fg(cx), cx.theme().foreground);
+            assert_eq!(
+                AlertVariant::Default.description_fg(cx),
+                cx.theme().muted_foreground
+            );
+            assert_eq!(AlertVariant::Error.fg(cx), cx.theme().danger);
+            assert_eq!(
+                AlertVariant::Error.description_fg(cx),
+                cx.theme().danger.opacity(0.9)
+            );
+        });
     }
 }

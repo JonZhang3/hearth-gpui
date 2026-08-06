@@ -1,6 +1,7 @@
 use crate::{
     ActiveTheme, ElementExt, Placement, StyledExt,
-    dialog::{ANIMATION_DURATION, Dialog},
+    animation::{OverlayLifecycle, effective_motion_duration},
+    dialog::Dialog,
     focus_trap::FocusTrapManager,
     input::{Copy, InputState},
     native_menu::FallbackMenuOverlay,
@@ -51,6 +52,8 @@ pub struct Root {
     /// The focus handle that will be restored after a dialog is closed with animation.
     /// Used to handle rapid dialog opening/closing to maintain correct focus chain.
     pending_focus_restore: Option<WeakFocusHandle>,
+    /// Monotonic identity for interruptible modal lifecycle tasks.
+    next_overlay_id: u64,
     /// Window-level text selection state. See `text::window_selection`.
     pub(crate) text_selection: WindowTextSelection,
     /// Selectable TextViews registered this frame, keyed by entity id.
@@ -62,31 +65,38 @@ pub struct Root {
 
 #[derive(Clone)]
 pub(crate) struct ActiveSheet {
+    id: u64,
     focus_handle: FocusHandle,
     /// The previous focused handle before opening the Sheet.
     previous_focused_handle: Option<WeakFocusHandle>,
     placement: Placement,
     builder: Rc<dyn Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static>,
+    lifecycle: OverlayLifecycle,
 }
 
 #[derive(Clone)]
 pub(crate) struct ActiveDialog {
+    id: u64,
     focus_handle: FocusHandle,
     /// The previous focused handle before opening the Dialog.
     previous_focused_handle: Option<WeakFocusHandle>,
     builder: Rc<dyn Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static>,
+    lifecycle: OverlayLifecycle,
 }
 
 impl ActiveDialog {
     pub(crate) fn new(
+        id: u64,
         focus_handle: FocusHandle,
         previous_focused_handle: Option<WeakFocusHandle>,
         builder: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     ) -> Self {
         Self {
+            id,
             focus_handle,
             previous_focused_handle,
             builder: Rc::new(builder),
+            lifecycle: OverlayLifecycle::opened(),
         }
     }
 }
@@ -110,6 +120,7 @@ impl Root {
             window_shadow_size: window_border::SHADOW_SIZE,
             bordered: true,
             pending_focus_restore: None,
+            next_overlay_id: 0,
             text_selection: WindowTextSelection::default(),
             selectable_text_views: HashMap::new(),
             selectable_text_inlines: HashMap::new(),
@@ -214,6 +225,7 @@ impl Root {
             sheet = (active_sheet.builder)(sheet, window, cx);
             sheet.focus_handle = active_sheet.focus_handle.clone();
             sheet.placement = active_sheet.placement;
+            sheet.lifecycle_phase = active_sheet.lifecycle.phase();
 
             let size = sheet.size;
 
@@ -256,6 +268,7 @@ impl Root {
                 //
                 // So we keep the focus handle in the `active_dialog`, this is owned by the `Root`.
                 dialog.focus_handle = active_dialog.focus_handle.clone();
+                dialog.lifecycle_phase = active_dialog.lifecycle.phase();
 
                 dialog.layer_ix = i;
                 // Find the dialog which one needs to show overlay.
@@ -291,7 +304,9 @@ impl Root {
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
 
+        self.next_overlay_id = self.next_overlay_id.wrapping_add(1);
         self.active_dialogs.push(ActiveDialog::new(
+            self.next_overlay_id,
             focus_handle,
             previous_focused_handle,
             build,
@@ -302,56 +317,126 @@ impl Root {
         cx.notify();
     }
 
-    fn close_dialog_internal(&mut self) -> Option<FocusHandle> {
-        self.focused_input = None;
-        self.active_dialogs
-            .pop()
-            .and_then(|d| d.previous_focused_handle)
-            .and_then(|h| h.upgrade())
-    }
-
     pub fn close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
-        if let Some(handle) = self.close_dialog_internal() {
-            window.focus(&handle, cx);
-        }
-        self.clear_text_selection(cx);
-        cx.notify();
+        self.begin_close_dialog(window, cx);
     }
 
     pub(crate) fn defer_close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
-        if let Some(handle) = self.close_dialog_internal() {
-            let dialogs_count = self.active_dialogs.len();
+        self.begin_close_dialog(window, cx);
+    }
 
-            // Save for new dialogs opened during animation to maintain focus chain
+    /// Starts one close lifecycle for the topmost dialog and removes it only
+    /// after the shared exit duration has completed.
+    fn begin_close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
+        self.focused_input = None;
+        let Some(active_dialog) = self.active_dialogs.last_mut() else {
+            return;
+        };
+        let Some(transition) = active_dialog.lifecycle.begin_close() else {
+            return;
+        };
+
+        let dialog_id = active_dialog.id;
+        let previous_handle = active_dialog
+            .previous_focused_handle
+            .as_ref()
+            .and_then(|handle| handle.upgrade());
+        if let Some(handle) = previous_handle.as_ref() {
             self.pending_focus_restore = Some(handle.downgrade());
-
-            cx.spawn_in(window, async move |this, cx| {
-                cx.background_executor().timer(*ANIMATION_DURATION).await;
-                let _ = this.update_in(cx, |this, window, cx| {
-                    let current_dialogs_count = this.active_dialogs.len();
-                    // Only restore focus if no new dialogs were opened during animation
-                    if current_dialogs_count == dialogs_count {
-                        window.focus(&handle, cx);
-                    }
-                    this.pending_focus_restore = None;
-                });
-            })
-            .detach();
         }
+
+        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let Some(index) = this
+                    .active_dialogs
+                    .iter()
+                    .position(|dialog| dialog.id == dialog_id)
+                else {
+                    return;
+                };
+                if !this.active_dialogs[index]
+                    .lifecycle
+                    .complete_close(transition)
+                {
+                    return;
+                }
+
+                this.active_dialogs.remove(index);
+                let newer_dialog_is_open = this
+                    .active_dialogs
+                    .iter()
+                    .skip(index)
+                    .any(|dialog| dialog.lifecycle.accepts_input());
+                if !newer_dialog_is_open && let Some(handle) = previous_handle {
+                    window.focus(&handle, cx);
+                }
+                this.pending_focus_restore = None;
+                cx.notify();
+            });
+        })
+        .detach();
+
         self.clear_text_selection(cx);
         cx.notify();
     }
 
     pub fn close_all_dialogs(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
         self.focused_input = None;
-        let previous_focused_handle = self
+        let previous_handle = self
             .active_dialogs
             .first()
-            .and_then(|d| d.previous_focused_handle.clone());
-        self.active_dialogs.clear();
-        if let Some(handle) = previous_focused_handle.and_then(|h| h.upgrade()) {
-            window.focus(&handle, cx);
+            .and_then(|dialog| dialog.previous_focused_handle.as_ref())
+            .and_then(|handle| handle.upgrade());
+        let transitions = self
+            .active_dialogs
+            .iter_mut()
+            .filter_map(|dialog| {
+                dialog
+                    .lifecycle
+                    .begin_close()
+                    .map(|transition| (dialog.id, transition))
+            })
+            .collect::<Vec<_>>();
+        if transitions.is_empty() {
+            return;
         }
+
+        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                for (dialog_id, transition) in transitions {
+                    let Some(index) = this
+                        .active_dialogs
+                        .iter()
+                        .position(|dialog| dialog.id == dialog_id)
+                    else {
+                        continue;
+                    };
+                    if this.active_dialogs[index]
+                        .lifecycle
+                        .complete_close(transition)
+                    {
+                        this.active_dialogs.remove(index);
+                    }
+                }
+
+                if !this
+                    .active_dialogs
+                    .iter()
+                    .any(|dialog| dialog.lifecycle.accepts_input())
+                    && let Some(handle) = previous_handle
+                {
+                    window.focus(&handle, cx);
+                }
+                this.pending_focus_restore = None;
+                cx.notify();
+            });
+        })
+        .detach();
+
         self.clear_text_selection(cx);
         cx.notify();
     }
@@ -373,11 +458,14 @@ impl Root {
 
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
+        self.next_overlay_id = self.next_overlay_id.wrapping_add(1);
         self.active_sheet = Some(ActiveSheet {
+            id: self.next_overlay_id,
             focus_handle,
             previous_focused_handle,
             placement,
             builder: Rc::new(build),
+            lifecycle: OverlayLifecycle::opened(),
         });
         // Opening a modal confines selection to it; drop any background
         // selection so it cannot linger (or be copied) under the modal.
@@ -387,15 +475,38 @@ impl Root {
 
     pub fn close_sheet(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
         self.focused_input = None;
-        if let Some(previous_handle) = self
-            .active_sheet
+        let Some(active_sheet) = self.active_sheet.as_mut() else {
+            return;
+        };
+        let Some(transition) = active_sheet.lifecycle.begin_close() else {
+            return;
+        };
+        let sheet_id = active_sheet.id;
+        let previous_handle = active_sheet
+            .previous_focused_handle
             .as_ref()
-            .and_then(|s| s.previous_focused_handle.as_ref())
-            .and_then(|h| h.upgrade())
-        {
-            window.focus(&previous_handle, cx);
-        }
-        self.active_sheet = None;
+            .and_then(|handle| handle.upgrade());
+        let duration = effective_motion_duration(cx.theme().style.motion.slow(), cx);
+        cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = this.update_in(cx, |this, window, cx| {
+                let completed = this
+                    .active_sheet
+                    .as_mut()
+                    .filter(|sheet| sheet.id == sheet_id)
+                    .is_some_and(|sheet| sheet.lifecycle.complete_close(transition));
+                if !completed {
+                    return;
+                }
+
+                this.active_sheet = None;
+                if let Some(handle) = previous_handle {
+                    window.focus(&handle, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
         self.clear_text_selection(cx);
         cx.notify();
     }
@@ -585,7 +696,9 @@ impl Render for Root {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::animation::OverlayPhase;
     use gpui::TestAppContext;
+    use std::time::Duration;
 
     struct TestView;
 
@@ -616,5 +729,155 @@ mod tests {
             Root::new(view, window, cx).bordered(false).bordered(true)
         });
         assert!(root.read_with(cx, |root, _| root.bordered));
+    }
+
+    #[gpui::test]
+    fn dialog_close_keeps_content_mounted_and_rejects_duplicate_close(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_dialog(|dialog, _, _| dialog, window, cx);
+            root.close_dialog(window, cx);
+            root.close_dialog(window, cx);
+        });
+        assert_eq!(root.read_with(cx, |root, _| root.active_dialogs.len()), 1);
+        assert_eq!(
+            root.read_with(cx, |root, _| root.active_dialogs[0].lifecycle.phase()),
+            OverlayPhase::Closing
+        );
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        assert!(root.read_with(cx, |root, _| root.active_dialogs.is_empty()));
+    }
+
+    #[gpui::test]
+    fn reduced_motion_dialog_close_unmounts_without_delay(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_dialog(|dialog, _, _| dialog, window, cx);
+            root.close_dialog(window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(root.read_with(cx, |root, _| root.active_dialogs.is_empty()));
+    }
+
+    #[gpui::test]
+    fn sheet_close_keeps_content_mounted_and_rejects_duplicate_close(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_sheet_at(Placement::Right, |sheet, _, _| sheet, window, cx);
+            root.close_sheet(window, cx);
+            root.close_sheet(window, cx);
+        });
+        assert_eq!(
+            root.read_with(cx, |root, _| root
+                .active_sheet
+                .as_ref()
+                .unwrap()
+                .lifecycle
+                .phase()),
+            OverlayPhase::Closing
+        );
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(250));
+        cx.run_until_parked();
+        assert!(root.read_with(cx, |root, _| root.active_sheet.is_none()));
+    }
+
+    #[gpui::test]
+    fn close_all_dialogs_uses_one_exit_lifecycle_for_nested_dialogs(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_dialog(|dialog, _, _| dialog, window, cx);
+            root.open_dialog(|dialog, _, _| dialog, window, cx);
+            root.close_all_dialogs(window, cx);
+            root.close_all_dialogs(window, cx);
+        });
+        assert_eq!(root.read_with(cx, |root, _| root.active_dialogs.len()), 2);
+        assert!(root.read_with(cx, |root, _| {
+            root.active_dialogs
+                .iter()
+                .all(|dialog| dialog.lifecycle.phase() == OverlayPhase::Closing)
+        }));
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+        assert!(root.read_with(cx, |root, _| root.active_dialogs.is_empty()));
+    }
+
+    #[gpui::test]
+    fn opening_dialog_during_exit_preserves_the_new_dialog(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_dialog(|dialog, _, _| dialog.title("First"), window, cx);
+            root.close_dialog(window, cx);
+            root.open_dialog(|dialog, _, _| dialog.title("Second"), window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(300));
+        cx.run_until_parked();
+
+        assert_eq!(root.read_with(cx, |root, _| root.active_dialogs.len()), 1);
+        assert_eq!(
+            root.read_with(cx, |root, _| root.active_dialogs[0].lifecycle.phase()),
+            OverlayPhase::Open
+        );
+    }
+
+    #[gpui::test]
+    fn reopening_sheet_during_exit_invalidates_the_old_close_task(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_sheet_at(Placement::Left, |sheet, _, _| sheet, window, cx);
+            root.close_sheet(window, cx);
+            root.open_sheet_at(Placement::Right, |sheet, _, _| sheet, window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(250));
+        cx.run_until_parked();
+
+        let (placement, phase) = root.read_with(cx, |root, _| {
+            let sheet = root.active_sheet.as_ref().unwrap();
+            (sheet.placement, sheet.lifecycle.phase())
+        });
+        assert_eq!(placement, Placement::Right);
+        assert_eq!(phase, OverlayPhase::Open);
     }
 }

@@ -32,6 +32,19 @@ v_form()
     )
 ```
 
+## Invalid fields and errors
+
+```rust
+field()
+    .label("Email")
+    .description("Used for account notifications")
+    .required(true)
+    .error("Enter a valid email address")
+    .child(Input::new(&email_input).invalid(true))
+```
+
+`error(...)` marks the Field invalid, renders the message with the semantic danger color, and associates string labels and errors with the Field's AccessKit group. Use the control's own `invalid(true)` so both nodes expose the invalid state. `error_fn(...)` supports custom rendering; arbitrary element text remains visual because GPUI cannot infer its accessible text.
+
 ### Horizontal Form Layout
 
 ```rust

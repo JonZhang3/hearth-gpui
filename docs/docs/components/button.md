@@ -114,8 +114,11 @@ Button::new("btn")
 
 // Icon only (no label)
 Button::new("btn")
+    .aria_label("Search")
     .icon(IconName::Search)
 ```
+
+Icon-only buttons must use `aria_label` because the icon does not provide an accessible name. `aria_label` changes only the AccessKit label and does not add visible text or change icon-button geometry. A visible `label` remains the default accessible name when `aria_label` is not set.
 
 #### Spinner Icon
 

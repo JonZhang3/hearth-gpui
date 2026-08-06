@@ -98,7 +98,7 @@ impl Render for Example {
                                     .justify_center()
                                     .size_8()
                                     .flex_shrink_0()
-                                    .rounded(cx.theme().radius)
+                                    .rounded(cx.theme().style.radii.md)
                                     .bg(cx.theme().sidebar_primary)
                                     .text_color(cx.theme().sidebar_primary_foreground)
                                     .when(icon_collapsed, |this| {
@@ -178,7 +178,7 @@ impl Render for Example {
                     .child(
                         div()
                             .flex_1()
-                            .rounded(cx.theme().radius)
+                            .rounded(cx.theme().style.radii.md)
                             .border_1()
                             .border_color(cx.theme().border)
                             .p_5()

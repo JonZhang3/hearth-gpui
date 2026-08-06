@@ -938,7 +938,7 @@ impl Example {
 
                     ListItem::new(ix)
                         .w_full()
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .py_0p5()
                         .px_2()
                         .pl(px(16.) * entry.depth() + px(8.))

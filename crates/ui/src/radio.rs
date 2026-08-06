@@ -7,7 +7,7 @@ use crate::{
 use gpui::{
     AnyElement, App, Axis, Div, ElementId, InteractiveElement, IntoElement, ParentElement,
     RenderOnce, Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder, px, relative, rems,
+    div, prelude::FluentBuilder, px, relative,
 };
 
 /// A Radio element.
@@ -21,6 +21,7 @@ pub struct Radio {
     label: Option<Text>,
     children: Vec<AnyElement>,
     checked: bool,
+    invalid: bool,
     disabled: bool,
     tab_stop: bool,
     tab_index: isize,
@@ -41,6 +42,7 @@ impl Radio {
             label: None,
             children: Vec::new(),
             checked: false,
+            invalid: false,
             disabled: false,
             tab_index: 0,
             tab_stop: true,
@@ -67,6 +69,12 @@ impl Radio {
     /// Set the checked state of the Radio element, default is `false`.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
+        self
+    }
+
+    /// Set whether the radio value is invalid.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
         self
     }
 
@@ -146,7 +154,9 @@ impl RenderOnce for Radio {
         let is_focused = focus_handle.is_focused(window);
         let disabled = self.disabled;
 
-        let (border_color, bg) = if checked {
+        let (border_color, bg) = if self.invalid {
+            (cx.theme().danger, cx.theme().danger)
+        } else if checked {
             (cx.theme().primary, cx.theme().primary)
         } else {
             (cx.theme().input, cx.theme().input.opacity(0.5))
@@ -156,8 +166,10 @@ impl RenderOnce for Radio {
         } else {
             (border_color, bg)
         };
+        let control_metrics = cx.theme().style.controls.for_size(self.size);
 
-        self.base
+        let element = self
+            .base
             .id(self.id.clone())
             .role(Role::RadioButton)
             .aria_selected(self.checked)
@@ -177,12 +189,22 @@ impl RenderOnce for Radio {
                 )
             })
             .h_flex()
-            .gap_x_2()
+            .gap_x(control_metrics.gap)
             .text_color(cx.theme().foreground)
             .items_start()
             .line_height(relative(1.))
-            .rounded(cx.theme().radius * 0.5)
-            .focus_ring(is_focused, px(2.), window, cx)
+            .rounded(cx.theme().style.radii.md * 0.5)
+            .focus_ring_color(
+                is_focused,
+                px(2.),
+                if self.invalid {
+                    cx.theme().danger
+                } else {
+                    cx.theme().ring
+                },
+                window,
+                cx,
+            )
             .map(|this| match self.size {
                 Size::XSmall => this.text_xs(),
                 Size::Small => this.text_sm(),
@@ -194,13 +216,7 @@ impl RenderOnce for Radio {
             .child(
                 div()
                     .relative()
-                    .map(|this| match self.size {
-                        Size::XSmall => this.size_3(),
-                        Size::Small => this.size_3p5(),
-                        Size::Medium => this.size_4(),
-                        Size::Large => this.size(rems(1.125)),
-                        _ => this.size_4(),
-                    })
+                    .size(control_metrics.icon_size)
                     .flex_shrink_0()
                     .rounded_full()
                     .border_1()
@@ -208,10 +224,11 @@ impl RenderOnce for Radio {
                     .map(|this| match self.checked {
                         false => this.bg(cx.theme().input_background()),
                         true if disabled => this.bg(bg),
+                        true if self.invalid => this.bg(cx.theme().danger),
                         true => this.bg(cx.theme().tokens.primary),
                     })
                     .child(checkbox_check_icon(
-                        self.id, self.size, checked, disabled, window, cx,
+                        self.id, self.size, checked, false, disabled, window, cx,
                     )),
             )
             .when(!self.children.is_empty() || self.label.is_some(), |this| {
@@ -247,7 +264,9 @@ impl RenderOnce for Radio {
                     }
                 })
             })
-            .map(|this| self.tooltip.apply(this))
+            .map(|this| self.tooltip.apply(this));
+
+        crate::accessibility::accessibility_state(element, self.invalid, false, self.disabled)
     }
 }
 

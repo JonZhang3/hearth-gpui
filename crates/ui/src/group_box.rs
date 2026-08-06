@@ -157,7 +157,7 @@ impl RenderOnce for GroupBox {
                     .text_color(cx.theme().group_box_foreground)
                     .when(has_paddings, |this| this.p_4())
                     .gap_4()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .refine_style(&self.content_style)
                     .children(self.children),
             )

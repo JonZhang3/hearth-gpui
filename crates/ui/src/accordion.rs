@@ -1,12 +1,28 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    Role, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
+    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, KeyDownEvent, ParentElement,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
     prelude::FluentBuilder as _, rems,
 };
 
-use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size, h_flex, v_flex};
+use crate::{
+    ActiveTheme as _, FocusableExt as _, Icon, IconName, Sizable, Size, collapsible::Collapsible,
+    h_flex, v_flex,
+};
+
+/// Returns whether the keyboard event should activate an accordion trigger.
+fn is_toggle_key(event: &KeyDownEvent) -> bool {
+    is_toggle_key_name(
+        event.keystroke.key.as_str(),
+        event.keystroke.modifiers.modified(),
+    )
+}
+
+/// Matches the platform-independent activation keys for a button-like trigger.
+fn is_toggle_key_name(key: &str, modified: bool) -> bool {
+    !modified && matches!(key, "enter" | "space")
+}
 
 /// Accordion element.
 #[derive(IntoElement)]
@@ -85,6 +101,8 @@ impl RenderOnce for Accordion {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let open_ixs = Rc::new(RefCell::new(HashSet::new()));
         let is_multiple = self.multiple;
+        let accordion_id = self.id.clone();
+        let on_group_toggle = self.on_toggle_click.filter(|_| !self.disabled);
 
         v_flex()
             .id(self.id)
@@ -101,35 +119,37 @@ impl RenderOnce for Accordion {
 
                         accordion
                             .index(ix)
+                            .motion_id(format!("{accordion_id}-item-{ix}"))
                             .with_size(self.size)
                             .bordered(self.bordered)
                             .disabled(self.disabled)
                             .on_toggle_click({
                                 let open_ixs = Rc::clone(&open_ixs);
-                                move |open, _, _| {
-                                    let mut open_ixs = open_ixs.borrow_mut();
-                                    if *open {
-                                        if !is_multiple {
-                                            open_ixs.clear();
+                                let on_group_toggle = on_group_toggle.clone();
+                                move |open, window, cx| {
+                                    let open_indices = {
+                                        let mut open_ixs = open_ixs.borrow_mut();
+                                        if *open {
+                                            if !is_multiple {
+                                                open_ixs.clear();
+                                            }
+                                            open_ixs.insert(ix);
+                                        } else {
+                                            open_ixs.remove(&ix);
                                         }
-                                        open_ixs.insert(ix);
-                                    } else {
-                                        open_ixs.remove(&ix);
+
+                                        let mut open_ixs: Vec<usize> =
+                                            open_ixs.iter().copied().collect();
+                                        open_ixs.sort_unstable();
+                                        open_ixs
+                                    };
+
+                                    if let Some(on_group_toggle) = &on_group_toggle {
+                                        on_group_toggle(&open_indices, window, cx);
                                     }
                                 }
                             })
                     }),
-            )
-            .when_some(
-                self.on_toggle_click.filter(|_| !self.disabled),
-                move |this, on_toggle_click| {
-                    let open_ixs = Rc::clone(&open_ixs);
-                    this.on_click(move |_, window, cx| {
-                        let open_ixs: Vec<usize> = open_ixs.borrow().iter().map(|&ix| ix).collect();
-
-                        on_toggle_click(&open_ixs, window, cx);
-                    })
-                },
             )
     }
 }
@@ -138,8 +158,10 @@ impl RenderOnce for Accordion {
 #[derive(IntoElement)]
 pub struct AccordionItem {
     index: usize,
+    motion_id: Option<ElementId>,
     icon: Option<Icon>,
     title: AnyElement,
+    aria_label: Option<SharedString>,
     children: Vec<AnyElement>,
     open: bool,
     size: Size,
@@ -153,8 +175,10 @@ impl AccordionItem {
     pub fn new() -> Self {
         Self {
             index: 0,
+            motion_id: None,
             icon: None,
             title: SharedString::default().into_any_element(),
+            aria_label: None,
             children: Vec::new(),
             open: false,
             disabled: false,
@@ -176,6 +200,12 @@ impl AccordionItem {
         self
     }
 
+    /// Set the accessible name for the accordion trigger.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
@@ -193,6 +223,11 @@ impl AccordionItem {
 
     fn index(mut self, index: usize) -> Self {
         self.index = index;
+        self
+    }
+
+    fn motion_id(mut self, id: impl Into<ElementId>) -> Self {
+        self.motion_id = Some(id.into());
         self
     }
 
@@ -219,12 +254,24 @@ impl Sizable for AccordionItem {
 }
 
 impl RenderOnce for AccordionItem {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let text_size = match self.size {
             Size::XSmall => rems(0.875),
             Size::Small => rems(0.875),
             _ => rems(1.0),
         };
+        let disabled = self.disabled;
+        let open = self.open;
+        let focus_key = self
+            .motion_id
+            .clone()
+            .unwrap_or_else(|| format!("accordion-item-{}", self.index).into());
+        let focus_handle = window
+            .use_keyed_state(format!("{focus_key}-focus"), cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let is_focused = focus_handle.is_focused(window);
+        let keyboard_toggle = self.on_toggle_click.clone();
 
         div().flex_1().child(
             v_flex()
@@ -233,7 +280,7 @@ impl RenderOnce for AccordionItem {
                 .overflow_hidden()
                 .when(self.bordered, |this| {
                     this.border_1()
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .border_color(cx.theme().border)
                 })
                 .text_size(text_size)
@@ -241,7 +288,18 @@ impl RenderOnce for AccordionItem {
                     h_flex()
                         .id(self.index)
                         .role(Role::Button)
-                        .aria_expanded(self.open)
+                        .aria_expanded(open)
+                        .when_some(self.aria_label, |this, label| this.aria_label(label))
+                        .when(!disabled, |this| {
+                            this.track_focus(&focus_handle.tab_stop(true))
+                        })
+                        .focus_ring_color(
+                            is_focused,
+                            cx.theme().style.focus.ring_offset,
+                            cx.theme().ring,
+                            window,
+                            cx,
+                        )
                         .justify_between()
                         .gap_3()
                         .map(|this| match self.size {
@@ -250,7 +308,7 @@ impl RenderOnce for AccordionItem {
                             Size::Large => this.py_1p5().px_4(),
                             _ => this.py_1().px_3(),
                         })
-                        .when(self.open, |this| {
+                        .when(open, |this| {
                             this.when(self.bordered, |this| {
                                 this.text_color(cx.theme().foreground)
                                     .border_b_1()
@@ -276,10 +334,10 @@ impl RenderOnce for AccordionItem {
                                 })
                                 .child(self.title),
                         )
-                        .when(!self.disabled, |this| {
+                        .when(!disabled, |this| {
                             this.hover(|this| this.bg(cx.theme().tokens.accordion_hover))
                                 .child(
-                                    Icon::new(if self.open {
+                                    Icon::new(if open {
                                         IconName::ChevronUp
                                     } else {
                                         IconName::ChevronDown
@@ -290,24 +348,109 @@ impl RenderOnce for AccordionItem {
                                 .when_some(self.on_toggle_click, |this, on_toggle_click| {
                                     this.on_click({
                                         move |_, window, cx| {
-                                            on_toggle_click(&!self.open, window, cx);
+                                            on_toggle_click(&!open, window, cx);
                                         }
                                     })
                                 })
+                        })
+                        .when_some(keyboard_toggle.filter(|_| !disabled), |this, toggle| {
+                            this.on_key_down(move |event, window, cx| {
+                                if is_toggle_key(event) {
+                                    window.prevent_default();
+                                    cx.stop_propagation();
+                                    toggle(&!open, window, cx);
+                                }
+                            })
                         }),
                 )
-                .when(self.open, |this| {
-                    this.child(
-                        div()
-                            .map(|this| match self.size {
-                                Size::XSmall => this.p_1p5(),
-                                Size::Small => this.p_2(),
-                                Size::Large => this.p_4(),
-                                _ => this.p_3(),
-                            })
-                            .children(self.children),
-                    )
-                }),
+                .child(
+                    Collapsible::new()
+                        .when_some(self.motion_id, |this, id| this.id(id))
+                        .open(open)
+                        .content(
+                            div()
+                                .map(|this| match self.size {
+                                    Size::XSmall => this.p_1p5(),
+                                    Size::Small => this.p_2(),
+                                    Size::Large => this.p_4(),
+                                    _ => this.p_3(),
+                                })
+                                .children(self.children),
+                        ),
+                ),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    use super::*;
+    use gpui::{AppContext as _, Context, Render, TestAppContext, VisualTestContext};
+
+    struct KeyboardFixture {
+        calls: Arc<AtomicUsize>,
+        open_indices: Arc<Mutex<Vec<usize>>>,
+    }
+
+    impl Render for KeyboardFixture {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let calls = Arc::clone(&self.calls);
+            let open_indices = Arc::clone(&self.open_indices);
+
+            Accordion::new("keyboard-accordion")
+                .on_toggle_click(move |indices, _, _| {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    *open_indices.lock().unwrap() = indices.to_vec();
+                })
+                .item(|item| {
+                    item.title("Keyboard section")
+                        .aria_label("Keyboard section")
+                        .child("Keyboard content")
+                })
+        }
+    }
+
+    #[test]
+    fn toggle_key_matcher_accepts_unmodified_enter_and_space() {
+        assert!(is_toggle_key_name("enter", false));
+        assert!(is_toggle_key_name("space", false));
+        assert!(!is_toggle_key_name("escape", false));
+        assert!(!is_toggle_key_name("enter", true));
+        assert!(!is_toggle_key_name("space", true));
+    }
+
+    #[gpui::test]
+    fn focus_navigation_and_space_activate_the_trigger_once(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let open_indices = Arc::new(Mutex::new(Vec::new()));
+        let (_, cx) = cx.add_window_view({
+            let calls = Arc::clone(&calls);
+            let open_indices = Arc::clone(&open_indices);
+            move |window, cx| {
+                let fixture = cx.new(|_| KeyboardFixture {
+                    calls,
+                    open_indices,
+                });
+                crate::Root::new(fixture, window, cx)
+            }
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            window.focus_next(cx);
+        });
+        cx.simulate_keystrokes("space");
+        cx.run_until_parked();
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(*open_indices.lock().unwrap(), vec![0]);
     }
 }

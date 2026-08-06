@@ -80,17 +80,17 @@ Required result:
 
 ### 4. Color Theme and component shape are coupled
 
-Current `ThemeConfig` stores colors together with font, radius, large radius, and shadow. This preserves a complete theme in one JSON file, but it prevents a Color Theme from being freely combined with multiple component styles.
+The baseline `ThemeConfig` stored colors together with font, radius, large radius, and shadow. This prevented a Color Theme from being freely combined with multiple component styles.
 
 Required result:
 
 - Introduce `StylePreset` as a configuration input and `StyleRegistry` as its lookup mechanism.
-- Keep the resolved global `Theme` as the only runtime authority.
-- Do not add a second `theme.style.radius` field beside `theme.radius`.
+- Keep `Theme.style` as the single resolved Style authority.
+- Remove flat `theme.radius`, `theme.radius_lg`, and `theme.shadow` fields.
 - Add independent Color Theme and Style Preset actions.
-- Use `ThemeDefault` when no explicit preset is selected so existing JSON radius and shadow values retain their behavior.
-- When a preset is explicit, applying a Color Theme must not overwrite preset-owned fields.
-- Switching back to `ThemeDefault` must restore the current Theme JSON appearance values.
+- Use Vega as the explicit default Style Preset.
+- Applying a Color Theme must not overwrite `Theme.style`.
+- Reject unknown Style ids without changing the active Style.
 
 The initial built-in presets are Vega, Nova, and Maia. The presets validate standard, compact, and comfortable component geometries without requiring component forks.
 
@@ -103,7 +103,7 @@ Required result:
 - Publish a documented semantic mapping before adding theme fields.
 - Add `card` and `card_foreground` only if an existing component needs a distinct surface.
 - Centralize only cross-component metrics such as control heights, focus-ring width, and overlay radius.
-- Preserve existing serialized theme compatibility through fallbacks.
+- Remove legacy Style keys from Theme JSON so ownership is explicit.
 
 ### 6. State coverage is inconsistent
 
@@ -148,18 +148,18 @@ Required result:
 - Use image comparison where deterministic rendering is available.
 - Keep behavior tests authoritative when raster output differs by platform font rendering.
 
-## Compatibility policy
+## API policy
 
 | Change type | Policy |
 |---|---|
-| Existing method behavior | Preserve unless currently incorrect or inaccessible |
+| Existing component behavior | Preserve unless currently incorrect or inaccessible |
 | New state or variant | Additive builder method or enum variant |
-| Theme key | Additive with fallback |
-| Style Preset key | Additive with fallback or a built-in default |
-| Existing radius and shadow keys | Continue to apply in `ThemeDefault`; explicit presets take precedence |
+| Theme/Style API | Breaking redesign is approved |
+| Style Preset registration | Rust API with validation and stable ids |
+| Existing radius and shadow keys | Removed from Theme JSON and runtime Theme |
 | Default appearance | Allowed, documented as visual alignment |
 | Default keyboard behavior | Change only to fix a documented mismatch |
-| Serialized layout or theme | Must remain readable |
+| Serialized layout | Must remain readable; Theme appearance keys may break |
 | New dependency | Requires a separate justification and size review |
 
 ## Known non-equivalences

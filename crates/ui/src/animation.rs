@@ -1,10 +1,12 @@
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt, ElementId, Hsla, IntoElement, Pixels, Point, Styled, point,
+    Animation, AnimationExt, App, ElementId, Hsla, IntoElement, Pixels, Point, Styled, point,
     prelude::FluentBuilder, px,
 };
 use smallvec::SmallVec;
+
+use crate::theme::MotionEasing;
 
 /// A cubic bezier function like CSS `cubic-bezier`.
 ///
@@ -47,6 +49,126 @@ pub fn ease_in_out_cubic(t: f32) -> f32 {
         4.0 * t * t * t
     } else {
         1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
+}
+
+/// Resolves a duration for lifecycle timers that are not rendered through
+/// `AnimationExt`.
+///
+/// GPUI animation elements already honor `App::reduce_motion` automatically.
+/// Exit timers must use this helper so reduced motion also removes delayed
+/// unmounting and focus restoration.
+pub fn effective_motion_duration(duration: Duration, cx: &App) -> Duration {
+    if cx.reduce_motion() {
+        Duration::ZERO
+    } else {
+        duration
+    }
+}
+
+/// Explicit lifecycle shared by transient overlay components.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum OverlayPhase {
+    #[default]
+    Closed,
+    Opening,
+    Open,
+    Closing,
+}
+
+/// Transition generation used to reject completion from cancelled tasks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayTransition {
+    generation: u64,
+}
+
+/// Small state machine for interruptible overlay enter and exit transitions.
+///
+/// A completion method returns `true` exactly once for the active generation.
+/// Components use that signal to emit dismissal callbacks and restore focus.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayLifecycle {
+    phase: OverlayPhase,
+    generation: u64,
+}
+
+impl OverlayLifecycle {
+    /// Creates a lifecycle for content that is mounted in the open state.
+    pub fn opened() -> Self {
+        Self {
+            phase: OverlayPhase::Open,
+            generation: 0,
+        }
+    }
+
+    /// Returns the current lifecycle phase.
+    pub fn phase(&self) -> OverlayPhase {
+        self.phase
+    }
+
+    /// Returns the identity of the active enter or exit animation.
+    ///
+    /// Completing an enter transition preserves this value, while every close
+    /// or interrupted reopen receives a new value and therefore a fresh GPUI
+    /// animation state.
+    pub fn animation_key(&self) -> u64 {
+        self.generation
+    }
+
+    /// Returns whether content must remain mounted for enter or exit motion.
+    pub fn is_mounted(&self) -> bool {
+        self.phase != OverlayPhase::Closed
+    }
+
+    /// Returns whether the mounted content may accept user actions.
+    pub fn accepts_input(&self) -> bool {
+        matches!(self.phase, OverlayPhase::Opening | OverlayPhase::Open)
+    }
+
+    /// Starts opening or reverses an in-progress close.
+    pub fn begin_open(&mut self) -> Option<OverlayTransition> {
+        if matches!(self.phase, OverlayPhase::Opening | OverlayPhase::Open) {
+            return None;
+        }
+
+        self.generation = self.generation.wrapping_add(1);
+        self.phase = OverlayPhase::Opening;
+        Some(OverlayTransition {
+            generation: self.generation,
+        })
+    }
+
+    /// Completes opening only when the transition is still current.
+    pub fn complete_open(&mut self, transition: OverlayTransition) -> bool {
+        if self.phase != OverlayPhase::Opening || transition.generation != self.generation {
+            return false;
+        }
+
+        self.phase = OverlayPhase::Open;
+        true
+    }
+
+    /// Starts closing and returns the generation that owns close completion.
+    pub fn begin_close(&mut self) -> Option<OverlayTransition> {
+        if matches!(self.phase, OverlayPhase::Closed | OverlayPhase::Closing) {
+            return None;
+        }
+
+        self.generation = self.generation.wrapping_add(1);
+        self.phase = OverlayPhase::Closing;
+        Some(OverlayTransition {
+            generation: self.generation,
+        })
+    }
+
+    /// Completes closing once; stale or duplicate completions are rejected.
+    pub fn complete_close(&mut self, transition: OverlayTransition) -> bool {
+        if self.phase != OverlayPhase::Closing || transition.generation != self.generation {
+            return false;
+        }
+
+        self.phase = OverlayPhase::Closed;
+        true
     }
 }
 
@@ -138,6 +260,11 @@ impl Transition {
         self
     }
 
+    /// Sets a semantic easing curve resolved from the active Style Preset.
+    pub fn ease_token(self, easing: MotionEasing) -> Self {
+        self.ease(move |delta| easing.sample(delta))
+    }
+
     /// Animate vertical offset from `from` to `to`.
     pub fn slide_y(mut self, from: Pixels, to: Pixels) -> Self {
         self.effects.push(TransitionEffect::SlideY(from, to));
@@ -206,3 +333,65 @@ impl Transition {
 }
 
 impl FluentBuilder for Transition {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[test]
+    fn overlay_close_completion_is_single_and_generation_safe() {
+        let mut lifecycle = OverlayLifecycle::default();
+        let opening = lifecycle.begin_open().unwrap();
+        assert!(lifecycle.complete_open(opening));
+
+        let closing = lifecycle.begin_close().unwrap();
+        assert!(!lifecycle.accepts_input());
+        assert!(lifecycle.is_mounted());
+        assert!(lifecycle.complete_close(closing));
+        assert!(!lifecycle.complete_close(closing));
+        assert!(!lifecycle.is_mounted());
+    }
+
+    #[test]
+    fn reopening_invalidates_pending_close_completion() {
+        let mut lifecycle = OverlayLifecycle::default();
+        let opening = lifecycle.begin_open().unwrap();
+        assert!(lifecycle.complete_open(opening));
+
+        let closing = lifecycle.begin_close().unwrap();
+        let reopening = lifecycle.begin_open().unwrap();
+        assert!(!lifecycle.complete_close(closing));
+        assert!(lifecycle.complete_open(reopening));
+        assert_eq!(lifecycle.phase(), OverlayPhase::Open);
+    }
+
+    #[test]
+    fn opening_completion_preserves_animation_identity() {
+        let mut lifecycle = OverlayLifecycle::default();
+        let opening = lifecycle.begin_open().unwrap();
+        let opening_key = lifecycle.animation_key();
+        assert!(lifecycle.complete_open(opening));
+        assert_eq!(lifecycle.animation_key(), opening_key);
+
+        let closing = lifecycle.begin_close().unwrap();
+        let closing_key = lifecycle.animation_key();
+        assert_ne!(closing_key, opening_key);
+
+        let reopening = lifecycle.begin_open().unwrap();
+        assert_ne!(lifecycle.animation_key(), closing_key);
+        assert!(!lifecycle.complete_close(closing));
+        assert!(lifecycle.complete_open(reopening));
+    }
+
+    #[gpui::test]
+    fn reduced_motion_removes_lifecycle_delay(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let duration = Duration::from_millis(150);
+            assert_eq!(effective_motion_duration(duration, cx), duration);
+
+            cx.set_reduce_motion(true);
+            assert_eq!(effective_motion_duration(duration, cx), Duration::ZERO);
+        });
+    }
+}

@@ -70,6 +70,7 @@ impl Render for CollapsibleStory {
             .child(
                 section("Expland Paragraphs").v_flex().child(
                     Collapsible::new()
+                        .id("collapsible-paragraph")
                         .max_w_128()
                         .gap_1()
                         .open(self.item1_open)
@@ -112,6 +113,7 @@ impl Render for CollapsibleStory {
                         .title("Collapsible in a Card")
                         .child(
                             Collapsible::new()
+                                .id("collapsible-card")
                                 .gap_1()
                                 .open(self.item2_open)
                                 .child(

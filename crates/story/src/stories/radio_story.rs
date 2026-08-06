@@ -148,7 +148,7 @@ impl Render for RadioStory {
                                 .p_2()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(cx.theme().radius)
+                                .rounded(cx.theme().style.radii.md)
                                 .disabled(true)
                                 .child(Radio::new("one1").label("United States"))
                                 .child(Radio::new("one2").label("Canada"))

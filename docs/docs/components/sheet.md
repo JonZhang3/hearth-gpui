@@ -356,6 +356,16 @@ window.open_sheet_at(Placement::Bottom, cx, |sheet, _, _| {
 })
 ```
 
+## Accessibility
+
+Set `aria_label` to the visible title. Sheet exposes a Dialog role, expanded focus trap, and a localized accessible name for its icon-only close button.
+
+```rust
+sheet
+    .aria_label("Application settings")
+    .title("Application settings")
+```
+
 ## Best Practices
 
 1. **Appropriate Placement**: Use left/right for navigation, top/bottom for temporary content

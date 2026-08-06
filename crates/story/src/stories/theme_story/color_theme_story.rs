@@ -304,7 +304,7 @@ impl ThemeColorsStory {
             .child(
                 div()
                     .size_16()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .bg(color)
                     .border_1()
                     .border_color(isolated_theme.border)
@@ -444,7 +444,7 @@ impl ThemeColorsStory {
                                             .child(
                                                 div()
                                                     .size_4()
-                                                    .rounded(cx.theme().radius.half())
+                                                    .rounded(cx.theme().style.radii.md.half())
                                                     .bg(color_value)
                                                     .border_1()
                                                     .border_color(cx.theme().border)
@@ -504,7 +504,7 @@ impl ThemeColorsStory {
         div()
             .border_1()
             .border_color(isolated_theme.border)
-            .rounded(cx.theme().radius_lg)
+            .rounded(cx.theme().style.radii.lg)
             .size_full()
             .overflow_hidden()
             .child(
@@ -512,7 +512,7 @@ impl ThemeColorsStory {
                     v_flex()
                         .size_full()
                         .overflow_hidden()
-                        .rounded(cx.theme().radius_lg)
+                        .rounded(cx.theme().style.radii.lg)
                         .px_4()
                         .child(
                             list(list_state.clone(), {

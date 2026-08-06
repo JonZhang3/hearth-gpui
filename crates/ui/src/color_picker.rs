@@ -421,26 +421,20 @@ impl ColorPicker {
             .border_1()
             .border_color(color.darken(0.1))
             .when(clickable, |this| {
-                this.hover(|this| {
-                    this.border_color(color.darken(0.3))
-                        .bg(color.lighten(0.1))
-                })
-                .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
-                .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
-                    state.hovered_color = Some(color);
-                    state.state.update(cx, |input, cx| {
-                        input.set_value(color.to_hex(), window, cx);
-                    });
-                    cx.notify();
-                }))
-                .on_click(window.listener_for(
-                    &state,
-                    move |state, _, window, cx| {
+                this.hover(|this| this.border_color(color.darken(0.3)).bg(color.lighten(0.1)))
+                    .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
+                    .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
+                        state.hovered_color = Some(color);
+                        state.state.update(cx, |input, cx| {
+                            input.set_value(color.to_hex(), window, cx);
+                        });
+                        cx.notify();
+                    }))
+                    .on_click(window.listener_for(&state, move |state, _, window, cx| {
                         state.open = false;
                         state.update_value(Some(color), true, window, cx);
                         cx.notify();
-                    },
-                ))
+                    }))
             })
     }
 
@@ -497,7 +491,7 @@ impl ColorPicker {
                                 .border_1()
                                 .border_color(hovered_color.darken(0.2))
                                 .size_5()
-                                .rounded(cx.theme().radius),
+                                .rounded(cx.theme().style.radii.md),
                         )
                         .child(Input::new(&self.state.read(cx).state).small().px_2p5()),
                 )
@@ -846,9 +840,9 @@ impl RenderOnce for ColorPickerButton {
                         .bg(cx.theme().tokens.background)
                         .border_1()
                         .border_color(cx.theme().input)
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .overflow_hidden()
-                        .size_with(self.size)
+                        .size_with(self.size, cx)
                         .when_some(self.value, |this, value| {
                             this.bg(value)
                                 .border_color(value.darken(0.3))

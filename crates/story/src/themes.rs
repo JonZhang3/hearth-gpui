@@ -13,13 +13,20 @@ const STATE_FILE: &str = "target/state.json";
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct State {
     theme: SharedString,
+    #[serde(default = "default_style")]
+    style: SharedString,
     scrollbar_show: Option<ScrollbarShow>,
+}
+
+fn default_style() -> SharedString {
+    "vega".into()
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             theme: "Default Light".into(),
+            style: default_style(),
             scrollbar_show: None,
         }
     }
@@ -66,12 +73,16 @@ pub fn init(cx: &mut App) {
     if let Some(scrollbar_show) = state.scrollbar_show {
         Theme::global_mut(cx).scrollbar_show = scrollbar_show;
     }
+    if let Err(error) = Theme::set_style(&state.style, cx) {
+        tracing::warn!("Failed to restore Style Preset '{}': {error}", state.style);
+    }
     cx.refresh_windows();
 
     #[cfg(not(target_family = "wasm"))]
     cx.observe_global::<Theme>(|cx| {
         let state = State {
             theme: cx.theme().theme_name().clone(),
+            style: cx.theme().style.id.clone(),
             scrollbar_show: Some(cx.theme().scrollbar_show),
         };
 
@@ -85,7 +96,7 @@ pub fn init(cx: &mut App) {
     cx.on_action(|switch: &SwitchTheme, cx| {
         let theme_name = switch.0.clone();
         if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
-            Theme::global_mut(cx).apply_config(&theme_config);
+            Theme::set_color_theme(theme_config, cx);
         }
         cx.refresh_windows();
     });

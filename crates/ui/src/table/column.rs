@@ -282,7 +282,7 @@ impl Render for DragColumn {
             .opacity(0.9)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_md()
+            .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
             .w(self.width)
             .min_w(px(100.))
             .max_w(px(450.))

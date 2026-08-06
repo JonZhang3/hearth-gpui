@@ -110,8 +110,11 @@ Button::new("btn")
     .label("Like")
 
 Button::new("btn")
+    .aria_label("搜索")
     .icon(IconName::Search)
 ```
+
+仅图标按钮必须设置 `aria_label`，因为图标本身不提供可访问名称。`aria_label` 只修改 AccessKit 标签，不增加可见文本，也不改变图标按钮尺寸。未设置 `aria_label` 时，可见的 `label` 仍作为默认可访问名称。
 
 #### Spinner
 

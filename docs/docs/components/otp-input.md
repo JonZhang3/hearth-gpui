@@ -408,3 +408,11 @@ struct OtpWithResend {
 
 // Implementation would include timer logic for resend functionality
 ```
+
+## Invalid state and paste behavior
+
+```rust
+OtpInput::new(&otp_state).invalid(true)
+```
+
+The invalid state uses semantic danger borders and maps to AccessKit `Invalid::True`. OtpInput supports normalized paste and AccessKit `SetValue`: unsupported characters are discarded, full-width digits are converted, and values are truncated to the configured length. Masked values are not exposed to the accessibility tree.

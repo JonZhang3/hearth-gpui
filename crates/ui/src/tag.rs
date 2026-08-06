@@ -242,8 +242,8 @@ impl RenderOnce for Tag {
         let border = self.variant.border(cx);
         let rounded = self.rounded.unwrap_or(
             match self.size {
-                Size::XSmall | Size::Small => cx.theme().radius / 2.,
-                _ => cx.theme().radius,
+                Size::XSmall | Size::Small => cx.theme().style.radii.md / 2.,
+                _ => cx.theme().style.radii.md,
             }
             .into(),
         );

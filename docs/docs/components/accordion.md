@@ -7,6 +7,10 @@ description: The accordion uses collapse internally to make it collapsible.
 
 An accordion component that allows users to show and hide sections of content. It uses collapse functionality internally to create collapsible panels.
 
+The Accordion id also scopes measured dynamic-height motion for every item. Exit content remains mounted until the shared Style motion duration completes, interrupted toggles ignore stale completion, and reduced motion removes the delay.
+
+Enabled triggers are keyboard focusable and toggle with unmodified `Enter` or `Space`. The trigger exposes button role and expanded state to AccessKit. Set `aria_label()` whenever a custom title does not provide a reliable text name.
+
 ## Import
 
 ```rust
@@ -111,6 +115,7 @@ Accordion::new("my-accordion")
                 .child(Icon::new(IconName::Settings))
                 .child("Settings")
         )
+        .aria_label("Settings")
         .child("Settings content here")
     })
 ```

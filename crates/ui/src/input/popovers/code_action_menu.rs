@@ -87,7 +87,7 @@ impl RenderOnce for MenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded(cx.theme().radius.half())
+            .rounded(cx.theme().style.radii.md.half())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
                 this.bg(cx.theme().tokens.accent)

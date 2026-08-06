@@ -69,7 +69,7 @@ impl Render for SwitchStory {
                 .gap_4()
                 .p_4()
                 .w_full()
-                .rounded(cx.theme().radius)
+                .rounded(cx.theme().style.radii.md)
                 .border_1()
                 .border_color(cx.theme().border)
         }

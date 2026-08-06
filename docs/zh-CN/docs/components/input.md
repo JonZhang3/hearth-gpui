@@ -227,3 +227,12 @@ v_flex()
     .child(Input::new(&self.name_input))
     .child(Input::new(&self.email_input))
 ```
+
+## 只读与无效状态
+
+```rust
+Input::new(&input).read_only(true)
+Input::new(&invalid_input).invalid(true)
+```
+
+只读输入框仍可聚焦、选择和复制，但会阻止用户编辑、粘贴、剪切、撤销、重做、IME 替换、清除操作和 AccessKit `SetValue`；程序化 `InputState` 更新仍可使用。该状态映射为 AccessKit `ReadOnly`。无效输入框使用语义化 danger 边框，并映射为 AccessKit `Invalid::True`。

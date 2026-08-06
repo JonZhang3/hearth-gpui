@@ -369,6 +369,7 @@ pub struct InputState {
     pub(super) selecting: bool,
     pub(super) size: Size,
     pub(super) disabled: bool,
+    pub(super) read_only: bool,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
     pub(super) submit_on_enter: bool,
@@ -501,6 +502,7 @@ impl InputState {
             input_bounds: Bounds::default(),
             selecting: false,
             disabled: false,
+            read_only: false,
             masked: false,
             clean_on_escape: false,
             submit_on_enter: false,
@@ -839,12 +841,15 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         let range_utf16 = self.range_to_utf16(&(self.cursor()..self.cursor()));
         self.replace_text_in_range_silent(Some(range_utf16), &text, window, cx);
         self.selected_range = (self.selected_range.end..self.selected_range.end).into();
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     /// Replace text at the current cursor position.
@@ -857,11 +862,14 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         self.replace_text_in_range_silent(None, &text, window, cx);
         self.selected_range = (self.selected_range.end..self.selected_range.end).into();
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     fn replace_text(
@@ -871,12 +879,15 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         let range = 0..self.text.chars().map(|c| c.len_utf16()).sum();
         self.replace_text_in_range_silent(Some(range), &text, window, cx);
         self.reset_highlighter(cx);
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     fn reset_selection(&mut self) {
@@ -2877,7 +2888,7 @@ impl EntityInputHandler for InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.read_only {
             return;
         }
 
@@ -2988,7 +2999,7 @@ impl EntityInputHandler for InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.read_only {
             return;
         }
 
@@ -3778,6 +3789,25 @@ ORDER BY id
         });
 
         cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn test_read_only_blocks_user_edits_but_allows_programmatic_updates(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.default_value("initial"));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.read_only = true;
+                state.replace_text_in_range(None, "blocked", window, cx);
+                assert_eq!(state.value(), "initial");
+
+                state.replace_all("programmatic", window, cx);
+                assert_eq!(state.value(), "programmatic");
+                assert!(state.read_only);
+            });
+        });
     }
 
     /// `replace_all` on a multi-line (non-code-editor) input clears the

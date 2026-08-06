@@ -32,6 +32,19 @@ v_form()
     )
 ```
 
+## 无效字段与错误信息
+
+```rust
+field()
+    .label("邮箱")
+    .description("用于接收账户通知")
+    .required(true)
+    .error("请输入有效邮箱地址")
+    .child(Input::new(&email_input).invalid(true))
+```
+
+`error(...)` 会将 Field 标记为无效，使用语义化 danger 颜色显示错误，并把字符串标签和错误信息关联到 Field 的 AccessKit group。应同时调用控件自身的 `invalid(true)`，使字段组和控件都暴露无效状态。`error_fn(...)` 支持自定义渲染；GPUI 无法从任意元素推断可访问文本，因此自定义元素文本仅用于视觉显示。
+
 ### 横向布局
 
 ```rust

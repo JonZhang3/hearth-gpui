@@ -341,7 +341,7 @@ impl Render for SidebarStory {
         let toggle_collapsed = self.collapsed && collapsible != SidebarCollapsible::None;
 
         h_flex()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .border_1()
             .border_color(cx.theme().border)
             .h_full()
@@ -360,7 +360,7 @@ impl Render for SidebarStory {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(cx.theme().radius)
+                                    .rounded(cx.theme().style.radii.md)
                                     .bg(cx.theme().success)
                                     .text_color(cx.theme().success_foreground)
                                     .size_8()

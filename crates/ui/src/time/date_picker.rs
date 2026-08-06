@@ -407,12 +407,12 @@ impl RenderOnce for DatePicker {
                             .when(self.disabled, |this| this.opacity(0.5))
                             .border_1()
                             .border_color(cx.theme().input)
-                            .rounded(cx.theme().radius)
+                            .rounded(cx.theme().style.radii.md)
                             .when(is_focused, |this| this.focused_border(cx))
                     })
                     .overflow_hidden()
                     .input_text_size(self.size)
-                    .input_size(self.size)
+                    .input_size(self.size, cx)
                     .when(!state.open && !self.disabled, |this| {
                         this.on_click(
                             window.listener_for(&self.state, DatePickerState::toggle_calendar),
@@ -459,8 +459,8 @@ impl RenderOnce for DatePicker {
                                 .p_3()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .shadow_lg()
-                                .rounded((cx.theme().radius * 2.).min(px(8.)))
+                                .when(cx.theme().style.elevation.enabled, |this| this.shadow_lg())
+                                .rounded((cx.theme().style.radii.md * 2.).min(px(8.)))
                                 .bg(cx.theme().tokens.popover)
                                 .text_color(cx.theme().popover_foreground)
                                 .on_mouse_up_out(

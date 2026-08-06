@@ -1,13 +1,18 @@
 use gpui::{
-    Anchor, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement,
-    Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
+    Anchor, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
+    ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement, Styled,
+    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
 };
 use std::{cell::Cell, rc::Rc};
 
 use crate::{
-    ElementExt, Selectable, StyledExt as _, actions::Cancel, global_state::GlobalState, v_flex,
+    ActiveTheme as _, ElementExt, Selectable, StyledExt as _,
+    actions::Cancel,
+    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
+    global_state::GlobalState,
+    theme::OverlayPlacement,
+    v_flex,
 };
 
 const CONTEXT: &str = "Popover";
@@ -212,7 +217,7 @@ pub struct PopoverState {
     previous_focus_handle: Option<FocusHandle>,
     trigger_bounds: Bounds<Pixels>,
     trigger_bounds_captured: bool,
-    open: bool,
+    lifecycle: OverlayLifecycle,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
 
     _dismiss_subscription: Option<Subscription>,
@@ -226,7 +231,11 @@ impl PopoverState {
             previous_focus_handle: None,
             trigger_bounds: Bounds::default(),
             trigger_bounds_captured: false,
-            open: default_open,
+            lifecycle: if default_open {
+                OverlayLifecycle::opened()
+            } else {
+                OverlayLifecycle::default()
+            },
             on_open_change: None,
             _dismiss_subscription: None,
         }
@@ -234,40 +243,47 @@ impl PopoverState {
 
     /// Check if the popover is open.
     pub fn is_open(&self) -> bool {
-        self.open
+        self.lifecycle.accepts_input()
     }
 
     /// Dismiss the popover if it is open.
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.open {
-            self.toggle_open(window, cx);
-        }
+        self.begin_close(window, cx);
     }
 
     /// Open the popover if it is closed.
     pub fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.open {
-            self.toggle_open(window, cx);
-        }
+        self.begin_open(window, cx);
     }
 
-    fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        self.open = open;
-        if self.open {
-            GlobalState::global_mut(cx).register_deferred_popover(&self.focus_handle);
+    fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if open {
+            self.begin_open(window, cx);
         } else {
-            GlobalState::global_mut(cx).unregister_deferred_popover(&self.focus_handle);
+            self.begin_close(window, cx);
         }
     }
 
     fn toggle_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let opening = !self.open;
-        if opening {
-            // Save the focused element before opening, so we can restore it on close.
+        if self.lifecycle.accepts_input() {
+            self.begin_close(window, cx);
+        } else {
+            self.begin_open(window, cx);
+        }
+    }
+
+    /// Starts or reverses the enter lifecycle and invalidates stale close work.
+    fn begin_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let was_closed = self.lifecycle.phase() == OverlayPhase::Closed;
+        let Some(transition) = self.lifecycle.begin_open() else {
+            return;
+        };
+
+        if was_closed {
             self.previous_focus_handle = window.focused(cx);
         }
-        self.set_open(opening, cx);
-        if self.open {
+        GlobalState::global_mut(cx).register_deferred_popover(&self.focus_handle);
+        if self._dismiss_subscription.is_none() {
             let state = cx.entity();
             let focus_handle = if let Some(tracked_focus_handle) = self.tracked_focus_handle.clone()
             {
@@ -286,20 +302,55 @@ impl PopoverState {
                         window.refresh();
                     }),
                 );
-        } else {
-            self._dismiss_subscription = None;
-            // Restore focus to the element that was focused before the popover opened.
-            if let Some(prev) = self.previous_focus_handle.take() {
-                if self.focus_handle.contains_focused(window, cx) {
-                    prev.focus(window, cx);
-                }
-            }
         }
 
         if let Some(callback) = self.on_open_change.as_ref() {
-            callback(&self.open, window, cx);
+            callback(&true, window, cx);
         }
         cx.notify();
+
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        cx.spawn_in(window, async move |state, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = state.update_in(cx, |state, _, cx| {
+                if state.lifecycle.complete_open(transition) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Starts exit and restores focus only after content is unmounted.
+    fn begin_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(transition) = self.lifecycle.begin_close() else {
+            return;
+        };
+
+        if let Some(callback) = self.on_open_change.as_ref() {
+            callback(&false, window, cx);
+        }
+        cx.notify();
+
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        cx.spawn_in(window, async move |state, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = state.update_in(cx, |state, window, cx| {
+                if !state.lifecycle.complete_close(transition) {
+                    return;
+                }
+
+                GlobalState::global_mut(cx).unregister_deferred_popover(&state.focus_handle);
+                state._dismiss_subscription = None;
+                if let Some(previous) = state.previous_focus_handle.take()
+                    && state.focus_handle.contains_focused(window, cx)
+                {
+                    previous.focus(window, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn on_action_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
@@ -350,9 +401,12 @@ impl Popover {
     ) -> Stateful<Div> {
         v_flex()
             .id("content")
+            .relative()
             .occlude()
             .tab_group()
-            .when(appearance, |this| this.popover_style(cx).p_3())
+            .when(appearance, |this| {
+                this.popover_style(cx).p(cx.theme().style.overlays.padding)
+            })
             .map(|this| match anchor {
                 Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => this.top_1(),
                 Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => this.bottom_1(),
@@ -376,11 +430,15 @@ impl RenderOnce for Popover {
             }
             state.on_open_change = self.on_open_change.clone();
             if let Some(force_open) = force_open {
-                state.set_open(force_open, cx);
+                state.set_open(force_open, window, cx);
             }
         });
 
-        let open = state.read(cx).open;
+        let phase = state.read(cx).lifecycle.phase();
+        let animation_key = state.read(cx).lifecycle.animation_key();
+        let open = state.read(cx).lifecycle.accepts_input();
+        let mounted = state.read(cx).lifecycle.is_mounted();
+        let closing = phase == OverlayPhase::Closing;
         let focus_handle = state.read(cx).focus_handle.clone();
         let trigger_bounds = state.read(cx).trigger_bounds;
         let trigger_bounds_captured = state.read(cx).trigger_bounds_captured;
@@ -406,9 +464,6 @@ impl RenderOnce for Popover {
                 move |_, window, cx| {
                     cx.stop_propagation();
                     state.update(cx, |state, cx| {
-                        // We force set open to false to toggle it correctly.
-                        // Because if the mouse down out will toggle open first.
-                        state.set_open(open, cx);
                         state.toggle_open(window, cx);
                     });
                     cx.notify(parent_view_id);
@@ -434,7 +489,7 @@ impl RenderOnce for Popover {
                 }
             });
 
-        if !open || !trigger_bounds_captured {
+        if !mounted || !trigger_bounds_captured {
             return el;
         }
 
@@ -442,12 +497,14 @@ impl RenderOnce for Popover {
             Self::render_popover_content(self.anchor, self.appearance, window, cx)
                 .track_focus(&focus_handle)
                 .key_context(CONTEXT)
-                .on_action(window.listener_for(&state, PopoverState::on_action_cancel))
+                .when(!closing, |this| {
+                    this.on_action(window.listener_for(&state, PopoverState::on_action_cancel))
+                })
                 .when_some(self.content, |this, content| {
                     this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
                 })
                 .children(self.children)
-                .when(self.overlay_closable, |this| {
+                .when(self.overlay_closable && !closing, |this| {
                     this.on_mouse_down_out({
                         let state = state.clone();
                         move |_, window, cx| {
@@ -458,7 +515,43 @@ impl RenderOnce for Popover {
                         }
                     })
                 })
+                .when(closing, |this| {
+                    this.child(div().absolute().top_0().left_0().size_full().occlude())
+                })
                 .refine_style(&self.style);
+
+        let placement = match self.anchor {
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => OverlayPlacement::Top,
+            Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => {
+                OverlayPlacement::Bottom
+            }
+            Anchor::LeftCenter => OverlayPlacement::Left,
+            Anchor::RightCenter => OverlayPlacement::Right,
+        };
+        let offset = cx.theme().style.overlays.enter_offset(placement);
+        let motion = cx.theme().style.motion;
+        let popover_content = Transition::new(motion.fast())
+            .ease_token(if closing {
+                motion.exit_easing
+            } else {
+                motion.enter_easing
+            })
+            .slide_x(
+                if closing { px(0.) } else { offset.x },
+                if closing { offset.x } else { px(0.) },
+            )
+            .slide_y(
+                if closing { px(0.) } else { offset.y },
+                if closing { offset.y } else { px(0.) },
+            )
+            .fade(
+                if closing { 1.0 } else { 0.0 },
+                if closing { 0.0 } else { 1.0 },
+            )
+            .apply(
+                popover_content,
+                ElementId::NamedInteger("popover-motion".into(), animation_key),
+            );
 
         el.child(Self::render_popover(
             self.anchor,
@@ -473,7 +566,8 @@ impl RenderOnce for Popover {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::MouseButton;
+    use gpui::{MouseButton, TestAppContext};
+    use std::time::Duration;
 
     #[test]
     fn test_popover_builder_chaining() {
@@ -529,5 +623,38 @@ mod tests {
         let pos = Popover::resolved_corner(Anchor::BottomRight, bounds);
         assert_eq!(pos.x, px(300.));
         assert_eq!(pos.y, px(50.));
+    }
+
+    #[gpui::test]
+    fn lifecycle_reopen_invalidates_pending_popover_close(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (state, cx) = cx.add_window_view(|_, cx| PopoverState::new(false, cx));
+
+        state.update_in(cx, |state, window, cx| {
+            state.show(window, cx);
+            state.dismiss(window, cx);
+            state.show(window, cx);
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.lifecycle.phase()),
+            OverlayPhase::Opening
+        );
+
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        assert_eq!(
+            state.read_with(cx, |state, _| state.lifecycle.phase()),
+            OverlayPhase::Open
+        );
+
+        state.update_in(cx, |state, window, cx| state.dismiss(window, cx));
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        assert_eq!(
+            state.read_with(cx, |state, _| state.lifecycle.phase()),
+            OverlayPhase::Closed
+        );
     }
 }

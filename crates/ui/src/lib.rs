@@ -1,6 +1,7 @@
 use gpui::{App, SharedString};
 use std::ops::Deref;
 
+mod accessibility;
 mod async_util;
 mod element_ext;
 mod event;

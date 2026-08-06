@@ -30,21 +30,21 @@
 
 ## Phase 1: Color Theme and Style Preset foundation
 
-### Pull request 1: selection and compatibility contract
+### Pull request 1: independent selection contract
 
-- Add `StyleSelection::ThemeDefault` and explicit preset selection.
+- Make Vega the explicit default Style Preset.
 - Separate Color Theme application from Style Preset application.
 - Keep the global `Theme` as the only resolved runtime authority.
 - Ensure Color Theme switching preserves an explicit preset.
 - Ensure Style Preset switching preserves colors and syntax highlighting.
-- Preserve existing Theme JSON behavior when selection is `ThemeDefault`.
+- Remove Style fields from Theme JSON and keep Color Theme loading independent.
 - Persist Color Theme and Style Preset names independently in the Story application.
 
 ### Pull request 2: semantic color mapping
 
 - Document and test the mapping between shadcn roles and `ThemeColor` or `ThemeTokens`.
 - Add missing roles only when no safe existing semantic role exists.
-- Preserve all existing JSON theme files through fallback resolution.
+- Remove legacy `radius`, `radius.lg`, and `shadow` keys from bundled Theme JSON.
 - Regenerate and validate the theme schema if fields change.
 
 ### Pull request 3: Style Registry and shared metrics
@@ -59,7 +59,7 @@
 
 ### Pull request 4: motion contract
 
-- Add named duration and easing values to Style Presets and resolved `Theme` fields.
+- Add named duration and easing values to resolved `Theme.style` metrics.
 - Add scale and placement-aware translation only if supported without layout animation.
 - Define reduced-motion behavior as an accessibility override, not a preset value.
 - Define overlay states: closed, opening, open, closing.
@@ -69,10 +69,10 @@
 ### Exit criteria
 
 - No P0 component needs a new hard-coded duration.
-- Theme fallback tests cover old theme files.
+- Theme tests cover Color Theme loading without Style mutation.
 - Vega, Nova, and Maia resolve to distinct metrics without component-name branching.
 - Color Theme and Style Preset switching are independent in both orders.
-- `ThemeDefault` reproduces legacy radius and shadow behavior.
+- Vega is selected on initialization and after deserializing runtime Theme state without Style data.
 - Motion helpers have focused interpolation, restart, cancellation, and reduced-motion tests.
 - The foundation adds no DOM or Tailwind abstraction.
 
@@ -91,7 +91,7 @@ Each batch must:
 - Apply the shared size, focus, invalid, disabled, and loading contracts.
 - Include light and dark Story state matrices.
 - Verify representative geometry in Vega, Nova, and Maia.
-- Keep existing public API compatibility.
+- Use the redesigned Theme/Style API consistently.
 - Verify keyboard, mouse, and accessibility state.
 - Compare default, hover, focus, active, selected, disabled, loading, and invalid states where applicable.
 
@@ -203,7 +203,7 @@ Reference baseline
 
 Pause a batch and split the work when any of these occurs:
 
-- A public API break is required.
+- A public API break outside the approved Theme/Style redesign is required.
 - A serialized theme or layout format would become unreadable.
 - A new runtime dependency is required.
 - A GPUI limitation requires layout animation with measurable frame regression.

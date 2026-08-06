@@ -75,7 +75,7 @@ impl Render for DragCompany {
             .text_sm()
             .bg(cx.theme().accent)
             .text_color(cx.theme().accent_foreground)
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .shadow_md()
             .child(self.name.clone())
     }
@@ -157,7 +157,7 @@ impl RenderOnce for CompanyListItem {
             .py_1()
             .overflow_x_hidden()
             .border_1()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .child(
                 h_flex()
                     .items_center()
@@ -205,7 +205,7 @@ impl RenderOnce for CompanyListItem {
                             .child(
                                 h_flex().w(px(65.)).justify_end().child(
                                     div()
-                                        .rounded(cx.theme().radius)
+                                        .rounded(cx.theme().style.radii.md)
                                         .whitespace_nowrap()
                                         .text_size(px(12.))
                                         .px_1()
@@ -825,7 +825,7 @@ impl Render for ListStory {
                     .w_full()
                     .border_1()
                     .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius),
+                    .rounded(cx.theme().style.radii.md),
             )
     }
 }

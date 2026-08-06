@@ -64,21 +64,6 @@
           "type": ["string", "null"],
           "default": null
         },
-        "radius": {
-          "description": "The border radius for general elements, default is 6.",
-          "type": ["number", "null"],
-          "default": 6
-        },
-        "radius.lg": {
-          "description": "The border radius for large elements like Dialogs and Notifications, default is 8.",
-          "type": ["number", "null"],
-          "default": 8
-        },
-        "shadow": {
-          "description": "Set shadows in the theme, for example the Input and Button, default is true.",
-          "type": ["boolean", "null"],
-          "default": true
-        },
         "colors": {
           "description": "The colors of the theme.",
           "$ref": "#/$defs/ThemeConfigColors",

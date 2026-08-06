@@ -33,13 +33,13 @@ Avoid a Cartesian-product explosion. Each state must appear at least once, and h
 
 ### Foundation
 
-- Theme fallback loads existing theme JSON unchanged.
+- Theme JSON loads color, typography, and syntax data without Style fields.
 - Semantic token mapping works for light and dark themes.
-- `ThemeDefault` applies legacy `radius`, `radius.lg`, and `shadow` values.
-- Explicit Style Presets override legacy shape fields without changing colors.
+- Vega is the explicit default Style Preset.
+- Explicit Style Presets change geometry and motion without changing colors.
 - Color Theme switching preserves explicit Style Preset metrics.
 - Style Preset switching preserves Color Theme and syntax highlighting.
-- Unknown preset names fall back predictably without partial application.
+- Unknown preset names return an actionable error and preserve the last valid preset.
 - Vega, Nova, and Maia resolve to distinct expected metrics.
 - Size metrics resolve consistently across component families.
 - Easing functions clamp inputs and produce correct endpoints.
@@ -130,7 +130,7 @@ Required interpretation:
 Run focused checks during development, then the complete suite before release.
 
 ```bash
-cargo fmt --check
+cargo fmt --all -- --check
 cargo clippy -- --deny warnings
 cargo test -p gpui-component
 cargo test --all
@@ -152,6 +152,8 @@ samply record cargo run --release
 ```
 
 ## Pull-request evidence checklist
+
+This is a per-change review template, not the current release status. See [implementation status](./06-implementation-status.md) for completed and remaining evidence.
 
 - [ ] Pinned shadcn source files and states are identified.
 - [ ] Light and dark Story states are updated.

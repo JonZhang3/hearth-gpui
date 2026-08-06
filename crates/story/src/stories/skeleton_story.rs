@@ -60,8 +60,18 @@ impl Render for SkeletonStory {
                     .child(
                         v_flex()
                             .gap_2()
-                            .child(Skeleton::new().w(px(250.)).h_4().rounded(cx.theme().radius))
-                            .child(Skeleton::new().w(px(200.)).h_4().rounded(cx.theme().radius)),
+                            .child(
+                                Skeleton::new()
+                                    .w(px(250.))
+                                    .h_4()
+                                    .rounded(cx.theme().style.radii.md),
+                            )
+                            .child(
+                                Skeleton::new()
+                                    .w(px(200.))
+                                    .h_4()
+                                    .rounded(cx.theme().style.radii.md),
+                            ),
                     ),
             )
             .child(
@@ -72,14 +82,22 @@ impl Render for SkeletonStory {
                             Skeleton::new()
                                 .w(px(250.))
                                 .h(px(125.))
-                                .rounded(cx.theme().radius),
+                                .rounded(cx.theme().style.radii.md),
                         )
                         .child(
                             v_flex()
                                 .gap_2()
-                                .child(Skeleton::new().w(px(250.)).h_4().rounded(cx.theme().radius))
                                 .child(
-                                    Skeleton::new().w(px(200.)).h_4().rounded(cx.theme().radius),
+                                    Skeleton::new()
+                                        .w(px(250.))
+                                        .h_4()
+                                        .rounded(cx.theme().style.radii.md),
+                                )
+                                .child(
+                                    Skeleton::new()
+                                        .w(px(200.))
+                                        .h_4()
+                                        .rounded(cx.theme().style.radii.md),
                                 ),
                         ),
                 ),

@@ -368,3 +368,11 @@ impl Render for PaymentView {
 5. **Limit Options**: Keep the number of radio options reasonable (typically 2-7 options)
 6. **Group Related Options**: Use visual grouping and clear headings for multiple radio groups
 7. **Responsive Design**: Consider using horizontal layout for fewer options and vertical for more options
+
+## Invalid state
+
+```rust
+Radio::new("invalid-option").label("Choose an option").invalid(true)
+```
+
+The invalid state uses the semantic danger border and focus ring and maps to AccessKit `Invalid::True`.

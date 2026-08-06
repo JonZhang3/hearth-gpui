@@ -265,7 +265,7 @@ impl SidebarItem for SidebarMenuItem {
                     .flex_shrink_0()
                     .p_2()
                     .gap_x_2()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .text_sm()
                     .when(is_hoverable, |this| {
                         this.hover(|this| {

@@ -17,6 +17,33 @@ cx.theme().foreground
 
 因此，如果你希望组件使用当前主题的颜色，组件或视图就需要运行在带有 [App] 上下文的环境中。
 
+## Color Theme 与 Style Preset
+
+Color Theme 与 Style Preset 是两个独立输入。Color Theme 管理语义颜色、背景、语法高亮和字体；Style Preset 管理组件几何、密度、圆角、焦点环几何、阴影、Overlay 间距和动画。组件只读取全局 `Theme` 中已经解析的值：
+
+```rs
+use gpui::{App, SharedString};
+use gpui_component::{StylePreset, StyleRegistry, Theme};
+
+pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
+    // Vega 是默认 preset；Nova 更紧凑，Maia 更宽松。
+    Theme::set_style("nova", cx)?;
+
+    // 自定义 preset 在 Rust 中注册，并在可用前完成校验。
+    let mut custom = StylePreset::vega();
+    custom.id = SharedString::from("product");
+    custom.name = SharedString::from("Product");
+    StyleRegistry::register(custom, cx)?;
+    Theme::set_style("product", cx)
+}
+```
+
+调用 `Theme::set_style` 不会改变当前 Color Theme 和语法高亮；通过 `Theme::set_color_theme` 或 `Theme::apply_config` 应用 Color Theme 也不会改变当前 Style Preset。Style Preset 不从 JSON 加载，也不支持继承或热重载。注册时会拒绝空标识、非有限值或负数指标、顺序错误的控件高度、圆角、数据行高或动画时长、无效 Overlay scale，以及重复 id。
+
+### 从扁平外观字段迁移
+
+原有的 `Theme.radius`、`Theme.radius_lg`、`Theme.shadow` 及对应 Theme JSON 字段已经移除。组件代码应改用 `cx.theme().style.radii.md`、`cx.theme().style.controls`、`cx.theme().style.elevation.enabled` 等语义指标。Theme JSON 仅保留颜色、字体、语法高亮和运行时主题设置。
+
 ## 渐变背景
 
 主题颜色值继续兼容既有的字符串格式：
@@ -74,4 +101,5 @@ pub fn init(cx: &mut App) {
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
+[StyleRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.StyleRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

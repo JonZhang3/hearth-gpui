@@ -307,7 +307,7 @@ impl RenderOnce for NumberInput {
             .on_action(window.listener_for(&self.state, InputState::on_action_increment))
             .on_action(window.listener_for(&self.state, InputState::on_action_decrement))
             .flex_1()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .refine_style(&self.style)
             .when(self.disabled, |this| this.opacity(0.5))
             .child(

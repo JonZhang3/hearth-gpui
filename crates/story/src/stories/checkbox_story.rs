@@ -157,7 +157,7 @@ impl Render for CheckboxStory {
                             .p_2()
                             .border_1()
                             .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius)
+                            .rounded(cx.theme().style.radii.md)
                             .child(
                                 Checkbox::new("label-wrap-checkbox")
                                     .checked(self.check6)

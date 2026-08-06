@@ -241,7 +241,7 @@ impl Render for TreeStory {
 
                                             ListItem::new(ix)
                                                 .w_full()
-                                                .rounded(cx.theme().radius)
+                                                .rounded(cx.theme().style.radii.md)
                                                 .px_3()
                                                 .pl(px(16.) * entry.depth() + px(12.))
                                                 .child(
@@ -272,7 +272,7 @@ impl Render for TreeStory {
                                 .p_1()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(cx.theme().radius)
+                                .rounded(cx.theme().style.radii.md)
                                 .h(px(540.)),
                             )
                             .child(

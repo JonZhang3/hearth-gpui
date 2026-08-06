@@ -7,6 +7,7 @@ use gpui::{
     RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window,
     div, px, relative,
 };
+use rust_i18n::t;
 
 use crate::button::{Button, ButtonVariants as _};
 use crate::input::clear_button;
@@ -46,6 +47,8 @@ pub struct Input {
     cleanable: bool,
     mask_toggle: bool,
     disabled: bool,
+    read_only: bool,
+    invalid: bool,
     bordered: bool,
     focus_bordered: bool,
     tab_index: isize,
@@ -91,6 +94,8 @@ impl Input {
             cleanable: false,
             mask_toggle: false,
             disabled: false,
+            read_only: false,
+            invalid: false,
             bordered: true,
             focus_bordered: true,
             tab_index: 0,
@@ -176,6 +181,18 @@ impl Input {
         self
     }
 
+    /// Set the input to read-only while preserving focus, selection, and copy.
+    pub fn read_only(mut self, read_only: bool) -> Self {
+        self.read_only = read_only;
+        self
+    }
+
+    /// Set whether the input value is invalid.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
+        self
+    }
+
     /// Set the tab index for the input, default is 0.
     pub fn tab_index(mut self, index: isize) -> Self {
         self.tab_index = index;
@@ -196,6 +213,11 @@ impl Input {
     fn render_toggle_mask_button(state: &Entity<InputState>, cx: &App) -> impl IntoElement {
         let masked = state.read(cx).masked;
         Button::new("toggle-mask")
+            .aria_label(if masked {
+                t!("Input.Show Password")
+            } else {
+                t!("Input.Hide Password")
+            })
             .icon(if masked {
                 IconName::Eye
             } else {
@@ -370,6 +392,7 @@ impl RenderOnce for Input {
         self.state.update(cx, |state, _| {
             state.context_menu_builder = self.context_menu_builder.clone();
             state.disabled = self.disabled;
+            state.read_only = self.read_only;
             state.size = self.size;
 
             // Only for single line mode
@@ -409,6 +432,8 @@ impl RenderOnce for Input {
         let bg = if state.disabled { bg.opacity(0.5) } else { bg };
         let border_color = if state.disabled {
             cx.theme().input.opacity(0.5)
+        } else if self.invalid {
+            cx.theme().danger
         } else {
             cx.theme().input
         };
@@ -417,12 +442,13 @@ impl RenderOnce for Input {
         let suffix = self.suffix;
         let show_clear_button = self.cleanable
             && !state.disabled
+            && !state.read_only
             && !state.loading
             && state.text.len() > 0
             && state.mode.is_single_line();
         let has_suffix = suffix.is_some() || state.loading || self.mask_toggle || show_clear_button;
 
-        div()
+        let element = div()
             .id(("input", self.state.entity_id()))
             .role(accessibility_role)
             .when_some(accessibility_value, |this, value| this.aria_value(value))
@@ -430,7 +456,7 @@ impl RenderOnce for Input {
             .key_context(crate::input::CONTEXT)
             .track_focus(&state.focus_handle.clone())
             .tab_index(self.tab_index)
-            .when(!state.disabled, |this| {
+            .when(!state.disabled && !state.read_only, |this| {
                 this.on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
                     Self::handle_accessibility_set_value(&accessibility_state, data, window, cx);
                 })
@@ -514,9 +540,9 @@ impl RenderOnce for Input {
             .on_scroll_wheel(window.listener_for(&self.state, InputState::on_scroll_wheel))
             .size_full()
             .line_height(LINE_HEIGHT)
-            .input_px(self.size)
-            .input_py(self.size)
-            .input_h(self.size)
+            .input_px(self.size, cx)
+            .input_py(self.size, cx)
+            .input_h(self.size, cx)
             .input_text_size(self.size)
             .when(!self.disabled, |this| this.cursor_text())
             .items_center()
@@ -526,13 +552,18 @@ impl RenderOnce for Input {
             })
             .when(self.appearance, |this| {
                 this.bg(bg)
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .when(self.bordered, |this| {
-                        this.border_color(border_color)
-                            .border_1()
-                            .when(focused && self.focus_bordered, |this| {
-                                this.focused_border(cx)
-                            })
+                        this.border_color(border_color).border_1().when(
+                            focused && self.focus_bordered,
+                            |this| {
+                                if self.invalid {
+                                    this.border_color(cx.theme().danger)
+                                } else {
+                                    this.focused_border(cx)
+                                }
+                            },
+                        )
                     })
             })
             .items_center()
@@ -551,7 +582,7 @@ impl RenderOnce for Input {
                 this.child(self.state.clone())
             })
             .when(has_suffix, |this| {
-                this.pr(self.size.input_px()).child(
+                this.pr(self.size.input_px(cx)).child(
                     h_flex()
                         .id("suffix")
                         .gap(gap_x)
@@ -577,7 +608,14 @@ impl RenderOnce for Input {
                         })
                         .children(suffix),
                 )
-            })
+            });
+
+        crate::accessibility::accessibility_state(
+            element,
+            self.invalid,
+            self.read_only,
+            self.disabled,
+        )
     }
 }
 

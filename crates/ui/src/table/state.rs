@@ -625,8 +625,8 @@ where
             .count()
     }
 
-    fn page_item_count(&self) -> usize {
-        let row_height = self.options.size.table_row_height();
+    fn page_item_count(&self, cx: &App) -> usize {
+        let row_height = self.options.size.table_row_height(cx);
         let height = self.bounds.size.height;
         let count = (height / row_height).floor() as usize;
         count.saturating_sub(1).max(1)
@@ -882,7 +882,7 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let step = self.page_item_count();
+        let step = self.page_item_count(cx);
 
         // Cell selection mode: move up by page within the same column
         if self.selection_mode.is_cell() {
@@ -913,7 +913,7 @@ where
             return;
         }
 
-        let step = self.page_item_count();
+        let step = self.page_item_count(cx);
 
         // Cell selection mode: move down by page within the same column
         if self.selection_mode.is_cell() {
@@ -1205,7 +1205,7 @@ where
         _row_ix: Option<usize>,
         col_ix: usize,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Div {
         let Some(col_group) = self.col_groups.get(col_ix) else {
             return div();
@@ -1220,7 +1220,7 @@ where
             .flex_shrink_0()
             .overflow_hidden()
             .whitespace_nowrap()
-            .table_cell_size(self.options.size)
+            .table_cell_size(self.options.size, cx)
             .map(|this| match col_padding {
                 Some(padding) => this
                     .pl(padding.left)
@@ -1370,7 +1370,7 @@ where
             .border_color(cx.theme().table_row_border)
             .bg(cx.theme().tokens.table_head)
             .flex_shrink_0()
-            .table_cell_size(self.options.size)
+            .table_cell_size(self.options.size, cx)
             .when(!is_head, |this| {
                 this.when(self.row_selectable, |this| {
                     this.on_click(cx.listener(move |table, _, _window, cx| {
@@ -1405,7 +1405,7 @@ where
             div()
                 .id(("icon-sort", col_ix))
                 .p(px(2.))
-                .rounded(cx.theme().radius / 2.)
+                .rounded(cx.theme().style.radii.md / 2.)
                 .map(|this| match is_on {
                     true => this,
                     false => this.opacity(0.5),
@@ -1452,7 +1452,7 @@ where
                             .when_some(paddings, |this, paddings| {
                                 // Leave right space for the sort icon, if this column have custom padding
                                 let offset_pr =
-                                    self.options.size.table_cell_padding().right - paddings.right;
+                                    self.options.size.table_cell_padding(cx).right - paddings.right;
                                 this.pr(offset_pr.max(px(0.)))
                             })
                             .children(self.render_sort_icon(col_ix, &col_group, window, cx)),
@@ -1651,7 +1651,7 @@ where
                             layout.iter().enumerate().map(|(_row_ix, row_cells)| {
                                 h_flex()
                                     .min_w_full()
-                                    .h(self.options.size.table_row_height())
+                                    .h(self.options.size.table_row_height(cx))
                                     .border_b_1()
                                     .border_color(cx.theme().border)
                                     .children(row_cells.iter().filter_map(|cell| {
@@ -1712,7 +1712,7 @@ where
                             let is_leaf_row = row_ix + 1 == layout_len;
                             h_flex()
                                 .min_w_full()
-                                .h(self.options.size.table_row_height())
+                                .h(self.options.size.table_row_height(cx))
                                 .border_b_1()
                                 .border_color(cx.theme().border)
                                 .map(|this| {
@@ -1799,7 +1799,7 @@ where
         let is_stripe_row = self.options.stripe && row_ix % 2 != 0;
         let is_selected = self.selected_row == Some(row_ix);
         let view = cx.entity().clone();
-        let row_height = self.options.size.table_row_height();
+        let row_height = self.options.size.table_row_height(cx);
 
         if row_ix < rows_count {
             let is_last_row = row_ix + 1 == rows_count;
@@ -2100,7 +2100,7 @@ where
                             .w(px(40.))
                             .h_full()
                             .flex_shrink_0()
-                            .table_cell_size(self.options.size),
+                            .table_cell_size(self.options.size, cx),
                     )
                 })
                 .children((0..columns_count).map(|col_ix| {
@@ -2176,13 +2176,13 @@ where
         &mut self,
 
         _: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         let header_rows = self.header_layout.len().max(1);
         Some(
             div()
                 .absolute()
-                .top(self.options.size.table_row_height() * header_rows as f32)
+                .top(self.options.size.table_row_height(cx) * header_rows as f32)
                 .right_0()
                 .bottom_0()
                 .w(Scrollbar::width())
@@ -2231,7 +2231,7 @@ where
         let rows_count = self.delegate.rows_count(cx);
         let loading = self.delegate.loading(cx);
 
-        let row_height = self.options.size.table_row_height();
+        let row_height = self.options.size.table_row_height(cx);
         let total_height = self
             .vertical_scroll_handle
             .0

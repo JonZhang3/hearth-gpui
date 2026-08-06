@@ -136,6 +136,10 @@ Notification::new()
 use gpui_component::text::markdown;
 
 let markdown_content = r#"
+## 可访问性
+
+Notification 会暴露 AccessKit Alert role。设置标题时使用标题作为可访问名称，否则使用消息文本；仅图标关闭按钮使用本地化的“关闭”标签。
+
 ## Custom Notification
 - **Feature**: New dashboard available
 - **Status**: Ready to use

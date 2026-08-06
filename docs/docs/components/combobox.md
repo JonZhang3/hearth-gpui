@@ -267,6 +267,15 @@ let values = state.read(cx).selected_values(); // Vec<Value>
 let value = state.read(cx).selected_value(); // Option<Value>
 ```
 
+## Accessibility
+
+Provide an accessible trigger name with `aria_label`. Selected item titles are exposed as the AccessKit value; expanded and disabled states are exposed automatically.
+
+```rust
+Combobox::new(&state)
+    .aria_label("Framework")
+```
+
 ## Keyboard Shortcuts
 
 | Key       | Action                                   |

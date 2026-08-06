@@ -1,11 +1,12 @@
 use gpui::{
-    AnyElement, App, AppContext as _, Context, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _,
-    Render, RenderOnce, SharedString, Styled as _, Subscription, Window, div,
+    AccessibleAction, AnyElement, App, AppContext as _, Context, Empty, Entity, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, KeyDownEvent, MouseButton,
+    MouseDownEvent, ParentElement as _, Render, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
     prelude::FluentBuilder, px,
 };
 
-use super::{InputEvent, blink_cursor::BlinkCursor, input::input_style, state::InputState};
+use super::{InputEvent, Paste, blink_cursor::BlinkCursor, input::input_style, state::InputState};
 use crate::Root;
 use crate::{ActiveTheme, Disableable, Icon, IconName, Sizable, Size, h_flex, v_flex};
 
@@ -125,6 +126,16 @@ impl OtpState {
         })
     }
 
+    /// Normalizes supported digit forms and truncates them to the configured
+    /// OTP length.
+    fn normalize_digits(value: &str, length: usize) -> String {
+        value
+            .chars()
+            .filter_map(|character| Self::to_digit_char(&character.to_string()))
+            .take(length)
+            .collect()
+    }
+
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let mut chars: Vec<char> = self.value.chars().collect();
         let ix = chars.len();
@@ -174,6 +185,49 @@ impl OtpState {
         cx.notify()
     }
 
+    /// Replaces the OTP value with normalized clipboard digits.
+    fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(clipboard) = cx.read_from_clipboard() else {
+            return;
+        };
+        let Some(text) = clipboard.text() else {
+            return;
+        };
+
+        let value = Self::normalize_digits(&text, self.length);
+        if value.is_empty() {
+            return;
+        }
+
+        self.value = value.into();
+        self.sync_to_input_state(window, cx);
+        self.pause_blink_cursor(cx);
+        if self.value.chars().count() == self.length {
+            cx.emit(InputEvent::Change);
+        }
+        cx.notify();
+    }
+
+    /// Applies an accessibility `SetValue` action using the same digit
+    /// normalization and length limit as keyboard and clipboard input.
+    fn set_accessibility_value(
+        &mut self,
+        data: Option<&gpui::accesskit::ActionData>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(gpui::accesskit::ActionData::Value(value)) = data else {
+            return;
+        };
+        let normalized = Self::normalize_digits(value, self.length);
+        self.value = normalized.into();
+        self.sync_to_input_state(window, cx);
+        if self.value.chars().count() == self.length {
+            cx.emit(InputEvent::Change);
+        }
+        cx.notify();
+    }
+
     fn on_focus(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.sync_to_input_state(window, cx);
 
@@ -214,6 +268,18 @@ impl OtpState {
         });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pasted_otp_digits_are_normalized_and_truncated() {
+        assert_eq!(OtpState::normalize_digits("1 a２-345", 4), "1234");
+        assert_eq!(OtpState::normalize_digits("no digits", 6), "");
+        assert_eq!(OtpState::normalize_digits("１２３", 2), "12");
+    }
+}
 impl Focusable for OtpState {
     fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
         self.focus_handle.clone()
@@ -240,6 +306,7 @@ pub struct OtpInput {
     number_of_groups: usize,
     size: Size,
     disabled: bool,
+    invalid: bool,
 }
 
 impl OtpInput {
@@ -250,12 +317,19 @@ impl OtpInput {
             number_of_groups: 2,
             size: Size::Medium,
             disabled: false,
+            invalid: false,
         }
     }
 
     /// Set number of groups in the OTP Input.
     pub fn groups(mut self, n: usize) -> Self {
         self.number_of_groups = n;
+        self
+    }
+
+    /// Set whether the OTP value is invalid.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
         self
     }
 }
@@ -290,10 +364,9 @@ impl RenderOnce for OtpInput {
             .chars()
             .count()
             .min(state.length.saturating_sub(1));
-        let mut groups: Vec<Vec<AnyElement>> = Vec::with_capacity(self.number_of_groups);
-        let mut group_ix = 0;
-        let group_items_count = state.length / self.number_of_groups;
-        for _ in 0..self.number_of_groups {
+        let group_count = self.number_of_groups.max(1).min(state.length.max(1));
+        let mut groups: Vec<Vec<AnyElement>> = Vec::with_capacity(group_count);
+        for _ in 0..group_count {
             groups.push(vec![]);
         }
 
@@ -301,9 +374,7 @@ impl RenderOnce for OtpInput {
 
         for ix in 0..state.length {
             let c = state.value.chars().nth(ix);
-            if ix % group_items_count == 0 && ix != 0 {
-                group_ix += 1;
-            }
+            let group_ix = ix * group_count / state.length;
 
             let is_input_focused = ix == cursor_ix && is_focused;
 
@@ -311,14 +382,24 @@ impl RenderOnce for OtpInput {
                 h_flex()
                     .id(ix)
                     .border_1()
-                    .border_color(cx.theme().input)
+                    .border_color(if self.invalid {
+                        cx.theme().danger
+                    } else {
+                        cx.theme().input
+                    })
                     .bg(bg)
                     .text_color(fg)
                     .when(self.disabled, |this| this.opacity(0.5))
-                    .when(is_input_focused, |this| this.border_color(cx.theme().ring))
+                    .when(is_input_focused, |this| {
+                        this.border_color(if self.invalid {
+                            cx.theme().danger
+                        } else {
+                            cx.theme().ring
+                        })
+                    })
                     .items_center()
                     .justify_center()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .text_size(text_size)
                     .map(|this| match self.size {
                         Size::XSmall => this.w_6().h_6(),
@@ -360,11 +441,22 @@ impl RenderOnce for OtpInput {
             );
         }
 
-        v_flex()
+        let accessibility_value =
+            (window.is_a11y_active() && !state.masked).then(|| state.value.to_string());
+        let accessibility_state = self.state.clone();
+        let element = v_flex()
             .id(("otp-input", self.state.entity_id()))
+            .role(Role::TextInput)
+            .when_some(accessibility_value, |this, value| this.aria_value(value))
             .track_focus(&self.state.read(cx).focus_handle)
             .when(!self.disabled, |this| {
                 this.on_key_down(window.listener_for(&self.state, OtpState::on_key_down))
+                    .on_action(window.listener_for(&self.state, OtpState::paste))
+                    .on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
+                        accessibility_state.update(cx, |state, cx| {
+                            state.set_accessibility_value(data, window, cx);
+                        });
+                    })
             })
             .items_center()
             .child(
@@ -373,6 +465,8 @@ impl RenderOnce for OtpInput {
                         .into_iter()
                         .map(|inputs| h_flex().items_center().gap_1().children(inputs)),
                 ),
-            )
+            );
+
+        crate::accessibility::accessibility_state(element, self.invalid, false, self.disabled)
     }
 }

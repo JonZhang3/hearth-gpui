@@ -232,7 +232,7 @@ impl RenderOnce for Kbd {
             .px_1()
             .min_w_5()
             .text_center()
-            .rounded(cx.theme().radius.half())
+            .rounded(cx.theme().style.radii.md.half())
             .line_height(relative(1.))
             .text_xs()
             .whitespace_normal()

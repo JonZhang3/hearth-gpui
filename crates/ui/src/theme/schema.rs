@@ -59,16 +59,6 @@ pub struct ThemeConfig {
     #[serde(rename = "mono_font.size")]
     pub mono_font_size: Option<f32>,
 
-    /// The border radius for general elements, default is 6.
-    #[serde(rename = "radius")]
-    pub radius: Option<usize>,
-    /// The border radius for large elements like Dialogs and Notifications, default is 8.
-    #[serde(rename = "radius.lg")]
-    pub radius_lg: Option<usize>,
-    /// Set shadows in the theme, for example the Input and Button, default is true.
-    #[serde(rename = "shadow")]
-    pub shadow: Option<bool>,
-
     /// The colors of the theme.
     pub colors: ThemeConfigColors,
     /// The highlight theme, this part is combilbility with `style` section in Zed theme.
@@ -926,16 +916,6 @@ impl Theme {
         if let Some(mono_font_size) = config.mono_font_size {
             self.mono_font_size = px(mono_font_size);
         }
-        if let Some(radius) = config.radius {
-            self.radius = px(radius as f32);
-        }
-        if let Some(radius_lg) = config.radius_lg {
-            self.radius_lg = px(radius_lg as f32);
-        }
-        if let Some(shadow) = config.shadow {
-            self.shadow = shadow;
-        }
-
         self.tokens = self.colors.apply_config(&config, &default_colors);
         self.mode = config.mode;
     }

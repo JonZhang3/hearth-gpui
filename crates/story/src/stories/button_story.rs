@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use gpui_component::{
-    ActiveTheme, Disableable as _, Icon, IconName, Selectable as _, Sizable as _, Theme,
+    ActiveTheme, Disableable as _, Icon, IconName, Selectable as _, Sizable as _,
     button::{Button, ButtonCustomVariant, ButtonGroup, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
@@ -139,17 +139,6 @@ impl Render for ButtonStory {
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.compact = !view.compact;
                                 cx.notify();
-                            })),
-                    )
-                    .child(
-                        Checkbox::new("shadow-button")
-                            .label("Shadow")
-                            .checked(cx.theme().shadow)
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                let mut theme = cx.theme().clone();
-                                theme.shadow = !theme.shadow;
-                                cx.set_global::<Theme>(theme);
-                                window.refresh();
                             })),
                     ),
             )

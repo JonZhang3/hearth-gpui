@@ -107,7 +107,7 @@ impl RenderOnce for CompletionMenuItem {
             .p_1()
             .text_xs()
             .line_height(relative(1.))
-            .rounded(cx.theme().radius.half())
+            .rounded(cx.theme().style.radii.md.half())
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {

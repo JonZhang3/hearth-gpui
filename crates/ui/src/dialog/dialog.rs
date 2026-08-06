@@ -1,18 +1,18 @@
-use std::{rc::Rc, sync::LazyLock, time::Duration};
+use std::rc::Rc;
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
     FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
-    Pixels, Point, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window, WindowControlArea, actions, anchored, div, hsla, point, prelude::FluentBuilder,
-    px,
+    Pixels, Point, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, WindowControlArea, actions, anchored, div, hsla, point,
+    prelude::FluentBuilder, px,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
-    TITLE_BAR_HEIGHT, WindowExt as _,
-    animation::cubic_bezier,
+    ActiveTheme as _, Disableable as _, FocusTrapElement as _, IconName, Root, Sizable as _,
+    StyledExt, TITLE_BAR_HEIGHT, WindowExt as _,
+    animation::OverlayPhase,
     button::{Button, ButtonVariant, ButtonVariants as _},
     dialog::{DialogContent, DialogTitle},
     scroll::ScrollableElement as _,
@@ -20,7 +20,6 @@ use crate::{
     v_flex,
 };
 
-pub static ANIMATION_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs_f64(0.25));
 const CONTEXT: &str = "Dialog";
 
 actions!(dialog, [CancelDialog, ConfirmDialog]);
@@ -210,12 +209,14 @@ pub struct Dialog {
     pub(crate) content_builder: Option<ContentBuilderFn>,
     pub(crate) props: DialogProps,
     pub(crate) a11y_role: Role,
+    pub(crate) a11y_label: Option<SharedString>,
 
     button_props: DialogButtonProps,
 
     /// This will be change when open the dialog, the focus handle is create when open the dialog.
     pub(crate) focus_handle: FocusHandle,
     pub(crate) layer_ix: usize,
+    pub(crate) lifecycle_phase: OverlayPhase,
 }
 
 pub(crate) fn overlay_color(overlay: bool, cx: &App) -> Hsla {
@@ -240,8 +241,10 @@ impl Dialog {
             props: DialogProps::default(),
             children: Vec::new(),
             layer_ix: 0,
+            lifecycle_phase: OverlayPhase::Open,
             button_props: DialogButtonProps::default(),
             a11y_role: Role::Dialog,
+            a11y_label: None,
         }
     }
 
@@ -265,6 +268,12 @@ impl Dialog {
     /// Sets the title of the dialog.
     pub fn title(mut self, title: impl IntoElement) -> Self {
         self.title = Some(title.into_any_element());
+        self
+    }
+
+    /// Sets the accessible name announced for the dialog surface.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.a11y_label = Some(label.into());
         self
     }
 
@@ -414,6 +423,8 @@ impl Dialog {
         let style = self.style.clone();
         let props = self.props.clone();
         let button_props = self.button_props.clone();
+        let a11y_role = self.a11y_role;
+        let a11y_label = self.a11y_label.clone();
 
         div()
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -421,8 +432,9 @@ impl Dialog {
                 let style = style.clone();
                 let props = props.clone();
                 let button_props = button_props.clone();
+                let a11y_label = a11y_label.clone();
                 window.open_dialog(cx, move |dialog, _, _| {
-                    dialog
+                    let mut dialog = dialog
                         .refine_style(&style)
                         .button_props(button_props.clone())
                         .with_props(props.clone())
@@ -435,7 +447,10 @@ impl Dialog {
                                     content
                                 }
                             }
-                        })
+                        });
+                    dialog.a11y_role = a11y_role;
+                    dialog.a11y_label = a11y_label.clone();
+                    dialog
                 });
                 cx.stop_propagation();
             })
@@ -486,8 +501,16 @@ impl RenderOnce for Dialog {
             paddings.bottom = pb.to_pixels(base_size, rem_size);
         }
 
-        let animation =
-            Animation::new(*ANIMATION_DURATION).with_easing(cubic_bezier(0.32, 0.72, 0., 1.));
+        let closing = self.lifecycle_phase == OverlayPhase::Closing;
+        let motion = cx.theme().style.motion;
+        let elevation_enabled = cx.theme().style.elevation.enabled;
+        let animation = Animation::new(motion.emphasis()).with_easing(move |delta| {
+            if closing {
+                motion.exit_easing.sample(delta)
+            } else {
+                motion.enter_easing.sample(delta)
+            }
+        });
 
         anchored()
             .position(point(window_paddings.left, window_paddings.top))
@@ -501,7 +524,7 @@ impl RenderOnce for Dialog {
                     .when(self.props.overlay_visible, |this| {
                         this.bg(overlay_color(self.props.overlay, cx))
                     })
-                    .when(self.props.overlay, |this| {
+                    .when(self.props.overlay && !closing, |this| {
                         // Only the last dialog owns the `mouse down - close dialog` event.
                         if (self.layer_ix + 1) != Root::read(window, cx).active_dialogs.len() {
                             return this;
@@ -532,12 +555,13 @@ impl RenderOnce for Dialog {
                         v_flex()
                             .id(layer_ix)
                             .role(self.a11y_role)
+                            .when_some(self.a11y_label, |this, label| this.aria_label(label))
                             .track_focus(&self.focus_handle)
                             .focus_trap(format!("dialog-{}", layer_ix), &self.focus_handle)
                             .bg(cx.theme().tokens.background)
                             .border_1()
                             .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .min_h_24()
                             .pt(paddings.top)
                             .pb(paddings.bottom)
@@ -545,7 +569,7 @@ impl RenderOnce for Dialog {
                             .refine_style(&self.style)
                             .px_0()
                             .key_context(CONTEXT)
-                            .when(self.props.keyboard, |this| {
+                            .when(self.props.keyboard && !closing, |this| {
                                 this.on_action({
                                     let on_cancel = on_cancel.clone();
                                     let on_close = on_close.clone();
@@ -633,12 +657,14 @@ impl RenderOnce for Dialog {
                                 let right = (paddings.right - px(10.)).max(px(8.));
 
                                 Button::new("close")
+                                    .aria_label(t!("Common.Close"))
                                     .absolute()
                                     .top(top)
                                     .right(right)
                                     .small()
                                     .ghost()
                                     .icon(IconName::Close)
+                                    .disabled(closing)
                                     .on_click({
                                         let on_cancel = self.button_props.on_cancel.clone();
                                         let on_close = self.button_props.on_close.clone();
@@ -649,29 +675,44 @@ impl RenderOnce for Dialog {
                                         }
                                     })
                             }))
-                            .with_animation("slide-down", animation.clone(), move |this, delta| {
-                                // This is equivalent to `shadow_xl` with an extra opacity.
-                                let shadow = vec![
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(20.)),
-                                        blur_radius: px(25.),
-                                        spread_radius: px(-5.),
-                                        inset: false,
-                                    },
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(8.)),
-                                        blur_radius: px(10.),
-                                        spread_radius: px(-6.),
-                                        inset: false,
-                                    },
-                                ];
-                                this.top(y * delta).shadow(shadow)
+                            .when(closing, |this| {
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
                             })
+                            .with_animation(
+                                ElementId::NamedInteger("dialog-motion".into(), closing as u64),
+                                animation.clone(),
+                                move |this, delta| {
+                                    let delta = if closing { 1.0 - delta } else { delta };
+                                    // This is equivalent to `shadow_xl` with an extra opacity.
+                                    let shadow = elevation_enabled.then(|| {
+                                        vec![
+                                            BoxShadow {
+                                                color: hsla(0., 0., 0., 0.1 * delta),
+                                                offset: point(px(0.), px(20.)),
+                                                blur_radius: px(25.),
+                                                spread_radius: px(-5.),
+                                                inset: false,
+                                            },
+                                            BoxShadow {
+                                                color: hsla(0., 0., 0., 0.1 * delta),
+                                                offset: point(px(0.), px(8.)),
+                                                blur_radius: px(10.),
+                                                spread_radius: px(-6.),
+                                                inset: false,
+                                            },
+                                        ]
+                                    });
+                                    this.top(y * delta)
+                                        .when_some(shadow, |this, shadow| this.shadow(shadow))
+                                },
+                            )
                             .selection_scope(SelectionScope::Dialog(layer_ix)),
                     )
-                    .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
+                    .with_animation(
+                        ElementId::NamedInteger("dialog-overlay".into(), closing as u64),
+                        animation,
+                        move |this, delta| this.opacity(if closing { 1.0 - delta } else { delta }),
+                    ),
             )
             .into_any_element()
     }

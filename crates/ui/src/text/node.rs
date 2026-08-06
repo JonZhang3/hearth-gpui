@@ -762,7 +762,7 @@ impl CodeBlock {
                     .w_full()
                     .min_w_0()
                     .p_3()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .bg(cx.theme().tokens.muted)
                     .font_family(cx.theme().mono_font_family.clone())
                     .text_size(cx.theme().mono_font_size)
@@ -782,7 +782,7 @@ impl CodeBlock {
                                 .top_2()
                                 .right_2()
                                 .bg(cx.theme().tokens.muted)
-                                .rounded(cx.theme().radius)
+                                .rounded(cx.theme().style.radii.md)
                                 .child(actions(&self, window, cx)),
                         )
                     }),
@@ -1282,7 +1282,7 @@ impl BlockNode {
                         .size(rems(0.875))
                         .items_center()
                         .justify_center()
-                        .rounded(cx.theme().radius.half())
+                        .rounded(cx.theme().style.radii.md.half())
                         .border_1()
                         .border_color(cx.theme().primary)
                         .text_color(cx.theme().primary_foreground)
@@ -1635,7 +1635,7 @@ impl BlockNode {
                         .w(px(min_total_w))
                         .border_1()
                         .border_color(cx.theme().border)
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .children(rows),
                 ),
             )
@@ -1707,7 +1707,7 @@ impl BlockNode {
                     .w_full()
                     .border_1()
                     .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .overflow_hidden()
                     .children(rows)
                     .refine_style(&style.table),

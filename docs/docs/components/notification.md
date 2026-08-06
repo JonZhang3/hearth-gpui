@@ -147,6 +147,10 @@ Notification::new()
 use gpui_component::text::markdown;
 
 let markdown_content = r#"
+## Accessibility
+
+Notification exposes an AccessKit Alert role. Its title, or message when no title is set, becomes the accessible name. The icon-only close button uses a localized Close label.
+
 ## Custom Notification
 - **Feature**: New dashboard available
 - **Status**: Ready to use

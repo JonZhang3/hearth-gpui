@@ -45,7 +45,7 @@ pub struct SelectFont(usize);
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = story, no_json)]
-pub struct SelectRadius(usize);
+pub struct SelectStyle(SharedString);
 
 actions!(
     story,
@@ -344,7 +344,7 @@ impl RenderOnce for StorySection {
             )
             .content_style(
                 StyleRefinement::default()
-                    .rounded(cx.theme().radius_lg)
+                    .rounded(cx.theme().style.radii.lg)
                     .overflow_x_hidden()
                     .items_center()
                     .justify_center(),

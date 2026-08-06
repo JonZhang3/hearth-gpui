@@ -1,12 +1,12 @@
-use gpui::{ Anchor,
-    Action, App, AppContext as _, Context, Entity, Focusable, IntoElement,
+use gpui::{
+    Action, Anchor, App, AppContext as _, Context, Entity, Focusable, IntoElement,
     ParentElement as _, Render, Styled as _, Window, prelude::FluentBuilder as _,
 };
 use serde::Deserialize;
 
 use crate::section;
 use gpui_component::{
-    ActiveTheme, Disableable, Selectable as _, Sizable as _, Theme,
+    Disableable, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _, DropdownButton},
     checkbox::Checkbox,
     h_flex, v_flex,
@@ -111,17 +111,6 @@ impl Render for DropdownButtonStory {
                             .on_click(cx.listener(|view, _, _, cx| {
                                 view.compact = !view.compact;
                                 cx.notify();
-                            })),
-                    )
-                    .child(
-                        Checkbox::new("shadow-button")
-                            .label("Shadow")
-                            .checked(cx.theme().shadow)
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                let mut theme = cx.theme().clone();
-                                theme.shadow = !theme.shadow;
-                                cx.set_global::<Theme>(theme);
-                                window.refresh();
                             })),
                     ),
             )

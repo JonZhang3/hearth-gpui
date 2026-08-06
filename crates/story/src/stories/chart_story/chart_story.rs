@@ -219,7 +219,7 @@ fn chart_container<C: IntoElement>(
         .h(px(400.))
         .border_1()
         .border_color(cx.theme().border)
-        .rounded(cx.theme().radius_lg)
+        .rounded(cx.theme().style.radii.lg)
         .p_4()
         .child(
             div()

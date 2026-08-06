@@ -762,7 +762,7 @@ impl Element for Scrollbar {
                 for state in prepaint.states.iter() {
                     let axis = state.axis;
                     let mut radius = state.radius;
-                    if cx.theme().radius.is_zero() {
+                    if cx.theme().style.radii.md.is_zero() {
                         radius = px(0.);
                     }
                     let bounds = state.bounds;

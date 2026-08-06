@@ -14,14 +14,17 @@ use std::{
 mod color;
 mod registry;
 mod schema;
+mod style;
 mod theme_color;
 
 pub use color::*;
 pub use registry::*;
 pub use schema::*;
+pub use style::*;
 pub use theme_color::*;
 
 pub fn init(cx: &mut App) {
+    style::init(cx);
     registry::init(cx);
 
     // Ensure theme is loaded directly on startup for WASM compatibility
@@ -65,11 +68,10 @@ pub struct Theme {
     pub mono_font_family: SharedString,
     /// The monospace font size for the application, default is 13px.
     pub mono_font_size: Pixels,
-    /// Radius for the general elements.
-    pub radius: Pixels,
-    /// Radius for the large elements, e.g.: Dialog, Notification border radius.
-    pub radius_lg: Pixels,
-    pub shadow: bool,
+    /// Geometry and motion selected independently from the Color Theme.
+    #[serde(skip, default = "default_style")]
+    #[schemars(skip)]
+    pub style: Rc<StylePreset>,
     pub transparent: Hsla,
     /// Show the scrollbar mode, default: Scrolling
     pub scrollbar_show: ScrollbarShow,
@@ -136,6 +138,20 @@ impl Theme {
         } else {
             &self.light_theme.name
         }
+    }
+
+    /// Changes the active Style Preset without mutating Color Theme state.
+    pub fn set_style(id: &str, cx: &mut App) -> anyhow::Result<()> {
+        let style = style::resolve(id, cx)?;
+        Theme::global_mut(cx).style = style;
+        cx.refresh_windows();
+        Ok(())
+    }
+
+    /// Applies a Color Theme without mutating the active Style Preset.
+    pub fn set_color_theme(config: Rc<ThemeConfig>, cx: &mut App) {
+        Theme::global_mut(cx).apply_config(&config);
+        cx.refresh_windows();
     }
 
     /// Sync the theme with the system appearance
@@ -221,9 +237,7 @@ impl From<&ThemeColor> for Theme {
                 "DejaVu Sans Mono".into()
             },
             mono_font_size: px(13.),
-            radius: px(6.),
-            radius_lg: px(8.),
-            shadow: true,
+            style: default_style(),
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             tile_grid_size: px(8.),
@@ -238,6 +252,10 @@ impl From<&ThemeColor> for Theme {
             sheet: SheetSettings::default(),
         }
     }
+}
+
+fn default_style() -> Rc<StylePreset> {
+    Rc::new(StylePreset::default())
 }
 
 #[derive(

@@ -12,6 +12,7 @@ use lsp_types::{
     DiagnosticSeverity, Position, TextEdit,
 };
 use ropey::Rope;
+use rust_i18n::t;
 
 use crate::{
     ActiveTheme, IconName, Selectable, Sizable, TITLE_BAR_HEIGHT,
@@ -526,6 +527,7 @@ fn render_inspector(
                 )
                 .child(
                     Button::new("close")
+                        .aria_label(t!("Common.Close"))
                         .icon(IconName::Close)
                         .small()
                         .ghost()

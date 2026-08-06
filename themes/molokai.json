@@ -7,7 +7,6 @@
     {
       "name": "Molokai Light",
       "mode": "light",
-      "shadow": false,
       "colors": {
         "accent.background": "#EBE4E1",
         "accent.foreground": "#060606",

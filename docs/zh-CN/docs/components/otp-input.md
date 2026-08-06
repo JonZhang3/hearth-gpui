@@ -383,3 +383,11 @@ struct OtpWithResend {
 
 // Implementation would include timer logic for resend functionality
 ```
+
+## 无效状态与粘贴行为
+
+```rust
+OtpInput::new(&otp_state).invalid(true)
+```
+
+无效状态使用语义化 danger 边框，并映射为 AccessKit `Invalid::True`。OtpInput 支持规范化粘贴和 AccessKit `SetValue`：忽略不支持的字符、转换全角数字，并按配置长度截断。遮罩值不会写入可访问性树。

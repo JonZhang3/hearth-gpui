@@ -206,3 +206,11 @@ Radio 还实现了 `Sizable` trait：
 5. 单选项数量应保持适中，通常建议 2 到 7 个。
 6. 多组单选项应配合清晰标题和视觉分组。
 7. 选项较少时可横向排列，较多时更适合纵向排列。
+
+## 无效状态
+
+```rust
+Radio::new("invalid-option").label("请选择一个选项").invalid(true)
+```
+
+无效状态使用语义化 danger 边框和焦点环，并映射为 AccessKit `Invalid::True`。

@@ -1,9 +1,5 @@
 use crate::{ActiveTheme, StyledExt};
-use gpui::{
-    Animation, AnimationExt, IntoElement, RenderOnce, StyleRefinement, Styled, bounce, div,
-    ease_in_out,
-};
-use instant::Duration;
+use gpui::{Animation, AnimationExt, IntoElement, RenderOnce, StyleRefinement, Styled, div};
 
 /// A skeleton loading placeholder element.
 #[derive(IntoElement)]
@@ -36,6 +32,9 @@ impl Styled for Skeleton {
 
 impl RenderOnce for Skeleton {
     fn render(self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
+        let motion = cx.theme().style.motion;
+        let easing = motion.move_easing;
+
         div()
             .w_full()
             .h_4()
@@ -47,11 +46,18 @@ impl RenderOnce for Skeleton {
             .refine_style(&self.style)
             .with_animation(
                 "skeleton",
-                Animation::new(Duration::from_secs(2))
+                Animation::new(motion.loading())
                     .repeat()
-                    .with_easing(bounce(ease_in_out)),
+                    .with_easing(move |delta| {
+                        let pulse = if delta < 0.5 {
+                            delta * 2.0
+                        } else {
+                            (1.0 - delta) * 2.0
+                        };
+                        easing.sample(pulse)
+                    }),
                 move |this, delta| {
-                    let v = 1.0 - delta * 0.5;
+                    let v = 1.0 - delta * 0.4;
                     this.opacity(v)
                 },
             )

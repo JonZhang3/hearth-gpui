@@ -323,7 +323,7 @@ impl Render for PopoverStory {
                         .bg(cx.theme().primary)
                         .text_color(cx.theme().primary_foreground)
                         .max_w(px(600.))
-                        .rounded(cx.theme().radius.half())
+                        .rounded(cx.theme().style.radii.md.half())
                         .text_sm()
                         .shadow_2xl()
                         .child("A styled Popover with custom background and text color."),

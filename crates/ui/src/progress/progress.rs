@@ -1,10 +1,9 @@
-use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use crate::{ActiveTheme, Sizable, Size, StyledExt, animation::effective_motion_duration};
 use gpui::{
     Animation, AnimationExt as _, App, Background, ElementId, Hsla, InteractiveElement as _,
     IntoElement, ParentElement, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window, div, ease_in_out, prelude::FluentBuilder, px, relative,
+    Styled, Window, div, prelude::FluentBuilder, px, relative,
 };
-use instant::Duration;
 
 use super::ProgressState;
 
@@ -77,6 +76,7 @@ impl RenderOnce for Progress {
             .unwrap_or(cx.theme().tokens.progress_bar.into());
         let value = self.value;
         let loading = self.loading;
+        let motion = cx.theme().style.motion;
 
         let radius = self.style.corner_radii.clone();
         let mut inner_style = StyleRefinement::default();
@@ -124,11 +124,13 @@ impl RenderOnce for Progress {
                             let from = prev_target;
                             state.read(cx).set_target(value);
 
-                            let duration = Duration::from_secs_f64(0.15);
+                            let duration = motion.normal();
+                            let timer_duration = effective_motion_duration(duration, cx);
+                            let easing = motion.move_easing;
                             cx.spawn({
                                 let state = state.clone();
                                 async move |cx| {
-                                    cx.background_executor().timer(duration).await;
+                                    cx.background_executor().timer(timer_duration).await;
                                     _ = state.update(cx, |this, _| {
                                         this.value = this.target();
                                     });
@@ -138,7 +140,8 @@ impl RenderOnce for Progress {
 
                             this.with_animation(
                                 "progress-animation",
-                                Animation::new(duration),
+                                Animation::new(duration)
+                                    .with_easing(move |delta| easing.sample(delta)),
                                 move |this, delta| {
                                     let current_value = from + (value - from) * delta;
                                     let w = relative((current_value / 100.).clamp(0., 1.));
@@ -147,13 +150,15 @@ impl RenderOnce for Progress {
                             )
                             .into_any_element()
                         } else if loading {
+                            let easing = motion.move_easing;
                             this.with_animation(
                                 "progress-loading",
-                                Animation::new(Duration::from_secs(1)).repeat(),
+                                Animation::new(motion.loading()).repeat(),
                                 move |this, delta| {
-                                    let start =
-                                        relative(ease_in_out(((delta - 0.5) / 0.5).clamp(0., 1.)));
-                                    let end = relative(ease_in_out(1.0 - delta));
+                                    let start = relative(
+                                        easing.sample(((delta - 0.5) / 0.5).clamp(0., 1.)),
+                                    );
+                                    let end = relative(easing.sample(1.0 - delta));
                                     this.when(delta > 0.5, |this| this.left(start)).right(end)
                                 },
                             )

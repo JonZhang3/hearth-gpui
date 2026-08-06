@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     Anchor, Animation, AnimationExt as _, AnyElement, App, Background, Bounds, Div, Edges,
@@ -10,7 +10,7 @@ use rust_i18n::t;
 use smallvec::SmallVec;
 
 use super::{Tab, TabVariant};
-use crate::animation::{Lerp, ease_in_out_cubic};
+use crate::animation::Lerp;
 use crate::button::{Button, ButtonVariants as _};
 use crate::menu::{DropdownMenu as _, PopupMenuItem};
 use crate::{ActiveTheme, ElementExt, Icon, Selectable, Sizable, Size, StyledExt, h_flex};
@@ -211,6 +211,7 @@ impl TabBar {
         let inner_height = variant.inner_height(size);
         let inner_radius = variant.inner_radius(size, cx);
 
+        let easing = cx.theme().style.motion.move_easing;
         let indicator = div()
             .absolute()
             .top_0()
@@ -222,7 +223,7 @@ impl TabBar {
                         .h(inner_height)
                         .bg(cx.theme().tokens.background)
                         .rounded(inner_radius)
-                        .shadow_sm(),
+                        .when(cx.theme().style.elevation.enabled, |this| this.shadow_sm()),
                 ),
                 TabVariant::Pill => el.flex().items_center().child(
                     div()
@@ -243,7 +244,8 @@ impl TabBar {
             })
             .with_animation(
                 ElementId::NamedInteger("tab-ind".into(), epoch),
-                Animation::new(Duration::from_millis(200)).with_easing(ease_in_out_cubic),
+                Animation::new(cx.theme().style.motion.slow())
+                    .with_easing(move |delta| easing.sample(delta)),
                 move |el, delta| {
                     let left = Lerp::lerp(&from_left, &to_left, delta);
                     let width = Lerp::lerp(&from_width, &to_width, delta);

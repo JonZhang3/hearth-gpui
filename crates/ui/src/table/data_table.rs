@@ -164,7 +164,7 @@ where
             .on_action(window.listener_for(&self.state, TableState::action_select_page_down))
             .bg(cx.theme().tokens.table)
             .when(bordered, |this| {
-                this.rounded(cx.theme().radius)
+                this.rounded(cx.theme().style.radii.md)
                     .border_1()
                     .border_color(cx.theme().border)
             })

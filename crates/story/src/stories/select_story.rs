@@ -271,7 +271,7 @@ impl Render for SelectStory {
                     h_flex()
                         .border_1()
                         .border_color(cx.theme().input)
-                        .rounded(cx.theme().radius_lg)
+                        .rounded(cx.theme().style.radii.lg)
                         .text_color(cx.theme().secondary_foreground)
                         .w_full()
                         .gap_1()

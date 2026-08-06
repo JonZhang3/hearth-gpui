@@ -176,7 +176,7 @@ impl Render for TableStory {
                         .with_size(self.size)
                         .border_1()
                         .border_color(cx.theme().border)
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .child(
                             TableHeader::new().child(
                                 TableRow::new()

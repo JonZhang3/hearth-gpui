@@ -9,13 +9,15 @@ use std::{
 use gpui::{
     Anchor, Animation, AnimationExt, AnyElement, App, AppContext, ClickEvent, Context,
     DismissEvent, ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, Subscription, Window, div, prelude::FluentBuilder, px,
+    ParentElement as _, Pixels, Render, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
+use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
-    animation::cubic_bezier,
+    ActiveTheme as _, Disableable as _, Edges, Icon, IconName, Sizable as _, StyledExt,
+    TITLE_BAR_HEIGHT,
+    animation::{OverlayLifecycle, OverlayPhase, effective_motion_duration},
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -75,7 +77,7 @@ pub struct Notification {
     content_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement>>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    closing: bool,
+    lifecycle: OverlayLifecycle,
 }
 
 impl From<String> for Notification {
@@ -133,7 +135,7 @@ impl Notification {
             content_builder: None,
             on_click: None,
             on_close: None,
-            closing: false,
+            lifecycle: OverlayLifecycle::opened(),
         }
     }
 
@@ -248,24 +250,26 @@ impl Notification {
 
     /// Dismiss the notification.
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.closing {
+        let Some(transition) = self.lifecycle.begin_close() else {
             return;
-        }
-        self.closing = true;
+        };
         cx.notify();
 
         let on_close = self.on_close.clone();
-        // Dismiss the notification after 0.15s to show the animation.
+        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
         cx.spawn_in(window, async move |view, cx| {
-            cx.background_executor()
-                .timer(Duration::from_secs_f32(0.15))
-                .await;
-            _ = view.update_in(cx, |view, _, cx| {
-                view.closing = false;
-                cx.emit(DismissEvent);
-                cx.notify();
-            });
-            if let Some(on_close) = on_close {
+            cx.background_executor().timer(duration).await;
+            let completed = view
+                .update_in(cx, |view, _, cx| {
+                    let completed = view.lifecycle.complete_close(transition);
+                    if completed {
+                        cx.emit(DismissEvent);
+                        cx.notify();
+                    }
+                    completed
+                })
+                .unwrap_or(false);
+            if completed && let Some(on_close) = on_close {
                 _ = cx.update(|window, cx| on_close(window, cx));
             }
         })
@@ -301,16 +305,25 @@ impl Render for Notification {
             .clone()
             .map(|builder| builder(self, window, cx).small().mr_3p5());
 
-        let closing = self.closing;
+        let closing = self.lifecycle.phase() == OverlayPhase::Closing;
+        let accepts_input = self.lifecycle.accepts_input();
+        let motion = cx.theme().style.motion;
         let icon = match self.type_ {
             None => self.icon.clone(),
             Some(type_) => Some(type_.icon(cx)),
         };
         let has_icon = icon.is_some();
         let placement = cx.theme().notification.placement;
+        let accessibility_label = self
+            .title
+            .clone()
+            .or_else(|| self.message.clone())
+            .unwrap_or_else(|| t!("Common.Notification").into());
 
         h_flex()
             .id("notification")
+            .role(Role::Alert)
+            .aria_label(accessibility_label)
             .group("")
             .occlude()
             .relative()
@@ -318,8 +331,8 @@ impl Render for Notification {
             .border_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().tokens.popover)
-            .rounded(cx.theme().radius_lg)
-            .shadow_md()
+            .rounded(cx.theme().style.radii.lg)
+            .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
             .py_3p5()
             .px_4()
             .gap_3()
@@ -350,30 +363,45 @@ impl Render for Notification {
                     .group_hover("", |this| this.visible())
                     .child(
                         Button::new("close")
+                            .aria_label(t!("Common.Close"))
                             .icon(IconName::Close)
                             .ghost()
                             .xsmall()
+                            .disabled(!accepts_input)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.dismiss(window, cx);
                             })),
                     ),
             )
-            .when_some(self.on_click.clone(), |this, on_click| {
-                this.on_click(cx.listener(move |view, event, window, cx| {
-                    view.dismiss(window, cx);
-                    on_click(event, window, cx);
+            .when_some(
+                accepts_input.then(|| self.on_click.clone()).flatten(),
+                |this, on_click| {
+                    this.on_click(cx.listener(move |view, event, window, cx| {
+                        view.dismiss(window, cx);
+                        on_click(event, window, cx);
+                    }))
+                },
+            )
+            .when(accepts_input, |this| {
+                this.on_aux_click(cx.listener(move |view, event: &ClickEvent, window, cx| {
+                    if event.is_middle_click() {
+                        view.dismiss(window, cx);
+                    }
                 }))
             })
-            .on_aux_click(cx.listener(move |view, event: &ClickEvent, window, cx| {
-                if event.is_middle_click() {
-                    view.dismiss(window, cx);
-                }
-            }))
+            .when(!accepts_input, |this| {
+                this.child(div().absolute().top_0().left_0().size_full().occlude())
+            })
             .with_animation(
                 ElementId::NamedInteger("slide-down".into(), closing as u64),
-                Animation::new(Duration::from_secs_f64(0.25))
-                    .with_easing(cubic_bezier(0.4, 0., 0.2, 1.)),
+                Animation::new(motion.emphasis()).with_easing(move |delta| {
+                    if closing {
+                        motion.exit_easing.sample(delta)
+                    } else {
+                        motion.enter_easing.sample(delta)
+                    }
+                }),
                 move |this, delta| {
                     if closing {
                         let opacity = 1. - delta;
@@ -606,6 +634,7 @@ mod tests {
     use super::*;
     use crate::theme::Theme;
     use gpui::{TestAppContext, VisualTestContext};
+    use std::{cell::Cell, time::Duration};
 
     struct FooKind;
     struct BarKind;
@@ -633,7 +662,7 @@ mod tests {
     /// so that closed notifications are removed from the list.
     fn flush_dismiss(cx: &mut VisualTestContext) {
         cx.background_executor
-            .advance_clock(Duration::from_millis(200));
+            .advance_clock(Duration::from_millis(300));
         cx.run_until_parked();
     }
 
@@ -776,5 +805,38 @@ mod tests {
         flush_dismiss(cx);
 
         assert_eq!(ids(&list, cx).len(), 1);
+    }
+
+    #[gpui::test]
+    fn duplicate_dismiss_emits_one_callback_and_reduced_motion_has_no_delay(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            cx.set_global(Theme::default());
+            cx.set_reduce_motion(true);
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| TestRoot {
+            list: cx.new(|cx| NotificationList::new(window, cx)),
+        });
+        let list = root.read_with(cx, |root, _| root.list.clone());
+        let close_count = Rc::new(Cell::new(0));
+
+        list.update_in(cx, |list, window, cx| {
+            let close_count = close_count.clone();
+            list.push(
+                Notification::info("reduced motion")
+                    .id::<FooKind>()
+                    .autohide(false)
+                    .on_close(move |_, _| close_count.set(close_count.get() + 1)),
+                window,
+                cx,
+            );
+            list.close(TypeId::of::<FooKind>(), window, cx);
+            list.close(TypeId::of::<FooKind>(), window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(ids(&list, cx).is_empty());
+        assert_eq!(close_count.get(), 1);
     }
 }

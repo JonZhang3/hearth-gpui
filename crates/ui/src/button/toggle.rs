@@ -41,6 +41,7 @@ pub struct Toggle {
     disabled: bool,
     border_corners: Corners<bool>,
     border_edges: Edges<bool>,
+    aria_label: Option<SharedString>,
     children: SmallVec<[AnyElement; 1]>,
     on_click: Option<Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
     tooltip: ComponentTooltip,
@@ -63,6 +64,7 @@ impl Toggle {
                 bottom_right: true,
             },
             border_edges: Edges::all(true),
+            aria_label: None,
             children: smallvec![],
             on_click: None,
             tooltip: ComponentTooltip::default(),
@@ -78,7 +80,14 @@ impl Toggle {
     /// Add a label to the toggle.
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         let label: SharedString = label.into();
+        self.aria_label = Some(label.clone());
         self.children.push(label.into_any_element());
+        self
+    }
+
+    /// Set the accessibility label without adding visible toggle text.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 
@@ -152,25 +161,34 @@ impl RenderOnce for Toggle {
         let checked = self.checked;
         let disabled = self.disabled;
         let hoverable = !disabled && !checked;
-        let rounding = cx.theme().radius;
+        let rounding = cx.theme().style.radii.md;
+        let control_metrics = cx.theme().style.controls.for_size(self.size);
+        let accessibility_label = self
+            .aria_label
+            .clone()
+            .or_else(|| self.tooltip.text.as_ref().map(|(text, _)| text.clone()));
 
-        div()
+        let element = div()
             .id(self.id)
             .role(Role::Button)
-            .aria_toggled(if checked { Toggled::True } else { Toggled::False })
-            .when_some(
-                self.tooltip.text.as_ref().map(|(text, _)| text.clone()),
-                |this, label| this.aria_label(label),
-            )
+            .aria_toggled(if checked {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
+            .when_some(accessibility_label, |this, label| this.aria_label(label))
             .flex()
             .flex_row()
             .items_center()
             .justify_center()
+            .min_w(control_metrics.height)
+            .h(control_metrics.height)
+            .px(control_metrics.icon_edge_padding)
             .map(|this| match self.size {
-                Size::XSmall => this.min_w_5().h_5().px_0p5().text_xs(),
-                Size::Small => this.min_w_6().h_6().px_1().text_sm(),
-                Size::Large => this.min_w_9().h_9().px_3().text_lg(),
-                _ => this.min_w_8().h_8().px_2(),
+                Size::XSmall => this.text_xs(),
+                Size::Small => this.text_sm(),
+                Size::Large => this.text_lg(),
+                _ => this,
             })
             .when(self.border_corners.top_left, |this| {
                 this.rounded_tl(rounding)
@@ -209,7 +227,9 @@ impl RenderOnce for Toggle {
                     this.on_click(move |_, window, cx| on_click(&!checked, window, cx))
                 })
             })
-            .map(|this| self.tooltip.apply(this))
+            .map(|this| self.tooltip.apply(this));
+
+        crate::accessibility::accessibility_state(element, false, false, disabled)
     }
 }
 
@@ -402,6 +422,7 @@ mod tests {
             .on_click(|_, _, _| {});
 
         assert_eq!(toggle.children.len(), 2); // label + icon
+        assert_eq!(toggle.aria_label, Some("Enable Feature".into()));
         assert!(toggle.checked);
         assert_eq!(toggle.variant, ToggleVariant::Outline);
         assert_eq!(toggle.size, Size::Large);

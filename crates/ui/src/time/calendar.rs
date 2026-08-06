@@ -751,9 +751,9 @@ impl Calendar {
         h_flex()
             .id(id.into())
             .map(|this| match self.size {
-                Size::Small => this.size_7().rounded(cx.theme().radius / 2.),
-                Size::Large => this.size_10().rounded(cx.theme().radius * 2.),
-                _ => this.size_9().rounded(cx.theme().radius),
+                Size::Small => this.size_7().rounded(cx.theme().style.radii.md / 2.),
+                Size::Large => this.size_10().rounded(cx.theme().style.radii.md * 2.),
+                _ => this.size_9().rounded(cx.theme().style.radii.md),
             })
             .justify_center()
             .when(muted, |this| {
@@ -831,9 +831,9 @@ impl Calendar {
     fn render_week(&self, week: impl Into<SharedString>, _: &mut Window, cx: &mut App) -> Div {
         h_flex()
             .map(|this| match self.size {
-                Size::Small => this.size_7().rounded(cx.theme().radius / 2.0),
-                Size::Large => this.size_10().rounded(cx.theme().radius),
-                _ => this.size_9().rounded(cx.theme().radius),
+                Size::Small => this.size_7().rounded(cx.theme().style.radii.md / 2.0),
+                Size::Large => this.size_10().rounded(cx.theme().style.radii.md),
+                _ => this.size_9().rounded(cx.theme().style.radii.md),
             })
             .justify_center()
             .text_color(cx.theme().muted_foreground)
@@ -964,7 +964,7 @@ impl RenderOnce for Calendar {
             .track_focus(&self.state.read(cx).focus_handle)
             .border_1()
             .border_color(cx.theme().border)
-            .rounded(cx.theme().radius_lg)
+            .rounded(cx.theme().style.radii.lg)
             .p_3()
             .gap_0p5()
             .refine_style(&self.style)

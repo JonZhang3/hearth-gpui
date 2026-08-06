@@ -369,6 +369,15 @@ Select::new(&state)
     .placeholder("Select country...")
 ```
 
+## Accessibility
+
+Provide an accessible trigger name with `aria_label`. The selected item title is exposed as the AccessKit value; expanded and disabled states are exposed automatically.
+
+```rust
+Select::new(&state)
+    .aria_label("Country")
+```
+
 ## Keyboard Shortcuts
 
 | Key       | Action                                  |

@@ -34,6 +34,7 @@ Here, we can use `on_click` to handle toggle state changes. The callback receive
 use gpui_component::IconName;
 
 Toggle::new("toggle2")
+    .aria_label("Show content")
     .icon(IconName::Eye)
     .checked(true)
     .on_click(|checked, _, _| {
@@ -431,4 +432,4 @@ v_flex()
 3. **Provide visual feedback**: The checked state should be clearly distinguishable
 4. **Consider context**: Use toggles for options that feel like "selections" rather than "settings"
 5. **Maintain state consistency**: Ensure toggle state reflects the actual application state
-6. **Accessible labels**: Provide tooltips or ARIA labels for icon-only toggles
+6. **Accessible labels**: Use `aria_label` for icon-only toggles; visible `label` text is exposed automatically

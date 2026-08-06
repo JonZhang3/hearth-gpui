@@ -233,7 +233,7 @@ impl ChildElement for TableBody {
 }
 
 impl RenderOnce for TableBody {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, _cx: &mut App) -> impl IntoElement {
         div()
             .id(("table-body", self.ix))
             .role(Role::RowGroup)
@@ -465,8 +465,8 @@ impl Styled for TableHead {
 }
 
 impl RenderOnce for TableHead {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let paddings = self.size.table_cell_padding();
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let paddings = self.size.table_cell_padding(cx);
 
         div()
             .id(("table-head", self.ix))
@@ -559,8 +559,8 @@ impl Styled for TableCell {
 }
 
 impl RenderOnce for TableCell {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let paddings = self.size.table_cell_padding();
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let paddings = self.size.table_cell_padding(cx);
 
         div()
             .id(("table-cell", self.ix))
@@ -632,7 +632,7 @@ impl Styled for TableCaption {
 
 impl RenderOnce for TableCaption {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let paddings = self.size.table_cell_padding();
+        let paddings = self.size.table_cell_padding(cx);
 
         div()
             .id(("table-caption", self.ix))

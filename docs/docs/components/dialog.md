@@ -519,6 +519,16 @@ dialog.content(|content, window, cx| {
 })
 ```
 
+## Accessibility
+
+Set `aria_label` to the dialog title so the `Dialog` or `AlertDialog` AccessKit node has an explicit name. The visible `title` remains visual content because it may be an arbitrary element.
+
+```rust
+dialog
+    .aria_label("Edit profile")
+    .title("Edit profile")
+```
+
 ## Best Practices
 
 1. **Use Declarative Components**: Prefer `DialogHeader`, `DialogTitle`, `DialogDescription`, and `DialogFooter` for consistent styling

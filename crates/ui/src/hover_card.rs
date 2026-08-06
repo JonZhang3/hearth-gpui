@@ -1,12 +1,17 @@
 use gpui::{
     Anchor, AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _, IntoElement,
     ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled,
-    Task, Window, div, prelude::FluentBuilder as _,
+    Task, Window, div, prelude::FluentBuilder as _, px,
 };
 use instant::Duration;
 use std::{cell::Cell, rc::Rc};
 
-use crate::{ElementExt, StyledExt as _, popover::Popover};
+use crate::{
+    ActiveTheme as _, ElementExt, StyledExt as _,
+    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
+    popover::Popover,
+    theme::OverlayPlacement,
+};
 
 /// A hover card element that displays content when hovering over a trigger element.
 ///
@@ -123,7 +128,7 @@ impl ParentElement for HoverCard {
 
 /// State management for HoverCard component.
 pub struct HoverCardState {
-    open: bool,
+    lifecycle: OverlayLifecycle,
     trigger_bounds: Bounds<Pixels>,
     open_delay: Duration,
     close_delay: Duration,
@@ -144,7 +149,7 @@ pub struct HoverCardState {
 impl HoverCardState {
     fn new(open_delay: Duration, close_delay: Duration) -> Self {
         Self {
-            open: false,
+            lifecycle: OverlayLifecycle::default(),
             trigger_bounds: Bounds::default(),
             open_delay,
             close_delay,
@@ -159,39 +164,39 @@ impl HoverCardState {
 
     /// Check if the hover card is open.
     pub fn is_open(&self) -> bool {
-        self.open
+        self.lifecycle.accepts_input()
     }
 
     /// Schedule opening the hover card after the configured delay.
-    fn schedule_open(&mut self, cx: &mut Context<Self>) {
+    fn schedule_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.cancel_tasks();
         let epoch = self.next_epoch();
         let delay = self.open_delay;
 
-        self.open_task = Some(cx.spawn(async move |this, cx| {
+        self.open_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
 
-            let _ = this.update(cx, |state, cx| {
+            let _ = this.update_in(cx, |state, window, cx| {
                 if state.epoch == epoch {
-                    state.set_open(true, cx);
+                    state.set_open(true, window, cx);
                 }
             });
         }));
     }
 
     /// Schedule closing the hover card after the configured delay.
-    fn schedule_close(&mut self, cx: &mut Context<Self>) {
+    fn schedule_close(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.cancel_tasks();
         let epoch = self.next_epoch();
         let delay = self.close_delay;
 
-        self.close_task = Some(cx.spawn(async move |this, cx| {
+        self.close_task = Some(cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
 
-            let _ = this.update(cx, |state, cx| {
+            let _ = this.update_in(cx, |state, window, cx| {
                 if state.epoch == epoch && !state.is_hovering_trigger && !state.is_hovering_content
                 {
-                    state.set_open(false, cx);
+                    state.set_open(false, window, cx);
                 }
             });
         }));
@@ -208,31 +213,54 @@ impl HoverCardState {
         self.epoch
     }
 
-    fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        if self.open == open {
+    fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let transition = if open {
+            self.lifecycle.begin_open()
+        } else {
+            self.lifecycle.begin_close()
+        };
+        let Some(transition) = transition else {
             return;
-        }
+        };
 
-        self.open = open;
+        if let Some(callback) = self.on_open_change.as_ref() {
+            callback(&open, window, cx);
+        }
         cx.notify();
+
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        cx.spawn_in(window, async move |state, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = state.update(cx, |state, cx| {
+                let completed = if open {
+                    state.lifecycle.complete_open(transition)
+                } else {
+                    state.lifecycle.complete_close(transition)
+                };
+                if completed {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Handle hover state change on the trigger element.
-    fn on_trigger_hover(&mut self, hovering: bool, cx: &mut Context<Self>) {
+    fn on_trigger_hover(&mut self, hovering: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.is_hovering_trigger = hovering;
 
         if hovering {
-            self.schedule_open(cx);
+            self.schedule_open(window, cx);
         } else {
             // Only close if not hovering content
             if !self.is_hovering_content {
-                self.schedule_close(cx);
+                self.schedule_close(window, cx);
             }
         }
     }
 
     /// Handle hover state change on the content element.
-    fn on_content_hover(&mut self, hovered: bool, cx: &mut Context<Self>) {
+    fn on_content_hover(&mut self, hovered: bool, window: &mut Window, cx: &mut Context<Self>) {
         self.is_hovering_content = hovered;
 
         if hovered {
@@ -240,7 +268,7 @@ impl HoverCardState {
         } else {
             // Only close if not hovering trigger
             if !self.is_hovering_trigger {
-                self.schedule_close(cx);
+                self.schedule_close(window, cx);
             }
         }
     }
@@ -258,23 +286,17 @@ impl RenderOnce for HoverCard {
             HoverCardState::new(self.open_delay, self.close_delay)
         });
 
-        // Update state and track if controlled mode changed the open state
-        let prev_open = state.read(cx).open;
         state.update(cx, |state, _| {
             state.open_delay = self.open_delay;
             state.close_delay = self.close_delay;
             state.on_open_change = self.on_open_change.clone();
         });
 
-        let open = state.read(cx).open;
+        let phase = state.read(cx).lifecycle.phase();
+        let animation_key = state.read(cx).lifecycle.animation_key();
+        let mounted = state.read(cx).lifecycle.is_mounted();
+        let closing = phase == OverlayPhase::Closing;
         let trigger_bounds = state.read(cx).trigger_bounds;
-
-        // Trigger callback if state changed in controlled mode
-        if prev_open != open {
-            if let Some(ref callback) = self.on_open_change {
-                callback(&open, window, cx);
-            }
-        }
 
         let Some(trigger) = self.trigger else {
             return div().id("empty");
@@ -287,8 +309,8 @@ impl RenderOnce for HoverCard {
             div()
                 .id("trigger")
                 .child((trigger)(window, cx))
-                .on_hover(window.listener_for(&state, |state, hovered, _, cx| {
-                    state.on_trigger_hover(*hovered, cx);
+                .on_hover(window.listener_for(&state, |state, hovered, window, cx| {
+                    state.on_trigger_hover(*hovered, window, cx);
                 }))
                 .on_prepaint({
                     let state = state.clone();
@@ -302,21 +324,59 @@ impl RenderOnce for HoverCard {
                 }),
         );
 
-        if !open {
+        if !mounted {
             return root;
         }
 
         let popover_content =
             Popover::render_popover_content(self.anchor, self.appearance, window, cx)
                 .overflow_hidden()
-                .on_hover(window.listener_for(&state, |state, hovered, _, cx| {
-                    state.on_content_hover(*hovered, cx);
-                }))
+                .when(!closing, |this| {
+                    this.on_hover(window.listener_for(&state, |state, hovered, window, cx| {
+                        state.on_content_hover(*hovered, window, cx);
+                    }))
+                })
                 .when_some(self.content, |this, content| {
                     this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
                 })
                 .children(self.children)
+                .when(closing, |this| {
+                    this.child(div().absolute().top_0().left_0().size_full().occlude())
+                })
                 .refine_style(&self.style);
+
+        let placement = match self.anchor {
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => OverlayPlacement::Top,
+            Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => {
+                OverlayPlacement::Bottom
+            }
+            Anchor::LeftCenter => OverlayPlacement::Left,
+            Anchor::RightCenter => OverlayPlacement::Right,
+        };
+        let offset = cx.theme().style.overlays.enter_offset(placement);
+        let motion = cx.theme().style.motion;
+        let popover_content = Transition::new(motion.fast())
+            .ease_token(if closing {
+                motion.exit_easing
+            } else {
+                motion.enter_easing
+            })
+            .slide_x(
+                if closing { px(0.) } else { offset.x },
+                if closing { offset.x } else { px(0.) },
+            )
+            .slide_y(
+                if closing { px(0.) } else { offset.y },
+                if closing { offset.y } else { px(0.) },
+            )
+            .fade(
+                if closing { 1.0 } else { 0.0 },
+                if closing { 0.0 } else { 1.0 },
+            )
+            .apply(
+                popover_content,
+                ElementId::NamedInteger("hover-card-motion".into(), animation_key),
+            );
 
         root.child(Popover::render_popover(
             self.anchor,
@@ -325,5 +385,32 @@ impl RenderOnce for HoverCard {
             window,
             cx,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[gpui::test]
+    fn reopen_during_hover_card_exit_keeps_latest_generation(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (state, cx) =
+            cx.add_window_view(|_, _| HoverCardState::new(Duration::ZERO, Duration::ZERO));
+
+        state.update_in(cx, |state, window, cx| {
+            state.set_open(true, window, cx);
+            state.set_open(false, window, cx);
+            state.set_open(true, window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+
+        assert_eq!(
+            state.read_with(cx, |state, _| state.lifecycle.phase()),
+            OverlayPhase::Open
+        );
     }
 }

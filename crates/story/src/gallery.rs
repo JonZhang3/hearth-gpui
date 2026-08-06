@@ -39,6 +39,10 @@ impl Gallery {
                 vec![StoryContainer::panel::<WelcomeStory>(window, cx)],
             ),
             (
+                "Shadcn Alignment",
+                vec![StoryContainer::panel::<ShadcnAlignmentStory>(window, cx)],
+            ),
+            (
                 "Components",
                 vec![
                     StoryContainer::panel::<AccordionStory>(window, cx),
@@ -193,7 +197,7 @@ impl Render for Gallery {
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
-                                                    .rounded(cx.theme().radius_lg)
+                                                    .rounded(cx.theme().style.radii.lg)
                                                     .bg(cx.theme().primary)
                                                     .text_color(cx.theme().primary_foreground)
                                                     .size_8()
@@ -238,7 +242,7 @@ impl Render for Gallery {
                                             .bg(cx.theme().sidebar_accent)
                                             .rounded_full()
                                             .px_1()
-                                            .when(cx.theme().radius.is_zero(), |this| {
+                                            .when(cx.theme().style.radii.md.is_zero(), |this| {
                                                 this.rounded(px(0.))
                                             })
                                             .flex_1()

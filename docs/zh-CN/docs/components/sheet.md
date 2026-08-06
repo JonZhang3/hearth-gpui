@@ -184,6 +184,16 @@ window.close_sheet(cx);
 - `overlay_closable(bool)`
 - `on_close(fn)`
 
+## 可访问性
+
+使用 `aria_label` 设置与可见标题一致的名称。Sheet 会暴露 Dialog role、焦点陷阱，并为仅图标关闭按钮提供本地化可访问名称。
+
+```rust
+sheet
+    .aria_label("应用设置")
+    .title("应用设置")
+```
+
 ## 最佳实践
 
 1. 左右方向更适合导航和设置面板

@@ -316,6 +316,8 @@ pub struct PopupMenu {
     /// per level matters because GPUI caps nested deferred depth (see
     /// `prepaint_deferred_draws`).
     priority: usize,
+    /// Prevents duplicate dismissal callbacks before the owning overlay unmounts this menu.
+    dismissed: bool,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -340,6 +342,7 @@ impl PopupMenu {
             size: Size::default(),
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
             priority: 1,
+            dismissed: false,
             _subscriptions: vec![],
         }
     }
@@ -878,6 +881,9 @@ impl PopupMenu {
     fn set_selected_index(&mut self, ix: usize, cx: &mut Context<Self>) {
         if self.selected_index != Some(ix) {
             self.selected_index = Some(ix);
+            if let Some(PopupMenuItem::Submenu { menu, .. }) = self.menu_items.get(ix) {
+                menu.update(cx, |menu, _| menu.dismissed = false);
+            }
             self.scroll_handle.scroll_to_item(ix);
             cx.notify();
         }
@@ -1023,9 +1029,10 @@ impl PopupMenu {
     }
 
     fn dismiss(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-        if self.active_submenu().is_some() {
+        if self.active_submenu().is_some() || self.dismissed {
             return;
         }
+        self.dismissed = true;
 
         cx.emit(DismissEvent);
 
@@ -1408,7 +1415,7 @@ impl Render for PopupMenu {
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
-            radius: cx.theme().radius.min(px(8.)),
+            radius: cx.theme().style.radii.md.min(px(8.)),
         };
 
         v_flex()
@@ -1459,6 +1466,8 @@ impl Render for PopupMenu {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::Cell, rc::Rc};
+
     use super::*;
 
     #[gpui::test]
@@ -1480,5 +1489,28 @@ mod tests {
         );
         assert_eq!(PopupMenuItem::separator().a11y_label(), None);
         assert_eq!(PopupMenuItem::element(|_, _| div()).a11y_label(), None);
+    }
+
+    #[gpui::test]
+    fn popup_menu_emits_dismiss_once_per_open_instance(cx: &mut gpui::TestAppContext) {
+        let cx = cx.add_empty_window();
+        let dismiss_count = Rc::new(Cell::new(0));
+        let menu = cx.update(|_, cx| cx.new(|cx| PopupMenu::new(cx)));
+        cx.update(|window, cx| {
+            window
+                .subscribe(&menu, cx, {
+                    let dismiss_count = dismiss_count.clone();
+                    move |_, _: &DismissEvent, _, _| {
+                        dismiss_count.set(dismiss_count.get() + 1);
+                    }
+                })
+                .detach();
+            menu.update(cx, |menu, cx| {
+                menu.dismiss(&Cancel, window, cx);
+                menu.dismiss(&Cancel, window, cx);
+            });
+        });
+
+        assert_eq!(dismiss_count.get(), 1);
     }
 }

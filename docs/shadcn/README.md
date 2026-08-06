@@ -2,7 +2,7 @@
 
 ## Status
 
-This directory defines the implementation plan for aligning existing GPUI Component controls with shadcn/ui. It does not represent completed implementation.
+This directory defines the architecture, implementation batches, and verification contract for aligning GPUI Component with shadcn/ui. The Style Preset foundation and cross-family token migration are implemented; visual and platform verification remains continuous release work.
 
 | Baseline | Revision |
 |---|---|
@@ -15,7 +15,7 @@ The shadcn revision is intentionally pinned. Future upstream changes must be rev
 
 ## Goal
 
-Improve the visual consistency, interaction states, and motion of existing GPUI Component controls while preserving native desktop behavior and keeping the public Rust API stable where practical.
+Improve the visual consistency, interaction states, and motion of existing GPUI Component controls while preserving native desktop behavior. The Theme/Style split is an intentional breaking API redesign for new applications.
 
 The work is successful when:
 
@@ -52,9 +52,10 @@ Color Theme + Style Preset -> resolved global Theme -> cx.theme()
 - Color Theme owns semantic colors, renderable backgrounds, light and dark selection, syntax highlighting, and existing typography settings.
 - Style Preset owns density, shared control metrics, radius, elevation, focus treatment, overlay metrics, and motion.
 - `Theme` remains the only runtime source read by components.
-- `StylePreset` is configuration input. Components never read preset configuration directly.
-- Existing `Theme.radius`, `Theme.radius_lg`, and `Theme.shadow` remain canonical runtime fields.
-- Existing Theme JSON keeps working through a `ThemeDefault` compatibility mode.
+- `Theme.style: Rc<StylePreset>` is the resolved immutable Style authority.
+- Components consume semantic fields such as `theme.style.radii.md` and `theme.style.controls.md`.
+- `Theme.radius`, `Theme.radius_lg`, `Theme.shadow`, and the corresponding Theme JSON keys are removed.
+- Vega is always the explicit default; there is no `ThemeDefault` compatibility mode.
 
 The complete contract is defined in [Style Preset architecture](./05-style-presets.md).
 
@@ -83,9 +84,8 @@ The complete contract is defined in [Style Preset architecture](./05-style-prese
 
 ## Constraints
 
-- Preserve existing public methods and serialized theme keys unless a breaking change is separately approved.
-- Prefer additive theme fallbacks over mandatory new fields.
-- Keep one resolved runtime authority in `Theme`; do not mirror mutable values under `theme.style.*`.
+- The Theme/Style redesign may break downstream code; downstream migration cost is outside this project.
+- Keep one resolved runtime authority in `Theme.style`; do not mirror style values as flat Theme fields.
 - Switching Color Theme must not change an explicitly selected Style Preset.
 - Switching Style Preset must not change colors or syntax highlighting.
 - Keep component implementation direct. Shared helpers require at least three real consumers.
@@ -102,7 +102,9 @@ The complete contract is defined in [Style Preset architecture](./05-style-prese
 | [Component matrix](./02-component-matrix.md) | Existing component scope, priorities, references, and expected work |
 | [Implementation roadmap](./03-roadmap.md) | Ordered pull-request batches, dependencies, and exit criteria |
 | [Verification strategy](./04-verification.md) | Required state, behavior, visual, platform, and performance checks |
-| [Style Preset architecture](./05-style-presets.md) | Runtime authority, registry, compatibility, preset scope, and selection rules |
+| [Style Preset architecture](./05-style-presets.md) | Runtime authority, Registry, metrics, preset scope, and selection rules |
+| [Implementation status](./06-implementation-status.md) | Implemented scope, verification evidence, and remaining release checks |
+| [Release evidence](./07-release-evidence.md) | Fixed visual matrix, intentional differences, platform review, and performance evidence |
 
 ## Decision rules
 

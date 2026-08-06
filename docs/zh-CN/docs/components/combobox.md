@@ -267,6 +267,15 @@ let values = state.read(cx).selected_values(); // Vec<Value>
 let value = state.read(cx).selected_value(); // Option<Value>
 ```
 
+## 可访问性
+
+使用 `aria_label` 为触发器提供可访问名称。已选项标题会作为 AccessKit value，展开态和禁用态会自动暴露。
+
+```rust
+Combobox::new(&state)
+    .aria_label("框架")
+```
+
 ## 键盘快捷键
 
 | 按键       | 操作                             |

@@ -34,6 +34,7 @@ Toggle::new("toggle1")
 use gpui_component::IconName;
 
 Toggle::new("toggle2")
+    .aria_label("显示内容")
     .icon(IconName::Eye)
     .checked(true)
     .on_click(|checked, _, _| {
@@ -201,5 +202,5 @@ ToggleGroup::new("quick-actions")
 
 1. 需要按钮式反馈时优先使用 Toggle，而不是 Switch。
 2. 一组相关选项应使用 `ToggleGroup` 统一管理。
-3. 图标型 Toggle 最好补充 tooltip 或可访问标签。
+3. 仅图标 Toggle 应设置 `aria_label`；可见的 `label` 会自动作为 AccessKit 名称。
 4. Toggle 状态应与实际业务状态保持同步，避免视觉与数据不一致。

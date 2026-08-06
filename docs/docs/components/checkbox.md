@@ -138,4 +138,13 @@ v_flex()
     )
 ```
 
+## Indeterminate and invalid states
+
+```rust
+Checkbox::new("partial").label("Some items selected").indeterminate(true)
+Checkbox::new("invalid").label("Accept the required terms").invalid(true)
+```
+
+`indeterminate(true)` takes visual and accessibility precedence over `checked`, maps to AccessKit `Toggled::Mixed`, and produces a checked value when activated. `invalid(true)` applies the semantic danger border and focus ring and maps to AccessKit `Invalid::True`.
+
 [Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html

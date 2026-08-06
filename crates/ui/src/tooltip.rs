@@ -2,14 +2,15 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 
 use gpui::{
     Action, AnyElement, AnyView, App, AppContext, Bounds, Context, Display, Element, ElementId,
-    GlobalElementId, Half, InspectorElementId, IntoElement, LayoutId, MouseButton, ParentElement,
-    Pixels, Point, Position, Render, SharedString, Size, StatefulInteractiveElement, Style,
-    StyleRefinement, Styled, Task, Window, deferred, div, point, prelude::FluentBuilder, px,
+    GlobalElementId, Half, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
+    MouseButton, ParentElement, Pixels, Point, Position, Render, SharedString, Size,
+    StatefulInteractiveElement, Style, StyleRefinement, Styled, Task, Window, deferred, div, point,
+    prelude::FluentBuilder, px,
 };
 
 use crate::{
     ActiveTheme, StyledExt,
-    animation::{Transition, ease_in_out_cubic, ease_out_cubic},
+    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
     h_flex,
     kbd::Kbd,
     root::Root,
@@ -107,19 +108,18 @@ impl Render for Tooltip {
             // Wrap in a child, to ensure the left margin is applied to the tooltip
             h_flex()
                 .font_family(cx.theme().font_family.clone())
-                .m_3()
+                .m(cx.theme().style.overlays.side_offset)
                 .bg(cx.theme().tokens.popover)
                 .text_color(cx.theme().popover_foreground)
                 .bg(cx.theme().tokens.popover)
                 .border_1()
                 .border_color(cx.theme().border)
-                .shadow_md()
-                .rounded(px(6.))
+                .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
+                .rounded(cx.theme().style.radii.md)
                 .justify_between()
-                .py_0p5()
-                .px_2()
+                .p(cx.theme().style.overlays.padding)
                 .text_sm()
-                .gap_3()
+                .gap(cx.theme().style.overlays.gap)
                 .refine_style(&self.style)
                 .map(|this| {
                     this.child(div().map(|this| match self.content {
@@ -146,16 +146,22 @@ impl Render for Tooltip {
 const GRACE_PERIOD: Duration = Duration::from_millis(300);
 /// Delay before showing a tooltip when no tooltip is currently active.
 const SHOW_DELAY: Duration = Duration::from_millis(500);
-/// Duration of the slide-down enter animation.
-const ENTER_DURATION: Duration = Duration::from_millis(150);
-/// Duration of the position-slide animation when switching tooltips.
-const SLIDE_DURATION: Duration = Duration::from_millis(200);
 const TOOLTIP_WINDOW_MARGIN: Pixels = px(4.);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum TooltipPlacement {
     Above,
     Below,
+}
+
+impl TooltipPlacement {
+    /// Returns the translation from the final surface toward its trigger.
+    fn motion_offset(self, offset: Pixels) -> Pixels {
+        match self {
+            Self::Above => offset,
+            Self::Below => -offset,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -224,6 +230,7 @@ fn clamp_tooltip_bounds(
 
 struct TooltipOverlayPositioner {
     trigger_bounds: Bounds<Pixels>,
+    placement: Rc<Cell<TooltipPlacement>>,
     children: Vec<AnyElement>,
 }
 
@@ -231,9 +238,13 @@ struct TooltipOverlayPositionerState {
     child_layout_ids: Vec<LayoutId>,
 }
 
-fn tooltip_overlay_positioner(trigger_bounds: Bounds<Pixels>) -> TooltipOverlayPositioner {
+fn tooltip_overlay_positioner(
+    trigger_bounds: Bounds<Pixels>,
+    placement: Rc<Cell<TooltipPlacement>>,
+) -> TooltipOverlayPositioner {
     TooltipOverlayPositioner {
         trigger_bounds,
+        placement,
         children: Vec::new(),
     }
 }
@@ -314,6 +325,10 @@ impl Element for TooltipOverlayPositioner {
             window.viewport_size(),
             TOOLTIP_WINDOW_MARGIN + client_inset,
         );
+        if self.placement.get() != tooltip_position.placement {
+            self.placement.set(tooltip_position.placement);
+            window.request_animation_frame();
+        }
 
         let offset = tooltip_position.bounds.origin - bounds.origin;
         let offset = point(offset.x.round(), offset.y.round());
@@ -367,6 +382,9 @@ pub struct TooltipOverlay {
     had_recent_tooltip: bool,
     animation_epoch: usize,
     is_switching: bool,
+    lifecycle: OverlayLifecycle,
+    /// Last placement resolved during prepaint, shared with the motion layer.
+    placement: Rc<Cell<TooltipPlacement>>,
 
     _show_task: Option<Task<()>>,
     _hide_task: Option<Task<()>>,
@@ -381,6 +399,8 @@ impl TooltipOverlay {
             had_recent_tooltip: false,
             animation_epoch: 0,
             is_switching: false,
+            lifecycle: OverlayLifecycle::default(),
+            placement: Rc::new(Cell::new(TooltipPlacement::Above)),
             _show_task: None,
             _hide_task: None,
         }
@@ -389,6 +409,23 @@ impl TooltipOverlay {
     fn next_epoch(&mut self) -> usize {
         self.epoch += 1;
         self.epoch
+    }
+
+    /// Starts an interruptible enter transition for the current content.
+    fn begin_open(&mut self, cx: &mut Context<Self>) {
+        let Some(transition) = self.lifecycle.begin_open() else {
+            return;
+        };
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.lifecycle.complete_open(transition) {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     /// Request showing a tooltip. If another tooltip is active or was recently
@@ -412,6 +449,7 @@ impl TooltipOverlay {
             self._show_task = None;
             self.is_switching = was_visible;
             self.animation_epoch += 1;
+            self.begin_open(cx);
             cx.notify();
         } else {
             // New: delay then show with slideDown
@@ -428,6 +466,7 @@ impl TooltipOverlay {
                     this.prev_trigger_bounds = None;
                     this.is_switching = false;
                     this.animation_epoch += 1;
+                    this.begin_open(cx);
                     cx.notify();
                 });
             }));
@@ -443,30 +482,49 @@ impl TooltipOverlay {
         if self.content.is_none() {
             return;
         }
+        let Some(transition) = self.lifecycle.begin_close() else {
+            return;
+        };
 
         let epoch = self.next_epoch();
         self.had_recent_tooltip = true;
+        self.is_switching = false;
+        self.animation_epoch += 1;
+        cx.notify();
+        let exit_duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
 
         self._hide_task = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor().timer(exit_duration).await;
+            let closed = this
+                .update_in(cx, |this, _, cx| {
+                    if this.epoch != epoch || !this.lifecycle.complete_close(transition) {
+                        return false;
+                    }
+                    this.content = None;
+                    this.prev_trigger_bounds = None;
+                    cx.notify();
+                    true
+                })
+                .unwrap_or(false);
+            if !closed {
+                return;
+            }
+
             cx.background_executor().timer(GRACE_PERIOD).await;
             let _ = this.update_in(cx, |this, _, cx| {
-                if this.epoch != epoch {
-                    return;
+                if this.epoch == epoch {
+                    this.had_recent_tooltip = false;
+                    cx.notify();
                 }
-                this.content = None;
-                this.prev_trigger_bounds = None;
-                this.had_recent_tooltip = false;
-                cx.notify();
             });
         }));
     }
 
-    pub(crate) fn hide(&mut self, cx: &mut Context<Self>) {
-        if self.clear_state() {
-            cx.notify();
-        }
+    pub(crate) fn hide(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.request_hide(window, cx);
     }
 
+    #[cfg(test)]
     fn clear_state(&mut self) -> bool {
         let changed = self.content.is_some()
             || self.prev_trigger_bounds.is_some()
@@ -481,6 +539,8 @@ impl TooltipOverlay {
         self.is_switching = false;
         self._show_task = None;
         self._hide_task = None;
+        self.lifecycle = OverlayLifecycle::default();
+        self.placement.set(TooltipPlacement::Above);
 
         changed
     }
@@ -497,46 +557,75 @@ impl Render for TooltipOverlay {
         let animation_epoch = self.animation_epoch;
         let is_switching = self.is_switching;
         let prev_trigger_bounds = self.prev_trigger_bounds;
+        let closing = self.lifecycle.phase() == OverlayPhase::Closing;
+        let placement = self.placement.get();
+        let motion_offset = placement.motion_offset(cx.theme().style.overlays.side_offset);
+        let motion_id = animation_epoch as u64 * 2
+            + match placement {
+                TooltipPlacement::Above => 0,
+                TooltipPlacement::Below => 1,
+            };
 
         deferred(
-            tooltip_overlay_positioner(trigger_bounds).child(div().child(content_view).map(|el| {
-                if is_switching {
-                    let Some(prev_bounds) = prev_trigger_bounds else {
-                        return el.into_any_element();
-                    };
+            tooltip_overlay_positioner(trigger_bounds, self.placement.clone()).child(
+                div()
+                    .relative()
+                    .child(content_view)
+                    .when(closing, |this| {
+                        this.child(div().absolute().top_0().left_0().size_full().occlude())
+                    })
+                    .map(|el| {
+                        if closing {
+                            Transition::new(cx.theme().style.motion.fast())
+                                .ease_token(cx.theme().style.motion.exit_easing)
+                                .slide_y(px(0.), motion_offset)
+                                .fade(1.0, 0.0)
+                                .apply(
+                                    el,
+                                    ElementId::NamedInteger("tooltip-exit".into(), motion_id),
+                                )
+                                .into_any_element()
+                        } else if is_switching {
+                            let Some(prev_bounds) = prev_trigger_bounds else {
+                                return el.into_any_element();
+                            };
 
-                    let is_same_y =
-                        (trigger_bounds.origin.y - prev_bounds.origin.y).abs() < px(10.);
-                    if !is_same_y {
-                        // If the new trigger is at a different Y level, don't slide horizontally
-                        // to avoid weird diagonal movement. (We could consider sliding vertically
-                        // in this case, but it might be less visually clear.)
-                        return el.into_any_element();
-                    }
+                            let is_same_y =
+                                (trigger_bounds.origin.y - prev_bounds.origin.y).abs() < px(10.);
+                            if !is_same_y {
+                                // If the new trigger is at a different Y level, don't slide horizontally
+                                // to avoid weird diagonal movement. (We could consider sliding vertically
+                                // in this case, but it might be less visually clear.)
+                                return el.into_any_element();
+                            }
 
-                    let dx = trigger_bounds.center().x - prev_bounds.center().x;
+                            let dx = trigger_bounds.center().x - prev_bounds.center().x;
 
-                    Transition::new(SLIDE_DURATION)
-                        .ease(ease_in_out_cubic)
-                        .slide_x(-dx, px(0.))
-                        .apply(
-                            el,
-                            ElementId::NamedInteger("tooltip-slide".into(), animation_epoch as u64),
-                        )
-                        .into_any_element()
-                } else {
-                    // New tooltip: slideDown + fadeIn
-                    Transition::new(ENTER_DURATION)
-                        .ease(ease_out_cubic)
-                        .slide_y(px(4.), px(0.))
-                        .fade(0.0, 1.0)
-                        .apply(
-                            el,
-                            ElementId::NamedInteger("tooltip-enter".into(), animation_epoch as u64),
-                        )
-                        .into_any_element()
-                }
-            })),
+                            Transition::new(cx.theme().style.motion.slow())
+                                .ease_token(cx.theme().style.motion.move_easing)
+                                .slide_x(-dx, px(0.))
+                                .apply(
+                                    el,
+                                    ElementId::NamedInteger(
+                                        "tooltip-slide".into(),
+                                        animation_epoch as u64,
+                                    ),
+                                )
+                                .into_any_element()
+                        } else {
+                            // New tooltip: slideDown + fadeIn
+                            Transition::new(cx.theme().style.motion.fast())
+                                .ease_token(cx.theme().style.motion.enter_easing)
+                                .slide_y(motion_offset, px(0.))
+                                .fade(0.0, 1.0)
+                                .apply(
+                                    el,
+                                    ElementId::NamedInteger("tooltip-enter".into(), motion_id),
+                                )
+                                .into_any_element()
+                        }
+                    }),
+            ),
         )
         .with_priority(2)
         .into_any_element()
@@ -624,7 +713,7 @@ pub(crate) trait ManagedTooltipExt:
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
             if let Some(overlay) = Root::tooltip_overlay(window, cx) {
                 overlay.update(cx, |overlay, cx| {
-                    overlay.hide(cx);
+                    overlay.hide(window, cx);
                 });
             }
         })
@@ -636,7 +725,7 @@ impl<E: StatefulInteractiveElement + crate::ElementExt> ManagedTooltipExt for E 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::size;
+    use gpui::{TestAppContext, size};
 
     fn test_content(bounds: Bounds<Pixels>) -> TooltipContent {
         TooltipContent {
@@ -672,6 +761,37 @@ mod tests {
         assert!(overlay._hide_task.is_none());
     }
 
+    #[gpui::test]
+    fn tooltip_reopen_during_exit_preserves_latest_content(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (overlay, cx) = cx.add_window_view(|_, _| TooltipOverlay::new());
+        let first = test_content(test_bounds(10., 10., 40., 20.));
+        let latest = test_content(test_bounds(80., 10., 40., 20.));
+
+        overlay.update_in(cx, |overlay, window, cx| {
+            overlay.had_recent_tooltip = true;
+            overlay.request_show(first, window, cx);
+            overlay.request_hide(window, cx);
+            overlay.request_show(latest, window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+
+        assert_eq!(
+            overlay.read_with(cx, |overlay, _| overlay.lifecycle.phase()),
+            OverlayPhase::Open
+        );
+        assert_eq!(
+            overlay.read_with(cx, |overlay, _| overlay
+                .content
+                .as_ref()
+                .unwrap()
+                .trigger_bounds),
+            test_bounds(80., 10., 40., 20.)
+        );
+    }
+
     #[test]
     fn tooltip_overlay_position_prefers_above_when_space_allows() {
         let trigger_bounds = test_bounds(100., 80., 80., 24.);
@@ -701,6 +821,12 @@ mod tests {
         assert_eq!(position.placement, TooltipPlacement::Below);
         assert_eq!(position.bounds.top(), trigger_bounds.bottom());
         assert!(position.bounds.top() >= trigger_bounds.bottom());
+    }
+
+    #[test]
+    fn tooltip_motion_points_toward_the_trigger() {
+        assert_eq!(TooltipPlacement::Above.motion_offset(px(6.)), px(6.));
+        assert_eq!(TooltipPlacement::Below.motion_offset(px(6.)), px(-6.));
     }
 
     #[test]

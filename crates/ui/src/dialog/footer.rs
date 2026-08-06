@@ -26,7 +26,10 @@ pub struct DialogFooter {
 
 impl DialogFooter {
     pub fn new() -> Self {
-        Self { style: StyleRefinement::default(), children: Vec::new() }
+        Self {
+            style: StyleRefinement::default(),
+            children: Vec::new(),
+        }
     }
 }
 
@@ -48,7 +51,7 @@ impl RenderOnce for DialogFooter {
             .gap_2()
             .justify_end()
             .line_height(relative(1.))
-            .rounded_b(cx.theme().radius_lg)
+            .rounded_b(cx.theme().style.radii.lg)
             .refine_style(&self.style)
             .children(self.children)
     }
@@ -71,7 +74,9 @@ pub struct DialogClose {
 
 impl DialogClose {
     pub fn new() -> Self {
-        Self { children: Vec::new() }
+        Self {
+            children: Vec::new(),
+        }
     }
 }
 
@@ -98,7 +103,9 @@ pub struct DialogAction {
 
 impl DialogAction {
     pub fn new() -> Self {
-        Self { children: Vec::new() }
+        Self {
+            children: Vec::new(),
+        }
     }
 }
 

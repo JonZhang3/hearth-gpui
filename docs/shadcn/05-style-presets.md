@@ -2,161 +2,171 @@
 
 ## Decision
 
-GPUI Component will support multiple Style Presets that can be selected independently from Color Themes. The first built-in presets are Vega, Nova, and Maia.
-
-`Theme` remains the only resolved runtime source used by components. `StylePreset` is configuration input and must not become a second mutable theme tree.
+GPUI Component supports Color Themes and Style Presets as independent selections. Vega, Nova, and Maia are built in. Vega is the explicit default.
 
 ```text
-ThemeConfig + StylePreset -> resolved Theme -> cx.theme() -> components
+Color Theme ---------------------> Theme colors, typography, syntax
+Style Preset -> validation -> Rc<StylePreset> -> Theme.style
+                                              -> components
 ```
 
-## Ownership boundary
+There is one runtime authority: `Theme`. Style data is immutable and nested under `Theme.style`; no flat duplicate radius, shadow, control, or motion fields exist.
+
+## Ownership
 
 | Concern | Owner |
 |---|---|
-| Semantic colors | Color Theme |
-| Gradient and solid backgrounds | Color Theme through `ThemeTokens` |
+| Semantic colors and renderable backgrounds | Color Theme |
 | Light and Dark selection | Color Theme |
 | Syntax highlighting | Color Theme |
-| Existing font configuration | Color Theme for compatibility |
+| Existing font configuration | Color Theme |
 | Density and control geometry | Style Preset |
 | Radius and elevation | Style Preset |
-| Focus treatment | Style Preset |
+| Focus ring geometry | Style Preset |
 | Overlay spacing and geometry | Style Preset |
-| Motion duration and easing | Style Preset |
+| Component motion duration | Style Preset |
 | Reduced motion | Platform or application accessibility setting |
-| Keyboard and focus behavior | Component implementation |
-| Local exceptional styling | `Styled` component override |
+| Keyboard, focus, dismissal, and selection behavior | Component implementation |
+| Exceptional local styling | `Styled` override |
 
-Style Presets never own semantic colors. Components never use a preset name to choose behavior or layout.
+Style Presets never own semantic colors, fonts, icons, component behavior, or component-specific public APIs.
 
-## Runtime authority
-
-The resolved `Theme` remains flat and compatible with current component access:
+## Public runtime API
 
 ```rust
 pub struct Theme {
     pub colors: ThemeColor,
     pub tokens: ThemeTokens,
-
-    pub style_name: SharedString,
-    pub density: Density,
-    pub control_metrics: ControlMetrics,
-    pub overlay_metrics: OverlayMetrics,
-    pub focus_metrics: FocusMetrics,
-    pub motion: MotionMetrics,
-
-    // Existing canonical runtime fields.
-    pub radius: Pixels,
-    pub radius_lg: Pixels,
-    pub shadow: bool,
+    pub style: Rc<StylePreset>,
+    // Color Theme, typography, syntax, mode, and runtime behavior settings.
 }
-```
 
-Do not introduce duplicate runtime paths such as both `theme.radius` and `theme.style.radius`. A preset applies its values to the canonical `Theme` fields. Preset configuration and resolved runtime data may contain corresponding values, but only resolved `Theme` data is mutable and consumed by components.
-
-## Minimal preset model
-
-Start with stable shared groups only:
-
-```rust
 pub struct StylePreset {
+    pub id: SharedString,
     pub name: SharedString,
     pub density: Density,
-    pub radius: Pixels,
-    pub radius_lg: Pixels,
-    pub shadow: bool,
+    pub radii: RadiusMetrics,
     pub controls: ControlMetrics,
     pub overlays: OverlayMetrics,
     pub focus: FocusMetrics,
+    pub elevation: ElevationMetrics,
     pub motion: MotionMetrics,
+    pub data: DataMetrics,
 }
 ```
 
-Recommended metric responsibilities:
+Components consume semantic metrics only:
 
-| Group | Initial fields |
+```rust
+let metrics = cx.theme().style.controls.for_size(size);
+
+div()
+    .h(metrics.height)
+    .px(metrics.padding_x)
+    .rounded(cx.theme().style.radii.md)
+```
+
+The following legacy fields are removed:
+
+- `Theme.radius`
+- `Theme.radius_lg`
+- `Theme.shadow`
+- Theme JSON `radius`
+- Theme JSON `radius.lg`
+- Theme JSON `shadow`
+
+This is an approved breaking API redesign. No `ThemeDefault`, fallback appearance ownership, or downstream compatibility layer is provided.
+
+## Shared metric contracts
+
+### Controls
+
+`ControlSizeMetrics` is the shared contract for `xs`, `sm`, `md`, and `lg`:
+
+| Field | Meaning |
 |---|---|
-| `ControlMetrics` | `xs`, `sm`, `md`, `lg` heights; horizontal padding; icon size; icon gap |
-| `OverlayMetrics` | Padding; content gap; radius; side offset |
-| `FocusMetrics` | Ring width; ring offset |
-| `MotionMetrics` | Fast, normal, slow, emphasis durations; enter and exit easing |
+| `height` | Stable outer control height |
+| `padding_x` | Horizontal padding for text controls |
+| `icon_edge_padding` | Horizontal padding for compact or icon-leading controls |
+| `gap` | Gap between icon, label, and caret |
+| `icon_size` | Default icon size inside the control |
 
-Do not add per-component metric structures until at least three components need the same field. Table density, Sidebar width, Dialog maximum width, and similar exceptional values stay local until real reuse appears.
+Custom `Size::Size(height)` preserves the requested height and uses medium ancillary metrics.
 
-`Density` is preset metadata and a public semantic label. Resolved metrics, not a global density multiplier, determine component geometry.
+### Radius and elevation
 
-## Selection model
+`RadiusMetrics` exposes `sm`, `md`, `lg`, and `xl`. Components choose by surface role, never by preset name. `ElevationMetrics.enabled` controls shared shadows without changing semantic surface colors.
 
-```rust
-pub enum StyleSelection {
-    ThemeDefault,
-    Preset(SharedString),
-}
-```
+### Overlay
 
-| Selection | Behavior |
-|---|---|
-| `ThemeDefault` | Existing Theme JSON `radius`, `radius.lg`, and `shadow` remain authoritative |
-| Explicit preset | Preset-owned fields override legacy shape fields |
-| Return to `ThemeDefault` | Reapply appearance fields from the currently selected ThemeConfig |
-| Unknown preset | Keep the last valid resolved style and return an actionable error |
+`OverlayMetrics` owns content padding, content gap, side offset, and enter scale. Overlay lifecycle, placement, focus restoration, and dismissal remain component behavior.
 
-An invalid preset must not partially mutate `Theme`.
+### Focus
 
-## Independent application
+`FocusMetrics` owns ring width and offset. Ring color remains `ThemeColor.ring`.
 
-Color and style use separate operations:
+### Motion
 
-```rust
-Theme::apply_color_theme(theme_config, cx);
-Theme::apply_style_preset(style_preset, cx);
-```
+| Token | Default | Use |
+|---|---:|---|
+| `fast` | 100 ms | Immediate overlay and feedback transitions |
+| `normal` | 150 ms | Standard component state transitions |
+| `slow` | 200 ms | Disclosure, indicator, and structural transitions |
+| `emphasis` | 250 ms | Dialog, notification, and deliberate emphasis |
+| `loading` | 1 s | Repeating Skeleton, Spinner, and indeterminate Progress cycles |
 
-Required invariants:
+`enter_easing`, `exit_easing`, and `move_easing` select semantic curves from `MotionEasing`; components do not choose curves by preset name. `OverlayMetrics::enter_offset` resolves translation for Top, Right, Bottom, and Left placements. `OverlayLifecycle` owns the interruptible `closed -> opening -> open -> closing -> closed` state machine and rejects stale completion generations.
 
-1. Applying a Color Theme updates colors, tokens, Light or Dark selection, syntax highlighting, and existing typography settings.
-2. Applying a Color Theme does not change explicit Style Preset fields.
-3. Applying a Style Preset updates style-owned resolved fields only.
-4. Applying a Style Preset does not change colors, tokens, syntax highlighting, or Theme Mode.
-5. Both operations refresh affected windows without rebuilding application business state.
-6. Selection order produces the same result for the same Color Theme and Style Preset pair.
+Transitions use restrained cubic easing. Bounce and elastic easing are excluded. GPUI's application-level `reduce_motion` preference renders static animation states, while `effective_motion_duration` removes delayed unmount. Reduced motion is an accessibility override and is not persisted as Style identity.
 
-## Backward compatibility
+### GPUI-native data surfaces
 
-Current Theme JSON combines colors with `font.*`, `radius`, `radius.lg`, and `shadow`. These keys remain readable.
+`DataMetrics` centralizes Table and DataTable row heights and cell padding. Virtualization, scrolling, selection, and data behavior remain GPUI-native.
 
-Compatibility rules:
+## Built-in values
 
-- Existing applications that never select a Style Preset remain in `ThemeDefault`.
-- `ThemeDefault` preserves current JSON behavior.
-- Explicit preset selection takes ownership of radius and shadow without rewriting the loaded ThemeConfig.
-- Removing explicit selection restores the current ThemeConfig values.
-- Existing public `Theme.radius`, `Theme.radius_lg`, and `Theme.shadow` fields remain available.
-- New Style fields use defaults when deserializing older runtime state.
-- No existing theme file requires migration for the first release.
+Button control geometry is pinned to the local shadcn/ui revision:
 
-Deprecating legacy appearance keys is not part of this project.
+| Preset | Size | Height | Padding X | Icon edge | Gap | Icon |
+|---|---|---:|---:|---:|---:|---:|
+| Vega | xs / sm / md / lg | 24 / 32 / 36 / 40 | 8 / 10 / 10 / 10 | 6 / 6 / 8 / 8 | 4 / 4 / 6 / 6 | 12 / 16 / 16 / 16 |
+| Nova | xs / sm / md / lg | 24 / 28 / 32 / 36 | 8 / 10 / 10 / 10 | 6 / 6 / 8 / 8 | 4 / 4 / 6 / 6 | 12 / 14 / 16 / 16 |
+| Maia | xs / sm / md / lg | 24 / 32 / 36 / 40 | 10 / 12 / 12 / 16 | 8 / 8 / 10 / 12 | 4 / 4 / 6 / 6 | 12 / 16 / 16 / 16 |
 
-## Style Registry
+Fonts and icon libraries declared by upstream shadcn styles are intentionally excluded. Applications keep their Color Theme typography and GPUI icon source.
 
-Use a small registry with no first-release file watcher:
+## Registry and selection
 
 ```rust
-pub struct StyleRegistry {
-    presets: HashMap<SharedString, Rc<StylePreset>>,
-}
+StyleRegistry::register(preset, cx)?;
+let preset = StyleRegistry::get("vega", cx);
+let presets = StyleRegistry::sorted_styles(cx);
+
+Theme::set_style("nova", cx)?;
+Theme::set_color_theme(theme_config, cx);
 ```
 
-Required API capabilities:
+Registry rules:
 
-- Register built-in or application-provided presets.
-- Look up a preset by stable name.
-- Return a sorted list for selectors.
-- Reject duplicate built-in names predictably.
-- Apply only a fully resolved valid preset.
+1. Stable ids are non-empty and unique.
+2. Control heights are positive and ordered from `xs` to `lg`.
+3. Overlay scale is within `0..=1`.
+4. Registration validates the whole preset before insertion.
+5. Unknown selection returns an actionable error and preserves the active preset.
+6. Built-in and application-provided presets use the same API.
+7. Sorted selection uses display name; persisted identity uses stable id.
 
-Deferred capabilities:
+Color and Style selection are order-independent:
+
+1. `Theme::set_color_theme` changes Color Theme data and preserves `Theme.style`.
+2. `Theme::set_style` changes `Theme.style` and preserves colors, mode, typography, and syntax highlighting.
+3. Both operations refresh windows without rebuilding application state.
+
+Story Gallery persists Color Theme name and Style Preset id separately.
+
+## Extension policy
+
+Deferred until demonstrated by real use:
 
 - External Style JSON.
 - Directory watching and hot reload.
@@ -164,47 +174,17 @@ Deferred capabilities:
 - Runtime downloading.
 - Per-component registries.
 - Tailwind-like class composition.
+- Font or icon switching in Style Presets.
 
-## Initial presets
-
-| Preset | shadcn source | Purpose |
-|---|---|---|
-| Vega | `style-vega.css` | Default, neutral, familiar, standard density |
-| Nova | `style-nova.css` | Compact controls with reduced padding and margins |
-| Maia | `style-maia.css` | Comfortable spacing and larger radii |
-
-Mira overlaps the compact validation provided by Nova. Lyra, Luma, Sera, and Rhea introduce additional typography or surface decisions. They are deferred until the first three presets prove that components consume resolved metrics without preset-specific branches.
-
-## Preset implementation rules
-
-- Presets provide data, not component implementations.
-- A component may branch on semantic state or capability, never preset name.
-- A preset cannot alter keyboard, focus, dismissal, selection, or accessibility behavior.
-- A preset cannot introduce component-specific public API.
-- Shared metrics require at least three consumers.
-- Local `Styled` overrides remain the final layer for exceptional application use.
-- Motion must communicate state and must not use bounce or elastic easing.
-
-## Resolution order
-
-```text
-Library defaults
-  -> selected Color Theme
-  -> selected Style Preset or ThemeDefault compatibility values
-  -> platform accessibility overrides
-  -> local component Styled overrides
-```
-
-Platform accessibility overrides include reduced motion and other system-enforced behavior. They are not persisted as preset identity.
+Add a shared metric only when at least three consumers need the same semantic value. Keep one-off widths, maximum sizes, and component-specific layout values local.
 
 ## Acceptance criteria
 
 - Vega, Nova, and Maia produce visibly distinct geometry with the same Color Theme.
-- One preset produces identical geometry across different Color Themes.
-- Color switching does not change explicit preset identity or metrics.
-- Style switching does not change colors, Theme Mode, or syntax highlighting.
-- `ThemeDefault` reproduces existing Theme JSON appearance.
-- Components read only resolved `Theme` values.
-- No component contains `if preset == ...` rendering branches.
-- Invalid selection does not leave partially applied style data.
-- Existing custom themes load without modification.
+- One Style Preset produces identical geometry across different Color Themes.
+- Color switching preserves Style identity and metrics.
+- Style switching preserves colors, mode, typography, and syntax highlighting.
+- No component branches on `vega`, `nova`, or `maia`.
+- Invalid registration and unknown selection do not partially mutate runtime state.
+- Button, form control, focus, overlay, navigation motion, and data metrics use shared semantic fields.
+- P3 components retain GPUI-native behavior and consume shared tokens only where applicable.

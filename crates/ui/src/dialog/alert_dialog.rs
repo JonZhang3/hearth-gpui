@@ -171,6 +171,12 @@ impl AlertDialog {
         self
     }
 
+    /// Sets the accessible name announced for the alert dialog surface.
+    pub fn aria_label(mut self, label: impl Into<gpui::SharedString>) -> Self {
+        self.base = self.base.aria_label(label);
+        self
+    }
+
     /// Sets the description of the alert dialog.
     #[track_caller]
     pub fn description(mut self, description: impl IntoElement) -> Self {
@@ -330,6 +336,7 @@ impl AlertDialog {
         let style = self.base.style.clone();
         let props = self.base.props.clone();
         let button_props = self.button_props.clone();
+        let a11y_label = self.base.a11y_label.clone();
 
         div()
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -337,11 +344,14 @@ impl AlertDialog {
                 let style = style.clone();
                 let props = props.clone();
                 let button_props = button_props.clone();
+                let a11y_label = a11y_label.clone();
                 window.open_dialog(cx, move |dialog, _, _| {
                     dialog
                         .refine_style(&style)
                         .button_props(button_props.clone())
                         .with_props(props.clone())
+                        .alert_dialog_role()
+                        .when_some(a11y_label.clone(), |this, label| this.aria_label(label))
                         .when_some(content_builder.clone(), |this, content_builder| {
                             this.content(move |content, window, cx| {
                                 content_builder(content, window, cx)

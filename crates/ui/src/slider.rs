@@ -589,7 +589,7 @@ impl RenderOnce for Slider {
                 .map(|v| v.to_pixels(rem_size))
                 .unwrap_or(default_radius),
         };
-        if cx.theme().radius.is_zero() {
+        if cx.theme().style.radii.md.is_zero() {
             radius.top_left = px(0.);
             radius.top_right = px(0.);
             radius.bottom_left = px(0.);
@@ -737,7 +737,9 @@ impl RenderOnce for Slider {
                                         this.w_full().bottom(bar_start).top(bar_end)
                                     })
                                     .bg(bar_color)
-                                    .when(!cx.theme().radius.is_zero(), |this| this.rounded_full()),
+                                    .when(!cx.theme().style.radii.md.is_zero(), |this| {
+                                        this.rounded_full()
+                                    }),
                             )
                             .when(is_range, |this| {
                                 this.child(self.render_thumb(

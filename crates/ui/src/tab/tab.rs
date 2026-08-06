@@ -1,6 +1,6 @@
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
-use crate::animation::{Lerp, ease_in_out_cubic};
+use crate::animation::Lerp;
 use crate::{ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -337,9 +337,9 @@ impl TabVariant {
         }
 
         match size {
-            Size::XSmall | Size::Small => cx.theme().radius,
-            Size::Large => cx.theme().radius_lg,
-            _ => cx.theme().radius_lg,
+            Size::XSmall | Size::Small => cx.theme().style.radii.md,
+            Size::Large => cx.theme().style.radii.lg,
+            _ => cx.theme().style.radii.lg,
         }
     }
 
@@ -347,9 +347,9 @@ impl TabVariant {
         match self {
             TabVariant::Outline | TabVariant::Pill => px(99.),
             TabVariant::Segmented => match size {
-                Size::XSmall | Size::Small => cx.theme().radius,
-                Size::Large => cx.theme().radius_lg,
-                _ => cx.theme().radius_lg,
+                Size::XSmall | Size::Small => cx.theme().style.radii.md,
+                Size::Large => cx.theme().style.radii.lg,
+                _ => cx.theme().style.radii.lg,
             },
             _ => px(0.),
         }
@@ -714,10 +714,12 @@ impl RenderOnce for Tab {
             .hover(|this| this.bg(hover_inner_bg).rounded(inner_radius));
 
         let inner_element = if animate_fg {
+            let easing = cx.theme().style.motion.move_easing;
             inner_content
                 .with_animation(
                     ElementId::NamedInteger("tab-fg".into(), self.indicator_epoch),
-                    Animation::new(Duration::from_millis(200)).with_easing(ease_in_out_cubic),
+                    Animation::new(cx.theme().style.motion.slow())
+                        .with_easing(move |delta| easing.sample(delta)),
                     move |this, delta| this.text_color(Lerp::lerp(&fg_from, &fg_to, delta)),
                 )
                 .into_any_element()

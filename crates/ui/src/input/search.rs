@@ -483,7 +483,7 @@ impl Render for SearchPanel {
             .gap_1()
             .bg(cx.theme().tokens.popover)
             .border_b_1()
-            .rounded(cx.theme().radius.half())
+            .rounded(cx.theme().style.radii.md.half())
             .border_color(cx.theme().border)
             .child(
                 h_flex()
@@ -580,6 +580,7 @@ impl Render for SearchPanel {
                     .child(div().w_7())
                     .child(
                         Button::new("close")
+                            .aria_label(t!("Common.Close"))
                             .xsmall()
                             .ghost()
                             .icon(IconName::Close)

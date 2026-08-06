@@ -283,6 +283,15 @@ h_flex()
     )
 ```
 
+## 可访问性
+
+使用 `aria_label` 为触发器提供可访问名称。当前选中项标题会作为 AccessKit value，展开态和禁用态会自动暴露。
+
+```rust
+Select::new(&state)
+    .aria_label("国家或地区")
+```
+
 ## 键盘快捷键
 
 | 按键 | 行为 |

@@ -217,8 +217,14 @@ windows = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-gpui = { workspace = true, features = ["test-support"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+gpui = { workspace = true, features = ["bench"] }
+gpui_platform = { workspace = true, features = ["test-support"] }
 indoc = "2"
+
+[[bench]]
+name = "shadcn_alignment"
+harness = false
 
 [lints]
 workspace = true

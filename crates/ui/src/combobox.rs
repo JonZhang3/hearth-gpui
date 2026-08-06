@@ -14,6 +14,7 @@ use crate::{
     ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Sizable, Size,
     StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
+    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
     global_state::GlobalState,
     h_flex,
     input::{clear_button, input_style},
@@ -63,6 +64,7 @@ struct ComboboxOptions {
     style: StyleRefinement,
     size: Size,
     cleanable: bool,
+    aria_label: Option<SharedString>,
     placeholder: Option<SharedString>,
     search_placeholder: Option<SharedString>,
     menu_width: Length,
@@ -79,6 +81,7 @@ impl Default for ComboboxOptions {
             style: StyleRefinement::default(),
             size: Size::default(),
             cleanable: false,
+            aria_label: None,
             placeholder: None,
             search_placeholder: None,
             menu_width: Length::Auto,
@@ -108,6 +111,7 @@ where
     render_trigger:
         Option<Box<dyn Fn(&ComboboxTriggerCtx<D>, &mut Window, &mut App) -> AnyElement + 'static>>,
     footer: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
+    lifecycle: OverlayLifecycle,
 }
 
 /// Events emitted by [`ComboboxState`].
@@ -191,8 +195,7 @@ where
 
                             if should_close {
                                 cx.emit(ComboboxEvent::Confirm(this.selected_values()));
-                                this.set_open(false, cx);
-                                this.focus(window, cx);
+                                this.set_open(false, window, cx);
                             }
 
                             this.state.selection.clone()
@@ -221,8 +224,7 @@ where
                     move |_list_state, window, cx| {
                         _ = weak_cancel.update(cx, |this, cx| {
                             cx.emit(ComboboxEvent::Confirm(this.selected_values()));
-                            this.set_open(false, cx);
-                            this.focus(window, cx);
+                            this.set_open(false, window, cx);
                         });
                     }
                 });
@@ -256,6 +258,7 @@ where
             check_icon: None,
             render_trigger: None,
             footer: None,
+            lifecycle: OverlayLifecycle::default(),
         }
     }
 
@@ -448,8 +451,7 @@ where
             });
 
             cx.emit(ComboboxEvent::Confirm(self.selected_values()));
-            self.set_open(false, cx);
-            self.focus(window, cx);
+            self.set_open(false, window, cx);
         }
     }
 
@@ -460,13 +462,13 @@ where
             return;
         }
 
-        self.set_open(false, cx);
+        self.set_open(false, window, cx);
         cx.notify();
     }
 
     fn up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.open {
-            self.set_open(true, cx);
+            self.set_open(true, window, cx);
         }
 
         self.state.list.focus_handle(cx).focus(window, cx);
@@ -475,7 +477,7 @@ where
 
     fn down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.open {
-            self.set_open(true, cx);
+            self.set_open(true, window, cx);
         }
 
         self.state.list.focus_handle(cx).focus(window, cx);
@@ -486,7 +488,7 @@ where
         cx.propagate();
 
         if !self.state.open {
-            self.set_open(true, cx);
+            self.set_open(true, window, cx);
             cx.notify();
         }
 
@@ -496,7 +498,7 @@ where
     fn toggle_menu(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
 
-        self.set_open(!self.state.open, cx);
+        self.set_open(!self.state.open, window, cx);
 
         if self.state.open {
             self.state.list.focus_handle(cx).focus(window, cx);
@@ -514,21 +516,51 @@ where
         cx.stop_propagation();
         cx.emit(ComboboxEvent::Confirm(self.selected_values()));
 
-        self.set_open(false, cx);
-        self.focus(window, cx);
+        self.set_open(false, window, cx);
         cx.notify();
     }
 
-    fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
-        self.state.open = open;
-
-        if self.state.open {
-            GlobalState::global_mut(cx).register_deferred_popover(&self.state.focus_handle)
+    fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let transition = if open {
+            self.lifecycle.begin_open()
         } else {
-            GlobalState::global_mut(cx).unregister_deferred_popover(&self.state.focus_handle)
-        }
+            self.lifecycle.begin_close()
+        };
+        let Some(transition) = transition else {
+            return;
+        };
 
+        self.state.open = open;
+        if open {
+            GlobalState::global_mut(cx).register_deferred_popover(&self.state.focus_handle);
+        }
         cx.notify();
+
+        let restore_focus = self.state.list.read(cx).is_focused(window, cx);
+        let focus_handle = self.state.focus_handle.clone();
+        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
+        cx.spawn_in(window, async move |state, cx| {
+            cx.background_executor().timer(duration).await;
+            let _ = state.update_in(cx, |state, window, cx| {
+                let completed = if open {
+                    state.lifecycle.complete_open(transition)
+                } else {
+                    state.lifecycle.complete_close(transition)
+                };
+                if !completed {
+                    return;
+                }
+                if !open {
+                    GlobalState::global_mut(cx)
+                        .unregister_deferred_popover(&state.state.focus_handle);
+                    if restore_focus {
+                        focus_handle.focus(window, cx);
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn clean(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -594,6 +626,9 @@ where
         let is_focused = self.state.focus_handle.is_focused(window);
         let show_clean = self.state.cleanable && !self.state.selection.is_empty();
         let bounds = self.state.bounds;
+        let phase = self.lifecycle.phase();
+        let animation_key = self.lifecycle.animation_key();
+        let mounted = self.lifecycle.is_mounted();
         let allow_open = !(self.state.open || self.state.disabled);
         let outline_visible = self.state.open || (is_focused && !self.state.disabled);
         let disabled = self.state.disabled;
@@ -683,7 +718,7 @@ where
                 prepaint_handler,
                 cx,
             ))
-            .when(self.state.open, |this| {
+            .when(mounted, |this| {
                 this.child(
                     deferred(render_popup_shell(
                         &self.state.list,
@@ -694,6 +729,8 @@ where
                         bounds,
                         footer_el,
                         dismiss_handler,
+                        phase,
+                        animation_key,
                         cx,
                     ))
                     .with_priority(1),
@@ -780,6 +817,12 @@ where
     /// Set the placeholder text shown when no items are selected.
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.options.placeholder = Some(placeholder.into());
+        self
+    }
+
+    /// Set the accessible name for the Combobox trigger.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.options.aria_label = Some(label.into());
         self
     }
 
@@ -879,6 +922,17 @@ where
 {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.options.disabled;
+        let aria_label = self.options.aria_label.clone();
+        let selected_value = {
+            let state = self.state.read(cx);
+            let labels = state
+                .state
+                .selection
+                .iter()
+                .map(|(_, item)| item.title().to_string())
+                .collect::<Vec<_>>();
+            (!labels.is_empty()).then(|| labels.join(", "))
+        };
         let focus_handle = self.state.focus_handle(cx);
         let render_trigger = self.render_trigger;
         let footer = self.footer;
@@ -907,10 +961,12 @@ where
 
         let is_open = self.state.read(cx).state.open;
 
-        div()
+        let element = div()
             .id(self.id.clone())
             .role(Role::ComboBox)
             .aria_expanded(is_open)
+            .when_some(aria_label, |this, label| this.aria_label(label))
+            .when_some(selected_value, |this, value| this.aria_value(value))
             .key_context(CONTEXT)
             .when(!disabled, |this| {
                 this.track_focus(&focus_handle.tab_stop(true))
@@ -920,7 +976,9 @@ where
             .on_action(window.listener_for(&self.state, ComboboxState::enter))
             .on_action(window.listener_for(&self.state, ComboboxState::escape))
             .size_full()
-            .child(self.state)
+            .child(self.state);
+
+        crate::accessibility::accessibility_state(element, false, false, disabled)
     }
 }
 
@@ -956,10 +1014,10 @@ fn render_trigger_container(
                 .text_color(fg)
                 .when(disabled, |this| this.opacity(0.5))
                 .border_color(cx.theme().input)
-                .rounded(cx.theme().radius)
+                .rounded(cx.theme().style.radii.md)
         })
         .overflow_hidden()
-        .input_size(size)
+        .input_size(size, cx)
         .input_text_size(size)
         .refine_style(style)
         .when(outline_visible, |this| this.focused_border(cx))
@@ -990,10 +1048,63 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
     bounds: Bounds<Pixels>,
     footer_el: Option<AnyElement>,
     dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>,
+    phase: OverlayPhase,
+    animation_key: u64,
     cx: &mut App,
 ) -> AnyElement {
     let has_footer = footer_el.is_some();
-    let popup_radius = cx.theme().radius.min(px(8.));
+    let popup_radius = cx.theme().style.radii.md.min(px(8.));
+    let closing = phase == OverlayPhase::Closing;
+    let motion = cx.theme().style.motion;
+    let offset = cx.theme().style.overlays.side_offset;
+    let popup = v_flex()
+        .relative()
+        .occlude()
+        .mt_1p5()
+        .bg(cx.theme().tokens.popover)
+        .border_1()
+        .border_color(cx.theme().border)
+        .rounded(popup_radius)
+        .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
+        .child(
+            List::new(list)
+                .when_some(search_placeholder, |this, placeholder| {
+                    this.search_placeholder(placeholder)
+                })
+                .with_size(size)
+                .max_h(menu_max_h)
+                .paddings(Edges::all(px(4.))),
+        )
+        .when(has_footer, |this| {
+            this.child(
+                div()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .p_1()
+                    .when_some(footer_el, |this, el| this.child(el)),
+            )
+        })
+        .when(closing, |this| {
+            this.child(div().absolute().top_0().left_0().size_full().occlude())
+        });
+    let popup = Transition::new(motion.fast())
+        .ease_token(if closing {
+            motion.exit_easing
+        } else {
+            motion.enter_easing
+        })
+        .slide_y(
+            if closing { px(0.) } else { -offset },
+            if closing { -offset } else { px(0.) },
+        )
+        .fade(
+            if closing { 1.0 } else { 0.0 },
+            if closing { 0.0 } else { 1.0 },
+        )
+        .apply(
+            popup,
+            ElementId::NamedInteger("combobox-motion".into(), animation_key),
+        );
 
     anchored()
         .snap_to_window_with_margin(px(8.))
@@ -1004,35 +1115,8 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
                     Length::Auto => this.w(bounds.size.width + px(2.)),
                     Length::Definite(w) => this.w(w),
                 })
-                .child(
-                    v_flex()
-                        .occlude()
-                        .mt_1p5()
-                        .bg(cx.theme().tokens.popover)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .rounded(popup_radius)
-                        .shadow_md()
-                        .child(
-                            List::new(list)
-                                .when_some(search_placeholder, |this, placeholder| {
-                                    this.search_placeholder(placeholder)
-                                })
-                                .with_size(size)
-                                .max_h(menu_max_h)
-                                .paddings(Edges::all(px(4.))),
-                        )
-                        .when(has_footer, |this| {
-                            this.child(
-                                div()
-                                    .border_t_1()
-                                    .border_color(cx.theme().border)
-                                    .p_1()
-                                    .when_some(footer_el, |this, el| this.child(el)),
-                            )
-                        }),
-                )
-                .on_mouse_down_out(dismiss_handler),
+                .child(popup)
+                .when(!closing, |this| this.on_mouse_down_out(dismiss_handler)),
         )
         .into_any_element()
 }
@@ -1041,12 +1125,16 @@ fn render_popup_shell<D: SearchableListDelegate + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc};
+    use std::{cell::Cell, rc::Rc, time::Duration};
 
-    use gpui::{AppContext as _, Context, Entity, Subscription, TestAppContext};
+    use gpui::{
+        AppContext as _, Context, Element as _, Entity, IntoElement as _, RenderOnce as _, Role,
+        Subscription, TestAppContext,
+    };
 
     use crate::{
         IndexPath,
+        animation::OverlayPhase,
         combobox::{Combobox, ComboboxEvent, ComboboxState},
         searchable_list::{
             SearchableListChange, SearchableListDelegate, SearchableListItem, SearchableListState,
@@ -1088,7 +1176,8 @@ mod tests {
             let items = SearchableVec::new(vec!["Rust", "Go", "C++"]);
             let state = cx.new(|cx| ComboboxState::new(items, vec![], window, cx).searchable(true));
 
-            let _cb = Combobox::new(&state)
+            let cb = Combobox::new(&state)
+                .aria_label("Language")
                 .placeholder("Select language")
                 .search_placeholder("Search...")
                 .menu_width(gpui::px(300.))
@@ -1096,6 +1185,67 @@ mod tests {
                 .cleanable(true)
                 .disabled(false)
                 .appearance(true);
+
+            assert_eq!(cb.options.aria_label, Some("Language".into()));
+        });
+    }
+
+    #[gpui::test]
+    fn combo_box_exposes_name_value_expansion_and_disabled_state(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let items = SearchableVec::new(vec!["Rust", "Go", "C++"]);
+            let state = cx.new(|cx| ComboboxState::new(items, vec![IndexPath::new(0)], window, cx));
+            let mut node = gpui::accesskit::Node::new(Role::ComboBox);
+
+            Combobox::new(&state)
+                .aria_label("Language")
+                .disabled(true)
+                .render(window, cx)
+                .into_element()
+                .write_a11y_info(&mut node);
+
+            assert_eq!(node.label(), Some("Language"));
+            assert_eq!(node.value(), Some("Rust"));
+            assert_eq!(node.is_expanded(), Some(false));
+            assert!(node.is_disabled());
+        });
+    }
+
+    #[gpui::test]
+    fn test_combo_box_reopen_invalidates_pending_close(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let state = cx.update(|window, cx| {
+            let items = SearchableVec::new(vec!["Rust", "Go", "C++"]);
+            cx.new(|cx| ComboboxState::new(items, vec![], window, cx))
+        });
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.set_open(true, window, cx));
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Open);
+                state.set_open(false, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Closing);
+                state.set_open(true, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Opening);
+            });
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+
+        cx.update(|_, cx| {
+            let state = state.read(cx);
+            assert_eq!(state.lifecycle.phase(), OverlayPhase::Open);
+            assert!(state.state.open);
         });
     }
 

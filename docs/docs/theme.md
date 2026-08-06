@@ -17,6 +17,44 @@ cx.theme().foreground
 
 So if you want use the colors from the current theme, you should keep your component or view have [App] context.
 
+## Color Themes and Style Presets
+
+Color Themes and Style Presets are independent inputs. A Color Theme owns semantic colors,
+backgrounds, syntax highlighting, and typography. A Style Preset owns component geometry,
+density, radii, focus-ring geometry, elevation, overlay spacing, and motion. Components read the
+resolved values from the single global `Theme`:
+
+```rs
+use gpui::{App, SharedString};
+use gpui_component::{StylePreset, StyleRegistry, Theme};
+
+pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
+    // Vega is the default. Nova is compact and Maia is comfortable.
+    Theme::set_style("nova", cx)?;
+
+    // Custom presets are registered in Rust and validated before becoming available.
+    let mut custom = StylePreset::vega();
+    custom.id = SharedString::from("product");
+    custom.name = SharedString::from("Product");
+    StyleRegistry::register(custom, cx)?;
+    Theme::set_style("product", cx)
+}
+```
+
+Calling `Theme::set_style` preserves the selected Color Theme and syntax highlighting. Applying a
+Color Theme with `Theme::set_color_theme` or `Theme::apply_config` preserves the selected Style
+Preset. Style Presets are intentionally not loaded from JSON and do not support inheritance or hot
+reload. Registration rejects empty identifiers, non-finite or negative metrics, unordered control
+heights, radii, data-row heights or motion durations, invalid overlay scale, and duplicate ids.
+
+### Migration from flat appearance fields
+
+The former `Theme.radius`, `Theme.radius_lg`, and `Theme.shadow` fields and the corresponding Theme
+JSON keys were removed. Component code should use semantic resolved metrics such as
+`cx.theme().style.radii.md`, `cx.theme().style.controls`, and
+`cx.theme().style.elevation.enabled`. Theme JSON files should contain colors, typography, syntax,
+and runtime theme settings only.
+
 ## Gradient Backgrounds
 
 Theme color values remain backward compatible with the existing string format:
@@ -76,4 +114,5 @@ pub fn init(cx: &mut App) {
 
 [ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
 [ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
+[StyleRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.StyleRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

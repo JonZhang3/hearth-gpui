@@ -1,18 +1,21 @@
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent, Edges,
-    EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, WindowControlArea,
-    anchored, div, point, prelude::FluentBuilder as _, px,
+    ElementId, EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, WindowControlArea, anchored,
+    div, point, prelude::FluentBuilder as _, px,
 };
+use rust_i18n::t;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActiveTheme, FocusTrapElement as _, IconName, Placement, Sizable, StyledExt as _,
-    WindowExt as _,
+    ActiveTheme, Disableable as _, FocusTrapElement as _, IconName, Placement, Sizable,
+    StyledExt as _, WindowExt as _,
     actions::Cancel,
+    animation::OverlayPhase,
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
     h_flex,
@@ -51,11 +54,13 @@ pub struct Sheet {
     resizable: bool,
     on_close: Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>,
     title: Option<AnyElement>,
+    aria_label: Option<SharedString>,
     footer: Option<AnyElement>,
     style: StyleRefinement,
     children: Vec<AnyElement>,
     overlay: bool,
     overlay_closable: bool,
+    pub(crate) lifecycle_phase: OverlayPhase,
 }
 
 impl Sheet {
@@ -67,11 +72,13 @@ impl Sheet {
             size: DefiniteLength::Absolute(px(350.).into()),
             resizable: true,
             title: None,
+            aria_label: None,
             footer: None,
             style: StyleRefinement::default(),
             children: Vec::new(),
             overlay: true,
             overlay_closable: true,
+            lifecycle_phase: OverlayPhase::Open,
             on_close: Rc::new(|_, _, _| {}),
         }
     }
@@ -79,6 +86,12 @@ impl Sheet {
     /// Sets the title of the sheet.
     pub fn title(mut self, title: impl IntoElement) -> Self {
         self.title = Some(title.into_any_element());
+        self
+    }
+
+    /// Sets the accessible name announced for the sheet surface.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 
@@ -145,6 +158,8 @@ impl RenderOnce for Sheet {
             );
         let top = cx.theme().sheet.margin_top;
         let on_close = self.on_close.clone();
+        let closing = self.lifecycle_phase == OverlayPhase::Closing;
+        let motion = cx.theme().style.motion;
 
         let base_size = window.text_style().font_size;
         let rem_size = window.rem_size();
@@ -171,7 +186,7 @@ impl RenderOnce for Sheet {
                     .w(size.width)
                     .h(size.height)
                     .bg(overlay_color(self.overlay, cx))
-                    .when(self.overlay, |this| {
+                    .when(self.overlay && !closing, |this| {
                         this.window_control_area(WindowControlArea::Drag)
                             .on_any_mouse_down({
                                 let on_close = self.on_close.clone();
@@ -191,23 +206,27 @@ impl RenderOnce for Sheet {
                     .child(
                         v_flex()
                             .id("sheet")
+                            .role(Role::Dialog)
+                            .when_some(self.aria_label, |this, label| this.aria_label(label))
                             .key_context(CONTEXT)
                             .track_focus(&self.focus_handle)
                             .focus_trap("sheet", &self.focus_handle)
-                            .on_action({
-                                let on_close = self.on_close.clone();
-                                move |_: &Cancel, window, cx| {
-                                    cx.propagate();
+                            .when(!closing, |this| {
+                                this.on_action({
+                                    let on_close = self.on_close.clone();
+                                    move |_: &Cancel, window, cx| {
+                                        cx.propagate();
 
-                                    window.close_sheet(cx);
-                                    on_close(&ClickEvent::default(), window, cx);
-                                }
+                                        window.close_sheet(cx);
+                                        on_close(&ClickEvent::default(), window, cx);
+                                    }
+                                })
                             })
                             .absolute()
                             .occlude()
                             .bg(cx.theme().tokens.background)
                             .border_color(cx.theme().border)
-                            .shadow_xl()
+                            .when(cx.theme().style.elevation.enabled, |this| this.shadow_xl())
                             .refine_style(&self.style)
                             .map(|this| {
                                 // Set the size of the sheet.
@@ -237,9 +256,11 @@ impl RenderOnce for Sheet {
                                     .child(self.title.unwrap_or(div().into_any_element()))
                                     .child(
                                         Button::new("close")
+                                            .aria_label(t!("Common.Close"))
                                             .small()
                                             .ghost()
                                             .icon(IconName::Close)
+                                            .disabled(closing)
                                             .on_click(move |_, window, cx| {
                                                 window.close_sheet(cx);
                                                 on_close(&ClickEvent::default(), window, cx);
@@ -268,10 +289,20 @@ impl RenderOnce for Sheet {
                                         .child(footer),
                                 )
                             })
+                            .when(closing, |this| {
+                                this.child(div().absolute().top_0().left_0().size_full().occlude())
+                            })
                             .with_animation(
-                                "slide",
-                                Animation::new(Duration::from_secs_f64(0.15)),
+                                ElementId::NamedInteger("sheet-motion".into(), closing as u64),
+                                Animation::new(motion.slow()).with_easing(move |delta| {
+                                    if closing {
+                                        motion.exit_easing.sample(delta)
+                                    } else {
+                                        motion.enter_easing.sample(delta)
+                                    }
+                                }),
                                 move |this, delta| {
+                                    let delta = if closing { 1.0 - delta } else { delta };
                                     let y = px(-100.) + delta * px(100.);
                                     this.map(|this| match placement {
                                         Placement::Top => this.top(top + y),

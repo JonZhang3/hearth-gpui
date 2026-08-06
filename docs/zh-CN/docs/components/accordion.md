@@ -7,6 +7,10 @@ description: 内部基于 collapse 实现的可折叠面板组件。
 
 Accordion 是一个可折叠内容组件，允许用户展开和收起多个内容区块。它内部基于 collapse 功能实现，适合 FAQ、设置分组和分段内容展示。
 
+Accordion 的 id 同时用于限定各 item 的动态高度动画状态。退出内容会保留到共享 Style motion 结束；重复切换会忽略过期完成事件，reduced motion 会移除等待时间。
+
+可用的触发器支持键盘聚焦，并通过无修饰键的 `Enter` 或 `Space` 切换。触发器会向 AccessKit 暴露 button role 和展开状态。自定义标题无法提供可靠文本名称时，应设置 `aria_label()`。
+
 ## 导入
 
 ```rust
@@ -111,6 +115,7 @@ Accordion::new("my-accordion")
                 .child(Icon::new(IconName::Settings))
                 .child("Settings")
         )
+        .aria_label("Settings")
         .child("Settings content here")
     })
 ```

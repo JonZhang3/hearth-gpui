@@ -64,7 +64,7 @@ impl<E: SidebarItem> SidebarItem for SidebarGroup<E> {
                     h_flex()
                         .flex_shrink_0()
                         .px_2()
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .text_xs()
                         .text_color(cx.theme().sidebar_foreground.opacity(0.7))
                         .h_8()

@@ -176,12 +176,17 @@ pub trait StyledExt: Styled + Sized {
     /// Set as Popover style
     #[inline]
     fn popover_style(self, cx: &App) -> Self {
-        self.bg(cx.theme().tokens.popover)
+        let element = self
+            .bg(cx.theme().tokens.popover)
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.lg);
+        if cx.theme().style.elevation.enabled {
+            element.shadow_lg()
+        } else {
+            element
+        }
     }
 
     /// Set corner radii for the element.
@@ -248,44 +253,24 @@ impl Size {
 
     /// Returns the height for table row.
     #[inline]
-    pub fn table_row_height(&self) -> Pixels {
+    pub fn table_row_height(&self, cx: &App) -> Pixels {
         match self {
             Size::Size(size) => *size,
-            Size::XSmall => px(26.),
-            Size::Small => px(30.),
-            Size::Large => px(40.),
-            _ => px(32.),
+            _ => cx.theme().style.data.row_heights[self.metric_index()],
         }
     }
 
     /// Returns the padding for a table cell.
     #[inline]
-    pub fn table_cell_padding(&self) -> Edges<Pixels> {
-        match self {
-            Size::XSmall => Edges {
-                top: px(2.),
-                bottom: px(2.),
-                left: px(4.),
-                right: px(4.),
-            },
-            Size::Small => Edges {
-                top: px(3.),
-                bottom: px(3.),
-                left: px(6.),
-                right: px(6.),
-            },
-            Size::Large => Edges {
-                top: px(8.),
-                bottom: px(8.),
-                left: px(12.),
-                right: px(12.),
-            },
-            _ => Edges {
-                top: px(4.),
-                bottom: px(4.),
-                left: px(8.),
-                right: px(8.),
-            },
+    pub fn table_cell_padding(&self, cx: &App) -> Edges<Pixels> {
+        let index = self.metric_index();
+        let x = cx.theme().style.data.cell_padding_x[index];
+        let y = cx.theme().style.data.cell_padding_y[index];
+        Edges {
+            top: y,
+            bottom: y,
+            left: x,
+            right: x,
         }
     }
 
@@ -338,24 +323,22 @@ impl Size {
     }
 
     /// Returns the horizontal input padding.
-    pub fn input_px(&self) -> Pixels {
-        match self {
-            Self::Large => px(12.),
-            Self::Medium => px(10.),
-            Self::Small => px(8.),
-            Self::XSmall => px(4.),
-            _ => px(8.),
-        }
+    pub fn input_px(&self, cx: &App) -> Pixels {
+        cx.theme().style.controls.for_size(*self).padding_x
     }
 
     /// Returns the vertical input padding.
-    pub fn input_py(&self) -> Pixels {
+    pub fn input_py(&self, cx: &App) -> Pixels {
+        let height = cx.theme().style.controls.for_size(*self).height;
+        ((height - px(20.)) / 2.).max(px(0.))
+    }
+
+    fn metric_index(&self) -> usize {
         match self {
-            Size::Large => px(10.),
-            Size::Medium => px(8.),
-            Size::Small => px(2.),
-            Size::XSmall => px(0.),
-            _ => px(2.),
+            Size::XSmall => 0,
+            Size::Small => 1,
+            Size::Medium | Size::Size(_) => 2,
+            Size::Large => 3,
         }
     }
 }
@@ -420,19 +403,19 @@ pub trait Sizable: Sized {
 #[allow(unused)]
 pub trait StyleSized<T: Styled> {
     fn input_text_size(self, size: Size) -> Self;
-    fn input_size(self, size: Size) -> Self;
-    fn input_pl(self, size: Size) -> Self;
-    fn input_pr(self, size: Size) -> Self;
-    fn input_px(self, size: Size) -> Self;
-    fn input_py(self, size: Size) -> Self;
-    fn input_h(self, size: Size) -> Self;
+    fn input_size(self, size: Size, cx: &App) -> Self;
+    fn input_pl(self, size: Size, cx: &App) -> Self;
+    fn input_pr(self, size: Size, cx: &App) -> Self;
+    fn input_px(self, size: Size, cx: &App) -> Self;
+    fn input_py(self, size: Size, cx: &App) -> Self;
+    fn input_h(self, size: Size, cx: &App) -> Self;
     fn list_size(self, size: Size) -> Self;
     fn list_px(self, size: Size) -> Self;
     fn list_py(self, size: Size) -> Self;
     /// Apply size with the given `Size`.
-    fn size_with(self, size: Size) -> Self;
+    fn size_with(self, size: Size, cx: &App) -> Self;
     /// Apply the table cell size (Font size, padding) with the given `Size`.
-    fn table_cell_size(self, size: Size) -> Self;
+    fn table_cell_size(self, size: Size, cx: &App) -> Self;
     fn button_text_size(self, size: Size) -> Self;
 }
 
@@ -449,39 +432,33 @@ impl<T: Styled> StyleSized<T> for T {
     }
 
     #[inline]
-    fn input_size(self, size: Size) -> Self {
-        self.input_px(size).input_py(size).input_h(size)
+    fn input_size(self, size: Size, cx: &App) -> Self {
+        self.input_px(size, cx).input_py(size, cx).input_h(size, cx)
     }
 
     #[inline]
-    fn input_pl(self, size: Size) -> Self {
-        self.pl(size.input_px())
+    fn input_pl(self, size: Size, cx: &App) -> Self {
+        self.pl(size.input_px(cx))
     }
 
     #[inline]
-    fn input_pr(self, size: Size) -> Self {
-        self.pr(size.input_px())
+    fn input_pr(self, size: Size, cx: &App) -> Self {
+        self.pr(size.input_px(cx))
     }
 
     #[inline]
-    fn input_px(self, size: Size) -> Self {
-        self.px(size.input_px())
+    fn input_px(self, size: Size, cx: &App) -> Self {
+        self.px(size.input_px(cx))
     }
 
     #[inline]
-    fn input_py(self, size: Size) -> Self {
-        self.py(size.input_py())
+    fn input_py(self, size: Size, cx: &App) -> Self {
+        self.py(size.input_py(cx))
     }
 
     #[inline]
-    fn input_h(self, size: Size) -> Self {
-        match size {
-            Size::Large => self.h_11(),
-            Size::Medium => self.h_8(),
-            Size::Small => self.h_6(),
-            Size::XSmall => self.h_5(),
-            _ => self.h_6(),
-        }
+    fn input_h(self, size: Size, cx: &App) -> Self {
+        self.h(cx.theme().style.controls.for_size(size).height)
     }
 
     #[inline]
@@ -508,19 +485,13 @@ impl<T: Styled> StyleSized<T> for T {
     }
 
     #[inline]
-    fn size_with(self, size: Size) -> Self {
-        match size {
-            Size::Large => self.size_11(),
-            Size::Medium => self.size_8(),
-            Size::Small => self.size_5(),
-            Size::XSmall => self.size_4(),
-            Size::Size(size) => self.size(size),
-        }
+    fn size_with(self, size: Size, cx: &App) -> Self {
+        self.size(cx.theme().style.controls.for_size(size).height)
     }
 
     #[inline]
-    fn table_cell_size(self, size: Size) -> Self {
-        let padding = size.table_cell_padding();
+    fn table_cell_size(self, size: Size, cx: &App) -> Self {
+        let padding = size.table_cell_padding(cx);
         match size {
             Size::XSmall => self.text_sm(),
             Size::Small => self.text_sm(),
@@ -535,8 +506,7 @@ impl<T: Styled> StyleSized<T> for T {
     fn button_text_size(self, size: Size) -> Self {
         match size {
             Size::XSmall => self.text_xs(),
-            Size::Small => self.text_sm(),
-            _ => self.text_base(),
+            _ => self.text_sm(),
         }
     }
 }
@@ -544,15 +514,36 @@ impl<T: Styled> StyleSized<T> for T {
 pub(crate) trait FocusableExt<T: ParentElement + Styled + Sized> {
     /// Add focus ring to the element.
     fn focus_ring(self, is_focused: bool, margins: Pixels, window: &Window, cx: &App) -> Self;
+
+    /// Add a focus ring with an explicit semantic color.
+    fn focus_ring_color(
+        self,
+        is_focused: bool,
+        margins: Pixels,
+        color: Hsla,
+        window: &Window,
+        cx: &App,
+    ) -> Self;
 }
 
 impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
-    fn focus_ring(mut self, is_focused: bool, margins: Pixels, window: &Window, cx: &App) -> Self {
+    fn focus_ring(self, is_focused: bool, margins: Pixels, window: &Window, cx: &App) -> Self {
+        self.focus_ring_color(is_focused, margins, cx.theme().ring, window, cx)
+    }
+
+    fn focus_ring_color(
+        mut self,
+        is_focused: bool,
+        margins: Pixels,
+        color: Hsla,
+        window: &Window,
+        cx: &App,
+    ) -> Self {
         if !is_focused {
             return self;
         }
 
-        const RING_BORDER_WIDTH: Pixels = px(1.5);
+        let ring_border_width = cx.theme().style.focus.ring_width;
         let rem_size = window.rem_size();
         let style = self.style();
 
@@ -602,7 +593,7 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
                 .map(|v| v.to_pixels(rem_size))
                 .unwrap_or_default(),
         }
-        .map(|v| *v + RING_BORDER_WIDTH);
+        .map(|v| *v + ring_border_width);
 
         let mut inner_style = StyleRefinement::default();
         inner_style.corner_radii.top_left = Some(radius.top_left.into());
@@ -610,7 +601,7 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
         inner_style.corner_radii.bottom_left = Some(radius.bottom_left.into());
         inner_style.corner_radii.bottom_right = Some(radius.bottom_right.into());
 
-        let inset = RING_BORDER_WIDTH + margins;
+        let inset = ring_border_width + cx.theme().style.focus.ring_offset + margins;
 
         self.child(
             div()
@@ -620,8 +611,8 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
                 .left(-(inset + border_widths.left))
                 .right(-(inset + border_widths.right))
                 .bottom(-(inset + border_widths.bottom))
-                .border(RING_BORDER_WIDTH)
-                .border_color(cx.theme().ring.alpha(0.2))
+                .border(ring_border_width)
+                .border_color(color.alpha(0.2))
                 .refine_style(&inner_style),
         )
     }
@@ -672,15 +663,6 @@ mod tests {
         assert_eq!(Size::Medium.as_str(), "md");
         assert_eq!(Size::Large.as_str(), "lg");
         assert_eq!(Size::Size(px(15.)).as_str(), "custom");
-    }
-
-    #[test]
-    fn test_table_row_height() {
-        assert_eq!(Size::XSmall.table_row_height(), px(26.));
-        assert_eq!(Size::Small.table_row_height(), px(30.));
-        assert_eq!(Size::Medium.table_row_height(), px(32.));
-        assert_eq!(Size::Large.table_row_height(), px(40.));
-        assert_eq!(Size::Size(px(48.)).table_row_height(), px(48.));
     }
 
     #[test]
