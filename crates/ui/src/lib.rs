@@ -115,6 +115,7 @@ pub fn init(cx: &mut App) {
     root::init(cx);
     focus_trap::init(cx);
     color_picker::init(cx);
+    calendar::init(cx);
     date_picker::init(cx);
     dock::init(cx);
     sheet::init(cx);

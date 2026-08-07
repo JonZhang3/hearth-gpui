@@ -19,6 +19,18 @@ Common:
     zh-TW: 通知
     it: Notifica
 Calendar:
+  previous:
+    en: Previous month
+    zh-CN: 上个月
+    zh-HK: 上個月
+    zh-TW: 上個月
+    it: Mese precedente
+  next:
+    en: Next month
+    zh-CN: 下个月
+    zh-HK: 下個月
+    zh-TW: 下個月
+    it: Mese successivo
   week.0:
     en: Su
     zh-CN: 日
@@ -133,6 +145,78 @@ Calendar:
     zh-HK: 十二月
     zh-TW: 十二月
     it: Dicembre
+  month_short.January:
+    en: Jan
+    zh-CN: 一月
+    zh-HK: 一月
+    zh-TW: 一月
+    it: Gen
+  month_short.February:
+    en: Feb
+    zh-CN: 二月
+    zh-HK: 二月
+    zh-TW: 二月
+    it: Feb
+  month_short.March:
+    en: Mar
+    zh-CN: 三月
+    zh-HK: 三月
+    zh-TW: 三月
+    it: Mar
+  month_short.April:
+    en: Apr
+    zh-CN: 四月
+    zh-HK: 四月
+    zh-TW: 四月
+    it: Apr
+  month_short.May:
+    en: May
+    zh-CN: 五月
+    zh-HK: 五月
+    zh-TW: 五月
+    it: Mag
+  month_short.June:
+    en: Jun
+    zh-CN: 六月
+    zh-HK: 六月
+    zh-TW: 六月
+    it: Giu
+  month_short.July:
+    en: Jul
+    zh-CN: 七月
+    zh-HK: 七月
+    zh-TW: 七月
+    it: Lug
+  month_short.August:
+    en: Aug
+    zh-CN: 八月
+    zh-HK: 八月
+    zh-TW: 八月
+    it: Ago
+  month_short.September:
+    en: Sep
+    zh-CN: 九月
+    zh-HK: 九月
+    zh-TW: 九月
+    it: Set
+  month_short.October:
+    en: Oct
+    zh-CN: 十月
+    zh-HK: 十月
+    zh-TW: 十月
+    it: Ott
+  month_short.November:
+    en: Nov
+    zh-CN: 十一月
+    zh-HK: 十一月
+    zh-TW: 十一月
+    it: Nov
+  month_short.December:
+    en: Dec
+    zh-CN: 十二月
+    zh-HK: 十二月
+    zh-TW: 十二月
+    it: Dic
 DatePicker:
   placeholder:
     en: "Select date"

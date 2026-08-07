@@ -5,7 +5,7 @@ description: A flexible calendar component for displaying months, navigating dat
 
 # Calendar
 
-A standalone calendar component that provides a rich interface for date selection and navigation. The Calendar component supports single date selection, date range selection, multiple month views, custom disabled dates, and comprehensive keyboard navigation.
+A standalone, shadcn-aligned calendar for single and range selection. It supports multiple months, custom disabled dates, configurable week starts, optional month motion, and native keyboard navigation.
 
 - [CalendarState]: For managing calendar state and selection.
 - [Calendar]: For rendering the calendar UI.
@@ -27,6 +27,20 @@ let state = cx.new(|cx| CalendarState::new(window, cx));
 Calendar::new(&state)
 ```
 
+### Framed Calendar
+
+The shadcn Calendar itself is unframed. Add the surface through `Styled` when the Calendar is used as a standalone card:
+
+```rust
+Calendar::new(&state)
+    .border_1()
+    .border_color(cx.theme().border)
+    .rounded(cx.theme().style.radii.md)
+    .shadow_xs()
+```
+
+Calendar uses the standard theme typography scale: `text-sm` for dates and captions, and `text-xs` for weekday labels.
+
 ### Calendar with Initial Date
 
 ```rust
@@ -47,7 +61,7 @@ Calendar::new(&state)
 use chrono::{Local, Days};
 
 let state = cx.new(|cx| {
-    let mut state = CalendarState::new(window, cx);
+    let mut state = CalendarState::range(window, cx);
     let now = Local::now().naive_local().date();
     state.set_date(
         Date::Range(Some(now), now.checked_add_days(Days::new(7))),
@@ -58,7 +72,10 @@ let state = cx.new(|cx| {
 });
 
 Calendar::new(&state)
+    .number_of_months(2)
 ```
+
+The first selection leaves the range pending. The second selection completes an ordered range, including when it is selected before the first endpoint.
 
 ### Multiple Months Display
 
@@ -79,6 +96,28 @@ Calendar::new(&state).large()
 Calendar::new(&state) // medium (default)
 Calendar::new(&state).small()
 ```
+
+The default cell follows the active Style Preset: Vega and Maia use 32 px while Nova uses 28 px.
+
+### Week Start and Outside Days
+
+```rust
+use chrono::Weekday;
+
+Calendar::new(&state)
+    .week_starts_on(Weekday::Mon)
+    .show_outside_days(false)
+```
+
+Calendar uses Sunday by default and renders six stable week rows.
+
+### Month Motion
+
+```rust
+Calendar::new(&state).animated(true)
+```
+
+Motion is opt-in, uses the active Style Preset motion tokens, and becomes static when reduced motion is enabled.
 
 ## Date Restrictions
 
@@ -180,6 +219,8 @@ The Calendar automatically provides navigation controls:
 - **Month Selection**: Click on month name to open month picker
 - **Year Selection**: Click on year to open year picker
 - **Year Pages**: Navigate through 20-year pages in year view
+
+The custom Month and Year grids are retained as a GPUI desktop interaction. Arrow keys navigate the active date or picker grid, Home/End move to an edge, Page Up/Page Down change month or page, Enter/Space confirm, and Escape returns from Month/Year view.
 
 ### Custom Year Range
 

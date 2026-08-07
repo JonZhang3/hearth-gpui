@@ -12,7 +12,7 @@ use gpui_component::{
     badge::{Badge, BadgeVariants as _},
     button::Button,
     button::Toggle,
-    calendar::{Calendar, CalendarState},
+    calendar::{Calendar, CalendarState, Date},
     card::{Card, CardContent, CardDescription, CardFooter, CardHeader, CardMedia, CardTitle},
     checkbox::Checkbox,
     collapsible::Collapsible,
@@ -46,6 +46,7 @@ pub struct ShadcnAlignmentStory {
     text_area: Entity<InputState>,
     number_input: Entity<InputState>,
     calendar: Entity<CalendarState>,
+    range_calendar: Entity<CalendarState>,
     date_picker: Entity<DatePickerState>,
     slider: Entity<SliderState>,
     range_slider: Entity<SliderState>,
@@ -91,6 +92,18 @@ impl super::Story for ShadcnAlignmentStory {
             calendar: cx.new(|cx| {
                 let mut calendar = CalendarState::new(window, cx).disabled_matcher(vec![0, 6]);
                 calendar.set_date(NaiveDate::from_ymd_opt(2026, 8, 6).unwrap(), window, cx);
+                calendar
+            }),
+            range_calendar: cx.new(|cx| {
+                let mut calendar = CalendarState::range(window, cx);
+                calendar.set_date(
+                    Date::Range(
+                        Some(NaiveDate::from_ymd_opt(2026, 8, 6).unwrap()),
+                        Some(NaiveDate::from_ymd_opt(2026, 8, 14).unwrap()),
+                    ),
+                    window,
+                    cx,
+                );
                 calendar
             }),
             date_picker: cx.new(|cx| {
@@ -513,6 +526,11 @@ impl Render for ShadcnAlignmentStory {
                                 .content(CardContent::new().child("Deterministic capture surface.")),
                         ),
                 ),
+            )
+            .child(
+                section("Range Calendar")
+                    .max_w(px(760.))
+                    .child(Calendar::new(&self.range_calendar).number_of_months(2)),
             )
             .child(
                 section("Calendar, DatePicker, and Slider states")

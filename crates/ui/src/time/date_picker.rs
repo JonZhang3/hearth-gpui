@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use chrono::NaiveDate;
+use chrono::{NaiveDate, Weekday};
 use gpui::{
     App, AppContext, ClickEvent, Context, ElementId, Empty, Entity, EventEmitter, FocusHandle,
     Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement as _,
@@ -202,9 +202,10 @@ impl DatePickerState {
         cx.notify();
     }
 
-    fn on_enter(&mut self, _: &Confirm, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_enter(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
         if !self.open {
             self.open = true;
+            self.calendar.focus_handle(cx).focus(window, cx);
             cx.notify();
         }
     }
@@ -243,8 +244,16 @@ impl DatePickerState {
         }
     }
 
-    fn toggle_calendar(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_calendar(
+        &mut self,
+        _: &gpui::ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.open = !self.open;
+        if self.open {
+            self.calendar.focus_handle(cx).focus(window, cx);
+        }
         cx.notify();
     }
 
@@ -278,6 +287,8 @@ pub struct DatePicker {
     presets: Option<Vec<DateRangePreset>>,
     appearance: bool,
     disabled: bool,
+    week_starts_on: Weekday,
+    calendar_animated: bool,
 }
 
 impl Sizable for DatePicker {
@@ -325,6 +336,8 @@ impl DatePicker {
             presets: None,
             appearance: true,
             disabled: false,
+            week_starts_on: Weekday::Sun,
+            calendar_animated: false,
         }
     }
 
@@ -348,7 +361,19 @@ impl DatePicker {
 
     /// Set number of months to display in the calendar, default is 2.
     pub fn number_of_months(mut self, number_of_months: usize) -> Self {
-        self.number_of_months = number_of_months;
+        self.number_of_months = number_of_months.max(1);
+        self
+    }
+
+    /// Set the first weekday used by the embedded Calendar.
+    pub fn week_starts_on(mut self, week_starts_on: Weekday) -> Self {
+        self.week_starts_on = week_starts_on;
+        self
+    }
+
+    /// Enable month transition motion for the embedded Calendar.
+    pub fn calendar_animated(mut self, animated: bool) -> Self {
+        self.calendar_animated = animated;
         self
     }
 
@@ -456,7 +481,7 @@ impl RenderOnce for DatePicker {
                             div()
                                 .occlude()
                                 .mt_1p5()
-                                .p_3()
+                                .p_0()
                                 .border_1()
                                 .border_color(cx.theme().border)
                                 .when(cx.theme().style.elevation.enabled, |this| this.shadow_lg())
@@ -500,9 +525,10 @@ impl RenderOnce for DatePicker {
                                         .child(
                                             Calendar::new(&state.calendar)
                                                 .number_of_months(self.number_of_months)
+                                                .week_starts_on(self.week_starts_on)
+                                                .animated(self.calendar_animated)
                                                 .border_0()
                                                 .rounded_none()
-                                                .p_0()
                                                 .with_size(self.size),
                                         ),
                                 ),

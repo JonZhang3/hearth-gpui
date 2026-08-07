@@ -5,7 +5,7 @@ description: 用于展示月份、浏览日期和选择单日或区间的灵活�
 
 # Calendar
 
-Calendar 是一个独立的日历组件，支持单日选择、日期区间选择、多月视图、禁用日期规则以及完整的键盘导航能力。
+Calendar 是一个与 shadcn 对齐的独立日历组件，支持单日与日期区间选择、多月视图、禁用日期规则、可配置的周起始日、可选月份动画和完整的键盘导航能力。
 
 - [CalendarState] 负责状态与选择管理
 - [Calendar] 负责渲染日历界面
@@ -27,19 +27,36 @@ let state = cx.new(|cx| CalendarState::new(window, cx));
 Calendar::new(&state)
 ```
 
+### 带边框的日历
+
+shadcn Calendar 本身不包含边框。Calendar 作为独立卡片使用时，通过 `Styled` 添加外层表面：
+
+```rust
+Calendar::new(&state)
+    .border_1()
+    .border_color(cx.theme().border)
+    .rounded(cx.theme().style.radii.md)
+    .shadow_xs()
+```
+
+Calendar 使用主题的标准文字等级：日期和标题使用 `text-sm`，星期标题使用 `text-xs`。
+
 ### 初始日期
 
 ```rust
 use chrono::Local;
 
 let state = cx.new(|cx| {
-    let mut state = CalendarState::new(window, cx);
+    let mut state = CalendarState::range(window, cx);
     state.set_date(Local::now().naive_local().date(), window, cx);
     state
 });
 
 Calendar::new(&state)
+    .number_of_months(2)
 ```
+
+第一次选择后区间保持待完成状态，第二次选择完成有序区间；即使第二次选择的日期早于第一次，也会自动调整起止顺序。
 
 ### 日期区间
 
@@ -77,6 +94,28 @@ Calendar::new(&state).large()
 Calendar::new(&state)
 Calendar::new(&state).small()
 ```
+
+默认日期单元尺寸由当前 Style Preset 决定：Vega 和 Maia 使用 32px，Nova 使用 28px。
+
+### 周起始日与跨月日期
+
+```rust
+use chrono::Weekday;
+
+Calendar::new(&state)
+    .week_starts_on(Weekday::Mon)
+    .show_outside_days(false)
+```
+
+默认从星期日开始，并始终渲染六行日期以保持布局稳定。
+
+### 月份切换动画
+
+```rust
+Calendar::new(&state).animated(true)
+```
+
+动画默认关闭。启用后使用当前 Style Preset 的 motion token，并在 reduced motion 开启时退化为静态切换。
 
 ## 日期限制
 
@@ -124,6 +163,8 @@ Calendar 自带这些导航能力：
 - 点击月份切换月视图
 - 点击年份切换年视图
 - 在年视图中按页浏览年份
+
+月份和年份选择网格是保留的 GPUI 桌面交互。方向键移动当前日期或网格选项，Home/End 移动到边界，Page Up/Page Down 切换月份或分页，Enter/Space 确认，Escape 返回日期视图。
 
 ### 自定义年份范围
 
@@ -188,9 +229,7 @@ let holidays: HashSet<NaiveDate> = [
 
 ```rust
 let state = cx.new(|cx| {
-    let mut state = CalendarState::new(window, cx);
-    state.set_date(Date::Range(None, None), window, cx);
-    state
+    CalendarState::range(window, cx)
 });
 
 Calendar::new(&state)

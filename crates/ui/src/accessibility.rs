@@ -21,12 +21,23 @@ pub(crate) fn accessibility_state(
     read_only: bool,
     disabled: bool,
 ) -> AccessibilityStateElement<impl Element> {
+    accessibility_state_with_current(element, invalid, read_only, disabled, None)
+}
+
+/// Applies form-control states and an optional `aria-current` value.
+pub(crate) fn accessibility_state_with_current(
+    element: impl IntoElement,
+    invalid: bool,
+    read_only: bool,
+    disabled: bool,
+    current: Option<accesskit::AriaCurrent>,
+) -> AccessibilityStateElement<impl Element> {
     AccessibilityStateElement {
         element: element.into_element(),
         invalid,
         read_only,
         disabled,
-        current: None,
+        current,
     }
 }
 
@@ -168,6 +179,24 @@ mod tests {
 
         assert!(node.is_disabled());
         assert_eq!(node.aria_current(), Some(accesskit::AriaCurrent::Page));
+    }
+
+    #[test]
+    fn writes_optional_current_date_and_disabled_state() {
+        let element = div().id("calendar-day").role(Role::GridCell);
+        let wrapped = accessibility_state_with_current(
+            element,
+            false,
+            false,
+            true,
+            Some(accesskit::AriaCurrent::Date),
+        );
+        let mut node = accesskit::Node::new(Role::GridCell);
+
+        wrapped.write_a11y_info(&mut node);
+
+        assert!(node.is_disabled());
+        assert_eq!(node.aria_current(), Some(accesskit::AriaCurrent::Date));
     }
 
     #[gpui::test]
