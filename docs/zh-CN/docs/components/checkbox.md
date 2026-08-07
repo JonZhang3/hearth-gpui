@@ -5,7 +5,7 @@ description: 用于切换选中与未选中状态的复选框组件。
 
 # Checkbox
 
-Checkbox 是一个用于二元选择的复选框组件，支持标签、禁用状态和不同文字尺寸。
+Checkbox 是一个与 shadcn 对齐的二元及混合状态选择组件。默认尺寸遵循 Vega，同时保留 GPUI Component 扩展尺寸。
 
 ## 导入
 
@@ -51,11 +51,13 @@ impl Render for MyView {
 ### 不同尺寸
 
 ```rust
-Checkbox::new("cb").text_xs().label("Extra Small")
-Checkbox::new("cb").text_sm().label("Small")
+Checkbox::new("cb-xs").xsmall().label("Extra Small")
+Checkbox::new("cb-sm").small().label("Small")
 Checkbox::new("cb").label("Medium")
-Checkbox::new("cb").text_lg().label("Large")
+Checkbox::new("cb-lg").large().label("Large")
 ```
+
+默认 Checkbox 为 16px，Indicator 为 14px，与 shadcn 一致。其他尺寸是 GPUI Component 的扩展能力。
 
 ### 禁用状态
 
@@ -70,8 +72,11 @@ Checkbox::new("checkbox")
 
 ```rust
 Checkbox::new("checkbox")
+    .aria_label("Toggle standalone option")
     .checked(true)
 ```
+
+Checkbox 没有可见标签时，必须通过 `aria_label(...)` 提供可访问名称。
 
 ### 自定义 Tab 顺序
 
@@ -90,10 +95,10 @@ Checkbox::new("checkbox")
 
 实现了 `Sizable` 和 `Disableable` trait：
 
-- `text_xs()`：超小字号
-- `text_sm()`：小字号
-- `text_base()`：默认字号
-- `text_lg()`：大字号
+- `xsmall()`：超小 Checkbox
+- `small()`：小号 Checkbox
+- `large()`：大号 Checkbox
+- 不设置尺寸修饰方法时使用默认中号 Checkbox
 - `disabled(bool)`：禁用状态
 
 ## 示例
@@ -146,5 +151,16 @@ Checkbox::new("invalid").label("必须接受条款").invalid(true)
 ```
 
 `indeterminate(true)` 在视觉和可访问性上优先于 `checked`，映射为 AccessKit `Toggled::Mixed`，激活后产生选中值。`invalid(true)` 使用语义化 danger 边框和焦点环，并映射为 AccessKit `Invalid::True`。
+
+## 键盘与焦点
+
+- `Tab` 聚焦可用的 Checkbox。
+- `Space` 切换当前聚焦 Checkbox。
+- 禁用 Checkbox 不进入 Tab 顺序。
+- Focus 和 Invalid Ring 只包围 Checkbox 方框，不包围整行标签。
+
+默认 Vega 外观使用 4px 圆角和轻微阴影；Nova 使用无阴影的 4px 圆角；Maia 使用 6px 圆角。颜色仍由当前 Color Theme 提供。
+
+动效同样由当前 Style Preset 决定：Vega 和 Maia 过渡 Focus 或 Invalid Ring，Nova 过渡控件颜色。Indicator 按照 shadcn 的 `transition-none` 立即切换；Reduced Motion 下直接显示最终状态。
 
 [Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html

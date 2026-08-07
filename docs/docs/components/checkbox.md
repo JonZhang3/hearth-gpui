@@ -5,7 +5,7 @@ description: A control that allows the user to toggle between checked and not ch
 
 # Checkbox
 
-A checkbox component for binary choices. Supports labels, disabled state, and different sizes.
+A shadcn-aligned checkbox for binary and mixed selection. The default size follows Vega, while GPUI-specific size variants remain available.
 
 ## Import
 
@@ -51,11 +51,13 @@ impl Render for MyView {
 ### Different Sizes
 
 ```rust
-Checkbox::new("cb").text_xs().label("Extra Small")
-Checkbox::new("cb").text_sm().label("Small")
+Checkbox::new("cb-xs").xsmall().label("Extra Small")
+Checkbox::new("cb-sm").small().label("Small")
 Checkbox::new("cb").label("Medium") // default
-Checkbox::new("cb").text_lg().label("Large")
+Checkbox::new("cb-lg").large().label("Large")
 ```
+
+The default Checkbox is 16 px with a 14 px indicator, matching shadcn. The additional sizes are a GPUI Component extension.
 
 ### Disabled State
 
@@ -70,8 +72,11 @@ Checkbox::new("checkbox")
 
 ```rust
 Checkbox::new("checkbox")
+    .aria_label("Toggle standalone option")
     .checked(true)
 ```
+
+Use `aria_label(...)` whenever a Checkbox has no visible label.
 
 ### Custom Tab Order
 
@@ -90,10 +95,10 @@ Checkbox::new("checkbox")
 
 Implements `Sizable` and `Disableable` traits:
 
-- `text_xs()` - Extra small text
-- `text_sm()` - Small text
-- `text_base()` - Base text (default)
-- `text_lg()` - Large text
+- `xsmall()` - Extra small Checkbox
+- `small()` - Small Checkbox
+- `large()` - Large Checkbox
+- Omitting a size modifier uses the default medium Checkbox
 - `disabled(bool)` - Disabled state
 
 ## Examples
@@ -146,5 +151,16 @@ Checkbox::new("invalid").label("Accept the required terms").invalid(true)
 ```
 
 `indeterminate(true)` takes visual and accessibility precedence over `checked`, maps to AccessKit `Toggled::Mixed`, and produces a checked value when activated. `invalid(true)` applies the semantic danger border and focus ring and maps to AccessKit `Invalid::True`.
+
+## Keyboard and focus
+
+- `Tab` focuses enabled checkboxes.
+- `Space` toggles the focused checkbox.
+- Disabled checkboxes are excluded from the tab order.
+- Focus and invalid rings are drawn around the Checkbox control, not the label row.
+
+The default Vega appearance uses a 4 px radius and subtle elevation. Nova keeps the 4 px radius without elevation, while Maia uses a 6 px radius. Colors continue to come from the active Color Theme.
+
+Motion also follows the active Style Preset. Vega and Maia transition the focus or invalid ring, while Nova transitions the control colors. The indicator itself changes immediately, matching shadcn `transition-none`. Reduced Motion renders the final state without a transition.
 
 [Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html

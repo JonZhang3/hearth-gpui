@@ -64,7 +64,7 @@ impl Render for CheckboxStory {
             .justify_start()
             .gap_3()
             .child(
-                section("Checkbox")
+                section("Basic")
                     .child(
                         Checkbox::new("1")
                             .checked(self.check1)
@@ -85,32 +85,67 @@ impl Render for CheckboxStory {
                     ),
             )
             .child(
-                section("Without label").child(Checkbox::new("3").checked(self.check3).on_click(
-                    cx.listener(|this, checked: &bool, _, _| {
-                        this.check3 = *checked;
-                    }),
-                )),
+                section("States")
+                    .child(
+                        Checkbox::new("state-unchecked")
+                            .label("Unchecked")
+                            .checked(false),
+                    )
+                    .child(
+                        Checkbox::new("state-checked")
+                            .label("Checked")
+                            .checked(true),
+                    )
+                    .child(
+                        Checkbox::new("state-indeterminate")
+                            .label("Indeterminate")
+                            .indeterminate(true),
+                    )
+                    .child(
+                        Checkbox::new("state-invalid")
+                            .label("Invalid")
+                            .invalid(true),
+                    )
+                    .child(
+                        Checkbox::new("state-invalid-checked")
+                            .label("Invalid and checked")
+                            .checked(true)
+                            .invalid(true),
+                    ),
             )
             .child(
-                section("Small size").max_w_md().child(
-                    Checkbox::new("4")
-                        .small()
-                        .checked(self.check4)
-                        .label("A small checkbox")
+                section("Without label").child(
+                    Checkbox::new("3")
+                        .aria_label("Toggle standalone option")
+                        .checked(self.check3)
                         .on_click(cx.listener(|this, checked: &bool, _, _| {
-                            this.check4 = *checked;
+                            this.check3 = *checked;
                         })),
                 ),
             )
             .child(
-                section("Large size").max_w_md().child(
-                    Checkbox::new("check5")
-                        .large()
-                        .checked(self.check2)
-                        .label("A large checkbox")
-                        .on_click(cx.listener(|this, checked: &bool, _, _| {
-                            this.check2 = *checked;
-                        })),
+                section("Sizes").max_w_md().child(
+                    h_flex()
+                        .gap_6()
+                        .child(
+                            Checkbox::new("size-xs")
+                                .xsmall()
+                                .checked(true)
+                                .label("Extra small"),
+                        )
+                        .child(
+                            Checkbox::new("size-sm")
+                                .small()
+                                .checked(true)
+                                .label("Small"),
+                        )
+                        .child(Checkbox::new("size-md").checked(true).label("Default"))
+                        .child(
+                            Checkbox::new("size-lg")
+                                .large()
+                                .checked(true)
+                                .label("Large"),
+                        ),
                 ),
             )
             .child(
@@ -133,7 +168,7 @@ impl Render for CheckboxStory {
                 ),
             )
             .child(
-                section("Multi-line").child(
+                section("With description").child(
                     v_flex().gap_4().child(
                         Checkbox::new("multi-line-checkbox")
                             .w(px(300.))
