@@ -14,6 +14,7 @@ collapsed: false
 - [Badge](badge) - Inline labels and overlay indicators
 - [Breadcrumb](breadcrumb) - Hierarchical navigation path
 - [Button](button) - Interactive buttons with multiple variants
+- [Card](card) - Structured surfaces for related content and actions
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content
 - [DropdownButton](dropdown_button) - Button with dropdown menu

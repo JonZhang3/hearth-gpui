@@ -14,6 +14,7 @@
 | Button family | Button uses the Vega variant, size, icon-slot, rounded, pressed, focus, and disabled contracts; loading is explicit Spinner composition; ButtonGroup supports actions, nested groups, text, separators, orientation, and group naming |
 | Badge family | Badge uses the six Vega inline-label variants, fixed pill geometry, semantic leading/trailing slots, and Styled overrides; OverlayBadge owns count, dot, and upper/lower corner overlays; the duplicate Tag API is removed |
 | Avatar family | Avatar uses explicit image/fallback/badge slots, Vega size geometry, image loading/error fallback, semantic or decorative accessibility, and ordered groups with explicit count/icon tails |
+| Card surface | Card provides typed Header, Title, Description, Action, Content, Footer, top/trailing Media, custom spacing, and propagated edge radii; Vega/Nova/Maia spacing, title, radius, shadow, and footer treatments; semantic Card colors; and explicit section dividers |
 | State contracts | Checkbox exposes checked/unchecked/mixed; Checkbox, Radio, Input, OtpInput, and Field expose invalid; Input exposes read-only without blocking selection/copy; OTP supports normalized paste and AccessKit SetValue |
 | Icon-button names | `Button::aria_label` names icon-only controls without adding visible text; Dialog, Sheet, Notification, Search, and Inspector close buttons use the localized Close label |
 | Focus | Shared focus ring width and offset are Style metrics; Color Theme retains ring color |
@@ -28,10 +29,10 @@
 | P2/P3 surfaces | Existing radius and elevation consumers use shared semantic Style metrics while retaining GPUI-native behavior |
 | Gallery | Settings menu selects all registered presets; Color Theme and Style id persist independently |
 | Alignment Story | Deterministic P0/P1 states, independent Light/Dark and registered Style Preset controls, supporting surfaces, Form error contract, and pinned shadcn revision metadata |
-| Visual references | 24 fixed macOS Metal captures cover Light/Dark and Vega/Nova/Maia across overlapping pages with persistent identity metadata |
+| Visual references | 28 fixed macOS Metal captures cover Light/Dark and Vega/Nova/Maia across overlapping pages with persistent identity metadata |
 | Overlay references | Eight motion-enabled Popover captures cover four placements, constrained edge snapping, Light/Dark open surfaces, and closing-content retention |
 | Locale references | Fixed English, Simplified Chinese, and Traditional Chinese Calendar/DatePicker/Form captures verify long-copy layout without clipping |
-| Schema | Removed legacy Style properties from `.theme-schema.json` |
+| Schema | Removed legacy Style properties and added optional `card.background` / `card.foreground` Color Theme roles in `.theme-schema.json` |
 | Public documentation | English and Simplified Chinese Theme and affected component pages document independent selection, custom Rust presets, migration, mixed/invalid/read-only/error states, OTP paste, and accessibility mappings |
 | Performance harness | Headless release benchmarks cover startup mount, idle drain, control state changes, loading, interrupted overlay toggles, and 1,000-row virtual scrolling with frame percentiles, budget overruns, and warmed allocation requests; benchmark dependencies remain development-only |
 
@@ -51,7 +52,7 @@ Verified on macOS on 2026-08-06:
 | Story Gallery startup | Passed; Theme registry reload completed without runtime error |
 | `typos` | Passed with temporary `typos-cli 1.49.0`; no project dependency added |
 | `cargo bench -p gpui-component --bench shadcn_alignment --no-run` | Passed in release profile |
-| `cargo run -p gpui-component-story --example shadcn_capture --features visual-test` | Generated 24 fixed 1440 x 1000 logical-pixel references at 2x Retina output; all files have distinct hashes |
+| `cargo run -p gpui-component-story --example shadcn_capture --features visual-test` | Generated 28 fixed 1440 x 1000 logical-pixel references at 2x Retina output; all files have distinct hashes |
 | Phase 0/current release benchmark | Comparable 30-sample frame-time and allocation results recorded in [release evidence](./07-release-evidence.md) |
 | Live macOS Accessibility tree | Attached to a temporary application bundle; verified roles, names, values, disabled/mixed/invalid examples, form error description, Dialog/Sheet/Notification Close labels, and Escape dismissal |
 

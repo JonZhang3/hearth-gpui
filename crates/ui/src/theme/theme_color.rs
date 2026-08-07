@@ -69,6 +69,10 @@ pub struct ThemeColor {
     pub background: Hsla,
     /// Default border color
     pub border: Hsla,
+    /// Background color for Card surfaces.
+    pub card: Hsla,
+    /// Text color for Card surfaces.
+    pub card_foreground: Hsla,
     /// Default Button background color.
     pub button: Hsla,
     /// Default Button active background color.
@@ -376,6 +380,8 @@ define_theme_tokens! {
     accordion_hover,
     background,
     border,
+    card,
+    card_foreground,
     button,
     button_active,
     button_foreground,

@@ -13,6 +13,7 @@ use gpui_component::{
     button::Button,
     button::Toggle,
     calendar::{Calendar, CalendarState},
+    card::{Card, CardContent, CardDescription, CardFooter, CardHeader, CardMedia, CardTitle},
     checkbox::Checkbox,
     collapsible::Collapsible,
     combobox::{Combobox, ComboboxState},
@@ -464,6 +465,54 @@ impl Render for ShadcnAlignmentStory {
                             .title("GPUI-native container")
                             .child("Shared radii and semantic surfaces; native behavior retained."),
                     ),
+            )
+            .child(
+                section("Card surfaces").max_w(px(760.)).child(
+                    h_flex()
+                        .w_full()
+                        .items_start()
+                        .gap_4()
+                        .child(
+                            Card::new()
+                                .w(px(360.))
+                                .header(
+                                    CardHeader::new()
+                                        .title(CardTitle::new().child("Default Card"))
+                                        .description(CardDescription::new().child(
+                                            "Semantic spacing, radius, color, and elevation.",
+                                        )),
+                                )
+                                .content(CardContent::new().child(
+                                    "The active Style Preset controls geometry.",
+                                ))
+                                .footer(CardFooter::new().child(
+                                    Button::new("align-card-action").outline().label("Action"),
+                                )),
+                        )
+                        .child(
+                            Card::new()
+                                .small()
+                                .w(px(360.))
+                                .media(
+                                    CardMedia::new()
+                                        .h(px(72.))
+                                        .bg(cx.theme().muted)
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Media"),
+                                )
+                                .header(
+                                    CardHeader::new()
+                                        .title(CardTitle::new().child("Small Card"))
+                                        .description(CardDescription::new().child(
+                                            "Compact spacing with preset-specific typography.",
+                                        )),
+                                )
+                                .content(CardContent::new().child("Deterministic capture surface.")),
+                        ),
+                ),
             )
             .child(
                 section("Calendar, DatePicker, and Slider states")

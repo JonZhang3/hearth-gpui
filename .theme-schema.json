@@ -134,6 +134,14 @@
           "description": "Default border color",
           "type": ["string", "null"]
         },
+        "card.background": {
+          "description": "Background color for Card surfaces.",
+          "type": ["string", "null"]
+        },
+        "card.foreground": {
+          "description": "Text color for Card surfaces.",
+          "type": ["string", "null"]
+        },
         "caret": {
           "description": "Input caret color (Blinking cursor).",
           "type": ["string", "null"]

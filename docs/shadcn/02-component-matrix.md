@@ -95,7 +95,6 @@ The following shadcn components have no necessary one-to-one existing target. Ad
 - AspectRatio
 - Attachment
 - Bubble
-- Card
 - Carousel
 - Command as a standalone public component
 - Direction provider
