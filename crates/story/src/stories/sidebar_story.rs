@@ -8,7 +8,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, Icon, IconName, Selectable as _, Side, Sizable,
     badge::OverlayBadge,
-    breadcrumb::{Breadcrumb, BreadcrumbItem},
+    breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator},
     button::{Button, ButtonGroup},
     h_flex,
     menu::DropdownMenu,
@@ -535,24 +535,47 @@ impl Render for SidebarStory {
                                 .child(Separator::vertical().h_4())
                             })
                             .child(
-                                Breadcrumb::new()
-                                    .child("Breadcrumb")
-                                    .child(BreadcrumbItem::new("Home").on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.last_active_item = Item::Playground;
-                                            cx.notify();
-                                        },
-                                    )))
+                                Breadcrumb::new("sidebar-breadcrumb")
                                     .child(
-                                        BreadcrumbItem::new(self.last_active_item.label())
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.active_subitem = None;
-                                                cx.notify();
-                                            })),
+                                        BreadcrumbItem::new("sidebar-root-item")
+                                            .child("Breadcrumb"),
                                     )
-                                    .when_some(self.active_subitem, |this, subitem| {
-                                        this.child(BreadcrumbItem::new(subitem.label()))
-                                    }),
+                                    .child(BreadcrumbSeparator::new())
+                                    .child(
+                                        BreadcrumbItem::new("sidebar-home-item").child(
+                                            BreadcrumbLink::new("sidebar-home-link")
+                                                .label("Home")
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.last_active_item = Item::Playground;
+                                                    cx.notify();
+                                                })),
+                                        ),
+                                    )
+                                    .child(BreadcrumbSeparator::new())
+                                    .when(self.active_subitem.is_some(), |this| {
+                                        this.child(
+                                            BreadcrumbItem::new("sidebar-section-item").child(
+                                                BreadcrumbLink::new("sidebar-section-link")
+                                                    .label(self.last_active_item.label())
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.active_subitem = None;
+                                                        cx.notify();
+                                                    })),
+                                            ),
+                                        )
+                                        .child(BreadcrumbSeparator::new())
+                                    })
+                                    .child(
+                                        BreadcrumbItem::new("sidebar-current-item").child(
+                                            BreadcrumbPage::new("sidebar-current-page").label(
+                                                self.active_subitem
+                                                    .map(|item| item.label())
+                                                    .unwrap_or_else(|| {
+                                                        self.last_active_item.label()
+                                                    }),
+                                            ),
+                                        ),
+                                    ),
                             ),
                     )
                     .child(self.render_content(window, cx)),

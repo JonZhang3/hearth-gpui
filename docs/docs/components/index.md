@@ -12,6 +12,7 @@ collapsed: false
 - [Alert](alert) - Alert messages with different variants
 - [Avatar](avatar) - User avatars with fallback text
 - [Badge](badge) - Inline labels and overlay indicators
+- [Breadcrumb](breadcrumb) - Hierarchical navigation path
 - [Button](button) - Interactive buttons with multiple variants
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content

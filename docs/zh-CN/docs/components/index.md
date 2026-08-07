@@ -12,6 +12,7 @@ collapsed: false
 - [Alert](alert) - 多种变体的提示消息
 - [Avatar](avatar) - 用户头像与回退文本
 - [Badge](badge) - 内联标签与覆盖角标
+- [Breadcrumb](breadcrumb) - 层级导航路径
 - [Button](button) - 支持多种样式的按钮
 - [Checkbox](checkbox) - 二元选择控件
 - [Icon](icon) - 图标展示组件

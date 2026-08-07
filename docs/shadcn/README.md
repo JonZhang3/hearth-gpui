@@ -70,7 +70,9 @@ The complete contract is defined in [Style Preset architecture](./05-style-prese
 - Shared motion primitives and reduced-motion behavior.
 - Overlay lifecycle, focus, keyboard, and dismissal behavior.
 - Story state matrices, focused tests, documentation, and performance checks.
-- Additive API improvements required to express existing shadcn states.
+- API improvements required to express existing shadcn states. These are additive by default;
+  a component may use a documented breaking redesign only after explicit user approval and with
+  migration guidance.
 
 ### Excluded
 

@@ -1,17 +1,23 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window, prelude::FluentBuilder as _,
+    Styled, Window, prelude::FluentBuilder as _, px,
 };
 
 use gpui_component::{
-    breadcrumb::{Breadcrumb, BreadcrumbItem},
+    IconName, Sizable as _,
+    breadcrumb::{
+        Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage,
+        BreadcrumbSeparator,
+    },
+    button::Button,
+    menu::{DropdownMenu as _, PopupMenuItem},
     v_flex,
 };
 
 use crate::section;
 
 pub struct BreadcrumbStory {
-    focus_handle: gpui::FocusHandle,
+    focus_handle: FocusHandle,
     clicked_item: Option<String>,
 }
 
@@ -53,44 +59,162 @@ impl Render for BreadcrumbStory {
         v_flex()
             .gap_6()
             .child(
-                section("Basic Breadcrumb").max_w_md().child(
-                    Breadcrumb::new()
-                        .child("Home")
-                        .child("Documents")
-                        .child("Projects"),
+                section("Basic").max_w_md().child(
+                    Breadcrumb::new("basic-breadcrumb")
+                        .child(
+                            BreadcrumbItem::new("basic-home-item").child(
+                                BreadcrumbLink::new("basic-home-link")
+                                    .label("Home")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Home".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("basic-components-item").child(
+                                BreadcrumbLink::new("basic-components-link")
+                                    .label("Components")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Components".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("basic-page-item")
+                                .child(BreadcrumbPage::new("basic-page").label("Breadcrumb")),
+                        ),
                 ),
             )
             .child(
-                section("Click Handlers").max_w_md().child(
-                    v_flex()
-                        .gap_4()
-                        .items_center()
+                section("Custom Separator").max_w_md().child(
+                    Breadcrumb::new("custom-separator-breadcrumb")
                         .child(
-                            Breadcrumb::new()
-                                .child("Home")
-                                .child(BreadcrumbItem::new("Documents").on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.clicked_item = Some("Documents".to_string());
+                            BreadcrumbItem::new("custom-home-item").child(
+                                BreadcrumbLink::new("custom-home-link")
+                                    .label("Home")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Home".into());
                                         cx.notify();
-                                    },
-                                )))
-                                .child(BreadcrumbItem::new("Projects").on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.clicked_item = Some("Projects".to_string());
-                                        cx.notify();
-                                    },
-                                )))
-                                .child(BreadcrumbItem::new("Current").on_click(cx.listener(
-                                    |this, _, _, cx| {
-                                        this.clicked_item = Some("Current".to_string());
-                                        cx.notify();
-                                    },
-                                ))),
+                                    })),
+                            ),
                         )
-                        .when_some(self.clicked_item.clone(), |this, item| {
-                            this.child(format!("Clicked: {}", item))
-                        }),
+                        .child(BreadcrumbSeparator::new().child("/"))
+                        .child(
+                            BreadcrumbItem::new("custom-page-item")
+                                .child(BreadcrumbPage::new("custom-page").label("Components")),
+                        ),
                 ),
             )
+            .child(
+                section("Collapsed").max_w_md().child(
+                    Breadcrumb::new("ellipsis-breadcrumb")
+                        .child(
+                            BreadcrumbItem::new("ellipsis-home-item").child(
+                                BreadcrumbLink::new("ellipsis-home-link")
+                                    .label("Home")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Home".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("ellipsis-item").child(BreadcrumbEllipsis::new()),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("ellipsis-page-item")
+                                .child(BreadcrumbPage::new("ellipsis-page").label("Breadcrumb")),
+                        ),
+                ),
+            )
+            .child(
+                section("Dropdown").max_w_md().child(
+                    Breadcrumb::new("collapsed-breadcrumb")
+                        .child(
+                            BreadcrumbItem::new("collapsed-home-item").child(
+                                BreadcrumbLink::new("collapsed-home-link")
+                                    .label("Home")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Home".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("collapsed-menu-item").child(
+                                Button::new("collapsed-menu")
+                                    .ghost()
+                                    .small()
+                                    .icon(IconName::Ellipsis)
+                                    .aria_label("Show collapsed breadcrumb items")
+                                    .dropdown_menu(|menu, _, _| {
+                                        menu.item(PopupMenuItem::new("Documentation"))
+                                            .item(PopupMenuItem::new("Themes"))
+                                            .item(PopupMenuItem::new("GitHub"))
+                                    }),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("collapsed-components-item").child(
+                                BreadcrumbLink::new("collapsed-components-link")
+                                    .label("Components")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Components".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("collapsed-page-item")
+                                .child(BreadcrumbPage::new("collapsed-page").label("Breadcrumb")),
+                        ),
+                ),
+            )
+            .child(
+                section("Disabled and Wrapping").child(
+                    Breadcrumb::new("wrapping-breadcrumb")
+                        .w(px(240.))
+                        .child(
+                            BreadcrumbItem::new("wrapping-home-item").child(
+                                BreadcrumbLink::new("wrapping-home-link")
+                                    .label("Home")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item = Some("Home".into());
+                                        cx.notify();
+                                    }))
+                                    .disabled(true),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("wrapping-section-item").child(
+                                BreadcrumbLink::new("wrapping-section-link")
+                                    .label("Long documentation section")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.clicked_item =
+                                            Some("Long documentation section".into());
+                                        cx.notify();
+                                    })),
+                            ),
+                        )
+                        .child(BreadcrumbSeparator::new())
+                        .child(
+                            BreadcrumbItem::new("wrapping-page-item")
+                                .child(BreadcrumbPage::new("wrapping-page").label("Current page")),
+                        ),
+                ),
+            )
+            .when_some(self.clicked_item.clone(), |this, item| {
+                this.child(format!("Activated: {item}"))
+            })
     }
 }

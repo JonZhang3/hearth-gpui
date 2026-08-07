@@ -10,6 +10,7 @@ pub(crate) struct AccessibilityStateElement<E> {
     invalid: bool,
     read_only: bool,
     disabled: bool,
+    current: Option<accesskit::AriaCurrent>,
 }
 
 /// Applies form-control accessibility states while preserving the wrapped
@@ -25,6 +26,20 @@ pub(crate) fn accessibility_state(
         invalid,
         read_only,
         disabled,
+        current: None,
+    }
+}
+
+/// Marks an element as the current page while preserving its GPUI element behavior.
+pub(crate) fn accessibility_current_page(
+    element: impl IntoElement,
+) -> AccessibilityStateElement<impl Element> {
+    AccessibilityStateElement {
+        element: element.into_element(),
+        invalid: false,
+        read_only: false,
+        disabled: true,
+        current: Some(accesskit::AriaCurrent::Page),
     }
 }
 
@@ -107,6 +122,9 @@ impl<E: Element> Element for AccessibilityStateElement<E> {
         if self.disabled {
             node.set_disabled();
         }
+        if let Some(current) = self.current {
+            node.set_aria_current(current);
+        }
     }
 
     fn a11y_synthetic_children(
@@ -138,6 +156,18 @@ mod tests {
         assert_eq!(node.invalid(), Some(accesskit::Invalid::True));
         assert!(node.is_read_only());
         assert!(node.is_disabled());
+    }
+
+    #[test]
+    fn writes_current_page_accessibility_state() {
+        let element = div().id("current-page").role(Role::Link);
+        let wrapped = accessibility_current_page(element);
+        let mut node = accesskit::Node::new(Role::Link);
+
+        wrapped.write_a11y_info(&mut node);
+
+        assert!(node.is_disabled());
+        assert_eq!(node.aria_current(), Some(accesskit::AriaCurrent::Page));
     }
 
     #[gpui::test]
