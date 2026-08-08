@@ -86,7 +86,7 @@ Equivalent concepts use different names. They do not require duplicate component
 | `sonner` | `Notification` |
 | `textarea` | Multiline `Input` or `TextArea` mode |
 | `field` | `form::field` |
-| `input-group` | Existing input adornments and button groups; audit before adding a wrapper |
+| `input-group` | `InputGroup`, with typed `Input` and composable addon slots |
 
 ## Backlog, not part of alignment
 

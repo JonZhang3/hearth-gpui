@@ -103,6 +103,7 @@ pub struct Button {
     border_corners: Corners<bool>,
     border_edges: Edges<bool>,
     size: Size,
+    icon_size: Option<Pixels>,
     tooltip: Option<(
         SharedString,
         Option<(Rc<Box<dyn gpui::Action>>, Option<SharedString>)>,
@@ -150,6 +151,7 @@ impl Button {
             },
             border_edges: Edges::all(true),
             size: Size::Medium,
+            icon_size: None,
             tooltip: None,
             tooltip_builder: None,
             on_click: None,
@@ -240,6 +242,12 @@ impl Button {
     /// Sets an icon rendered after the label and custom content.
     pub fn trailing_icon(mut self, icon: impl Into<ButtonIcon>) -> Self {
         self.trailing_icon = Some(icon.into());
+        self
+    }
+
+    /// Overrides icon geometry for a typed composite such as InputGroupButton.
+    pub(crate) fn icon_size(mut self, icon_size: Pixels) -> Self {
+        self.icon_size = Some(icon_size);
         self
     }
 
@@ -400,7 +408,7 @@ impl RenderOnce for Button {
         let hoverable = self.hoverable();
         let normal_style = style.normal(cx);
         let control_metrics = cx.theme().style.controls.for_size(self.size);
-        let icon_size = Size::Size(control_metrics.icon_size);
+        let icon_size = Size::Size(self.icon_size.unwrap_or(control_metrics.icon_size));
         let is_icon_only = self.label.is_none()
             && self.children.is_empty()
             && (self.icon.is_some() ^ self.trailing_icon.is_some());

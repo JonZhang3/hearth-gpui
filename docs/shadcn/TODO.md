@@ -2,6 +2,16 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## Input Group custom controls and logical RTL
+
+**Status:** Typed Input integration implemented; shared direction and generic-control contracts deferred
+
+Input Group currently accepts the repository's `Input` as its typed control slot. Addons remain freely composable through `ParentElement`, while focus, disabled, invalid, accessibility, and surface motion ownership stay explicit.
+
+Do not broaden the root to arbitrary `AnyElement` controls until GPUI components share a contract for exposing `FocusHandle`, disabled state, invalid state, and accessibility ownership. Visual introspection of an opaque element is not an acceptable substitute.
+
+`InlineStart` and `InlineEnd` currently resolve to left and right because GPUI Component has no shared logical layout-direction contract. Revisit their physical placement after the repository defines inherited LTR/RTL direction for layout, pointer hit regions, keyboard navigation, and accessibility ordering. Acceptance requires mirrored inline geometry without changing block placement or caller APIs.
+
 ## Element-level backdrop filters for Dialog overlays
 
 **Status:** Renderer support deferred; semantic overlay fallback implemented

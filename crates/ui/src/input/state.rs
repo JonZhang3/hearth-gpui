@@ -566,6 +566,11 @@ impl InputState {
         self
     }
 
+    /// Returns whether this state renders through the multi-line editor path.
+    pub(crate) fn is_multi_line(&self) -> bool {
+        self.mode.is_multi_line()
+    }
+
     /// Set Input to use [`InputMode::AutoGrow`] mode with min, max rows limit.
     pub fn auto_grow(mut self, min_rows: usize, max_rows: usize) -> Self {
         self.mode = InputMode::auto_grow(min_rows, max_rows);

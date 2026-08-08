@@ -76,6 +76,8 @@ Input::new(&input)
     .suffix(Button::new("btn").ghost().icon(IconName::Info).xsmall())
 ```
 
+For a unified surface containing text, actions, shortcuts, or block-level content, use [Input Group](./input-group.md). `prefix` and `suffix` remain suitable for simple decorations owned by one Input.
+
 ### Password Input (Masked)
 
 ```rust

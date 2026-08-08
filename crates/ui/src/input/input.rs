@@ -41,25 +41,25 @@ pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
 
 /// The properties animated by a Style Preset's Input transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InputMotionKind {
+pub(super) enum InputMotionKind {
     Colors,
     Shadow,
 }
 
 /// Input-specific presentation derived from semantic Style Preset values.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct InputMetrics {
-    radius: Pixels,
-    shadow: bool,
-    motion_kind: InputMotionKind,
-    light_background_alpha: f32,
-    dark_background_alpha: f32,
-    disabled_light_background_alpha: f32,
-    disabled_dark_background_alpha: f32,
+pub(super) struct InputMetrics {
+    pub(super) radius: Pixels,
+    pub(super) shadow: bool,
+    pub(super) motion_kind: InputMotionKind,
+    pub(super) light_background_alpha: f32,
+    pub(super) dark_background_alpha: f32,
+    pub(super) disabled_light_background_alpha: f32,
+    pub(super) disabled_dark_background_alpha: f32,
 }
 
 /// Resolves Vega, Nova, and Maia Input presentation without branching on preset IDs.
-fn input_metrics(style: &StylePreset) -> InputMetrics {
+pub(super) fn input_metrics(style: &StylePreset) -> InputMetrics {
     match style.density {
         Density::Standard => InputMetrics {
             radius: style.radii.md,
@@ -93,10 +93,10 @@ fn input_metrics(style: &StylePreset) -> InputMetrics {
 
 /// Renderable Input colors captured before a state transition begins.
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct InputPaintState {
-    background: Hsla,
-    border: Hsla,
-    ring: Hsla,
+pub(super) struct InputPaintState {
+    pub(super) background: Hsla,
+    pub(super) border: Hsla,
+    pub(super) ring: Hsla,
 }
 
 /// An active Input transition with enough timing data to resume after rerenders.
@@ -112,16 +112,16 @@ struct ActiveInputTransition {
 
 /// A renderable transition segment resolved from the current visual value.
 #[derive(Debug, Clone, Copy)]
-struct InputTransition {
-    from: InputPaintState,
-    to: InputPaintState,
-    duration: Duration,
-    epoch: u64,
+pub(super) struct InputTransition {
+    pub(super) from: InputPaintState,
+    pub(super) to: InputPaintState,
+    pub(super) duration: Duration,
+    pub(super) epoch: u64,
 }
 
 /// Previous and active paint state used for interruptible Input transitions.
 #[derive(Debug, Clone, Copy)]
-struct InputMotionState {
+pub(super) struct InputMotionState {
     target: InputPaintState,
     active: Option<ActiveInputTransition>,
     epoch: u64,
@@ -129,7 +129,7 @@ struct InputMotionState {
 
 impl InputMotionState {
     /// Creates stable motion state without animating the first render.
-    fn new(target: InputPaintState) -> Self {
+    pub(super) fn new(target: InputPaintState) -> Self {
         Self {
             target,
             active: None,
@@ -163,7 +163,7 @@ impl InputMotionState {
     }
 
     /// Records a target and resumes from the current visual value on interruption.
-    fn transition_to(
+    pub(super) fn transition_to(
         &mut self,
         target: InputPaintState,
         now: Instant,
@@ -237,7 +237,7 @@ fn interpolate_input_paint(
 }
 
 /// Mirrors the browser `:focus-visible` policy used by shadcn Input.
-fn input_focus_visible(focused: bool, last_input_was_keyboard: bool) -> bool {
+pub(super) fn input_focus_visible(focused: bool, last_input_was_keyboard: bool) -> bool {
     focused && last_input_was_keyboard
 }
 
@@ -251,7 +251,7 @@ fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
 }
 
 /// Derives an internal Input element ID from the stable state-backed root ID.
-fn input_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+pub(super) fn input_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
     ElementId::NamedChild(Arc::new(id.clone()), name.into())
 }
 
@@ -316,6 +316,21 @@ impl Input {
             aria_description: None,
             context_menu_builder: None,
         }
+    }
+
+    /// Returns the state used by typed input-family composites.
+    pub(super) fn state(&self) -> &Entity<InputState> {
+        &self.state
+    }
+
+    /// Returns the configured disabled state before the element is rendered.
+    pub(super) fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
+    /// Returns the configured invalid state before the element is rendered.
+    pub(super) fn is_invalid(&self) -> bool {
+        self.invalid
     }
 
     pub fn prefix(mut self, prefix: impl IntoElement) -> Self {
@@ -561,7 +576,7 @@ impl Input {
     }
 
     /// Resolves the semantic Input surface for the current theme and state.
-    fn surface_background(metrics: InputMetrics, disabled: bool, cx: &App) -> Hsla {
+    pub(super) fn surface_background(metrics: InputMetrics, disabled: bool, cx: &App) -> Hsla {
         let alpha = match (disabled, cx.theme().is_dark()) {
             (false, false) => metrics.light_background_alpha,
             (false, true) => metrics.dark_background_alpha,
@@ -572,7 +587,7 @@ impl Input {
     }
 
     /// Resolves border widths and expanded corner radii for a layout-neutral outer ring.
-    fn outer_ring_geometry(
+    pub(super) fn outer_ring_geometry(
         style: &StyleRefinement,
         ring_width: Pixels,
         window: &Window,

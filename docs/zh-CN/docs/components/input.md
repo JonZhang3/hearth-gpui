@@ -73,6 +73,8 @@ Input::new(&input)
     .suffix(Button::new("btn").ghost().icon(IconName::Info).xsmall())
 ```
 
+需要在统一表面中组合文字、操作、快捷键或块级内容时，请使用 [Input Group](./input-group.md)。`prefix` 和 `suffix` 继续用于由单个 Input 管理的简单装饰内容。
+
 ### 密码输入
 
 ```rust
