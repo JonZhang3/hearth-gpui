@@ -29,7 +29,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 | Select | `select` | Align trigger, value, caret, menu surface, item states, and overlay motion | Keyboard navigation, focus restore, close lifecycle |
 | Combobox | `combobox`, `command` | Align trigger, search field, result rows, empty state, and overlay motion | Async content, filtering, selection, escape, focus restore |
 | Tooltip | `tooltip` | Align compact typography, arrow, surface, side-aware entry, delay, and exit | No flicker at window edges; reduced motion; action hints |
-| Dialog and AlertDialog | `dialog`, `alert-dialog` | Align overlay, content radius, spacing, close button, scale and fade motion | Focus trap, Escape, outside click rules, close animation, focus restore |
+| Dialog and AlertDialog | `dialog`, `alert-dialog` | Align overlay, surface radius, spacing, typography, close controls, and preset geometry; retain the documented standard Dialog desktop motion | Focus trap, initial focus, Escape/Enter policy, outside click rules, cancellation veto, exit lifecycle, focus restore |
 
 ## P1: overlays and navigation
 

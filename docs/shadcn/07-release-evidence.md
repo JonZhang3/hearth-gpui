@@ -27,6 +27,8 @@ The local shadcn/ui checkout is clean at the pinned revision. Source comparison 
 
 The upstream Accordion source uses an overflow-clipped measured-height enter/exit contract and a 200 ms indicator transition. AlertDialog uses a 100 ms overlay fade plus content fade/scale and derives its accessible name from the visible title. GPUI matches the duration, opacity, lifecycle, focus routing, and AccessKit behavior. The pinned GPUI renderer has no element-level backdrop filter or layout-independent transform for arbitrary element trees, so AlertDialog intentionally omits backdrop blur and scale instead of using reflowing approximations.
 
+Standard Dialog aligns the pinned Vega/Nova/Maia surface, overlay, spacing, typography, close-control, footer, and responsive-width intent. It intentionally retains the existing desktop placement at approximately 10% of the viewport height and the semantic 250 ms opacity, translation, shadow, interruption, reverse-exit, and reduced-motion lifecycle instead of adopting the centered shadcn zoom. Element-level backdrop blur remains a documented renderer limitation.
+
 ## Frozen Phase 0 visual baseline
 
 The same `shadcn_phase0_capture` source compiles without warnings against the frozen `e1570bdc` export and the current checkout. The baseline executable generated fixed Light/Dark captures containing representative controls, selection states, inputs, Select, and an open Popover:

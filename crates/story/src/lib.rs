@@ -439,7 +439,7 @@ impl StoryContainer {
         view
     }
 
-    pub fn width(mut self, width: gpui::Pixels) -> Self {
+    pub fn w(mut self, width: gpui::Pixels) -> Self {
         self.width = Some(width);
         self
     }

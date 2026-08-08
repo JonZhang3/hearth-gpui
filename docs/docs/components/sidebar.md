@@ -169,7 +169,7 @@ SidebarMenuItem::new("Settings")
 ```rust
 Sidebar::new()
     .side(Side::Right)
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Right Panel")
@@ -236,7 +236,7 @@ SidebarMenu::new()
 
 ```rust
 Sidebar::new()
-    .width(280)  // Custom width in pixels
+    .w(280)  // Custom width in pixels
     .border_width(2)  // Custom border width
     .header(
         SidebarHeader::new()
@@ -296,7 +296,7 @@ let is_mobile = window_width < 768;
 
 Sidebar::new()
     .collapsed(is_mobile || manually_collapsed)
-    .width(if is_mobile { 60 } else { 240 })
+    .w(if is_mobile { 60 } else { 240 })
     .header(
         SidebarHeader::new()
             .child(
@@ -438,7 +438,7 @@ Sidebar::new()
 
 ```rust
 Sidebar::new()
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Settings")

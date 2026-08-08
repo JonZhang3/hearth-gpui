@@ -1,380 +1,118 @@
 ---
 title: Dialog
-description: 在应用内容上方显示浮层内容的对话框组件。
+description: 用于集中展示内容与操作的模态表面。
 ---
 
 # Dialog
 
-Dialog 用于创建普通对话框、确认框和提示弹窗。它支持遮罩层、键盘快捷键以及多种自定义能力。
+`Dialog` 提供遮罩、焦点陷阱、焦点恢复、键盘关闭以及可中断的退出动效。应用首层视图必须是 [`Root`](../getting-started)，并渲染 Root 管理的 Dialog layer。
 
 ## 导入
 
 ```rust
-use gpui_component::dialog::DialogButtonProps;
-use gpui_component::WindowExt;
-```
-
-## 用法
-
-### 在应用根视图中渲染 Dialog 图层
-
-如果你要展示对话框，需要在应用根视图中渲染 dialog layer。通常这会放在主应用结构体的 `render` 方法里。
-
-[Root::render_dialog_layer](https://docs.rs/gpui-component/latest/gpui_component/struct.Root.html#method.render_dialog_layer) 会把当前激活的对话框渲染在应用内容之上。
-
-```rust
-use gpui_component::TitleBar;
-
-struct MyApp {
-    view: AnyView,
-}
-
-impl Render for MyApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let dialog_layer = Root::render_dialog_layer(window, cx);
-
-        div()
-            .size_full()
-            .child(
-                v_flex()
-                    .size_full()
-                    .child(TitleBar::new())
-                    .child(div().flex_1().overflow_hidden().child(self.view.clone())),
-            )
-            .children(dialog_layer)
-    }
-}
-```
-
-### 基础对话框
-
-```rust
-window.open_dialog(cx, |dialog, _, _| {
-    dialog
-        .title("Welcome")
-        .child("This is a dialog dialog.")
-})
-```
-
-### 表单对话框
-
-```rust
-let input = cx.new(|cx| InputState::new(window, cx));
-
-window.open_dialog(cx, |dialog, _, _| {
-    dialog
-        .title("User Information")
-        .child(
-            v_flex()
-                .gap_3()
-                .child("Please enter your details:")
-                .child(Input::new(&input))
-        )
-        .footer(|_, _, _, _| {
-            vec![
-                Button::new("ok")
-                    .primary()
-                    .label("Submit")
-                    .on_click(|_, window, cx| {
-                        window.close_dialog(cx);
-                    }),
-                Button::new("cancel")
-                    .label("Cancel")
-                    .on_click(|_, window, cx| {
-                        window.close_dialog(cx);
-                    }),
-            ]
-        })
-})
-```
-
-### 带图标的对话框
-
-```rust
-window.open_dialog(cx, |dialog, _, cx| {
-    dialog
-        .child(
-            h_flex()
-                .gap_3()
-                .child(Icon::new(IconName::TriangleAlert)
-                    .size_6()
-                    .text_color(cx.theme().warning))
-                .child("This action cannot be undone.")
-        )
-})
-```
-
-### 可滚动内容
-
-```rust
-use gpui_component::text::markdown;
-
-window.open_dialog(cx, |dialog, window, cx| {
-    dialog
-        .h(px(450.))
-        .title("Long Content")
-        .child(markdown(long_markdown_text))
-})
-```
-
-### 常用选项
-
-```rust
-window.open_dialog(cx, |dialog, _, _| {
-    dialog
-        .title("Custom Dialog")
-        .overlay(true)
-        .overlay_closable(true)
-        .keyboard(true)
-        .close_button(false)
-        .child("Dialog content")
-})
-```
-
-### 嵌套对话框
-
-```rust
-window.open_dialog(cx, |dialog, _, _| {
-    dialog
-        .title("First Dialog")
-        .child("This is the first dialog")
-        .footer(|_, _, _, _| {
-            vec![
-                Button::new("open-another")
-                    .label("Open Another Dialog")
-                    .on_click(|_, window, cx| {
-                        window.open_dialog(cx, |dialog, _, _| {
-                            dialog
-                                .title("Second Dialog")
-                                .child("This is nested")
-                        });
-                    }),
-            ]
-        })
-})
-```
-
-### 自定义样式
-
-```rust
-window.open_dialog(cx, |dialog, _, cx| {
-    dialog
-        .rounded(cx.theme().radius_lg)
-        .bg(cx.theme().cyan)
-        .text_color(cx.theme().info_foreground)
-        .title("Custom Style")
-        .child("Styled dialog content")
-})
-```
-
-### 自定义内边距
-
-```rust
-window.open_dialog(cx, |dialog, _, _| {
-    dialog
-        .p_3()
-        .title("Custom Padding")
-        .child("Dialog with custom spacing")
-})
-```
-
-### 代码中主动关闭
-
-```rust
-window.close_dialog(cx);
-
-Button::new("submit")
-    .primary()
-    .label("Submit")
-    .on_click(|_, window, cx| {
-        window.close_dialog(cx);
-    })
-```
-
-## 声明式 API
-
-现在 Dialog 也支持声明式写法，可以通过 header、title、description、footer 等组件来组织内容。
-
-### 导入
-
-```rust
-use gpui_component::dialog::{
-    Dialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+use gpui_component::{
+    WindowExt as _,
+    button::Button,
+    dialog::{Dialog, DialogAction, DialogClose, DialogFooter},
 };
 ```
 
-### 触发器模式
+## 声明式 Trigger
+
+`trigger` 接收 `Button`。Dialog 会追加打开回调，不会覆盖 Button 已有的 `on_click`；鼠标和 Enter/Space 因而共享同一套控件语义。
 
 ```rust
 Dialog::new(cx)
-    .trigger(
-        Button::new("open-dialog")
-            .outline()
-            .label("Open Dialog")
-    )
-    .content(|content, _, cx| {
-        content
-            .child(
-                DialogHeader::new()
-                    .child(DialogTitle::new().child("Account Created"))
-                    .child(DialogDescription::new().child(
-                        "Your account has been created successfully!",
-                    ))
-            )
-            .child(
-                DialogFooter::new()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().muted)
-                    .child(
-                        Button::new("cancel")
-                            .outline()
-                            .label("Cancel")
-                            .on_click(|_, window, cx| {
-                                window.close_dialog(cx);
-                            })
-                    )
-                    .child(
-                        Button::new("ok")
-                            .primary()
-                            .label("Save Changes")
-                    )
-            )
+    .trigger(Button::new("edit-profile").outline().label("Edit profile"))
+    .title("Edit profile")
+    .description("Update your public profile information.")
+    .content(move |content, _, _| {
+        content.child(Input::new(&name_input))
+    })
+    .footer(|_, _| {
+        DialogFooter::new()
+            .child(DialogClose::new(
+                Button::new("cancel").outline().label("Cancel"),
+            ))
+            .child(DialogAction::new(
+                Button::new("save").label("Save changes"),
+            ))
+    })
+    .on_ok(|_, window, cx| {
+        window.push_notification("Profile saved", cx);
+        true
     })
 ```
 
-### 内容构建器模式
+`DialogClose` 和 `DialogAction` 会直接向 Button 追加行为，不再增加影响尺寸或焦点的外层容器，同时保留 Button 原有的点击回调。
+
+## 命令式 Dialog
+
+已有事件需要打开 Dialog 时，使用 `WindowExt::open_dialog`。
 
 ```rust
 window.open_dialog(cx, |dialog, _, _| {
     dialog
-        .w(px(400.))
-        .content(|content, _, _| {
-            content
-                .child(
-                    DialogHeader::new()
-                        .child(DialogTitle::new().child("Custom Width"))
-                        .child(DialogDescription::new().child(
-                            "This dialog has a custom width of 400px.",
-                        ))
-                )
-                .child(div().child(
-                    "Content area with custom width configuration."
-                ))
-                .child(
-                    DialogFooter::new()
-                        .justify_center()
-                        .child(
-                            Button::new("cancel")
-                                .flex_1()
-                                .outline()
-                                .label("Cancel")
-                                .on_click(|_, window, cx| {
-                                    window.close_dialog(cx);
-                                })
-                        )
-                        .child(
-                            Button::new("done")
-                                .flex_1()
-                                .primary()
-                                .label("Done")
-                                .on_click(|_, window, cx| {
-                                    window.close_dialog(cx);
-                                })
-                        )
-                )
+        .title("Keyboard shortcuts")
+        .description("Review the shortcuts available in this window.")
+        .child(shortcuts_view)
+        .footer(|_, _| {
+            DialogFooter::new().child(DialogClose::new(
+                Button::new("done").label("Done"),
+            ))
         })
 })
 ```
 
-### 相关子组件
+## 自定义标题和描述
 
-#### DialogHeader
-
-用于容纳标题和描述区域：
+文字 slot 会自动提供 Dialog 的可访问名称和描述。自定义元素使用 renderer closure，以支持同一个声明式 Trigger 重复打开；同时必须显式提供可访问文本。
 
 ```rust
-DialogHeader::new()
-    .child(DialogTitle::new().child("Title"))
-    .child(DialogDescription::new().child("Description"))
-```
-
-#### DialogTitle
-
-用于显示主标题：
-
-```rust
-DialogTitle::new()
-    .child("Account Settings")
-```
-
-#### DialogDescription
-
-用于显示标题下方的说明文字：
-
-```rust
-DialogDescription::new()
-    .child("Update your account settings and preferences here.")
-```
-
-#### DialogFooter
-
-用于放置底部操作按钮和页脚内容：
-
-```rust
-DialogFooter::new()
-    .bg(cx.theme().muted)
-    .border_t_1()
-    .border_color(cx.theme().border)
-    .child(Button::new("cancel").outline().label("Cancel"))
-    .child(Button::new("save").primary().label("Save"))
-```
-
-## API 变化
-
-### Dialog::new() 签名变化
-
-`Dialog::new()` 现在不再需要 `window` 参数：
-
-```rust
-// Old API (deprecated)
-Dialog::new(window, cx)
-
-// New API
 Dialog::new(cx)
+    .aria_label("Connection settings")
+    .aria_description("Configure the active server connection.")
+    .title_element(|_, _| h_flex().child(Icon::new(IconName::Server)).child("Connection"))
+    .description_element(|_, _| div().child("Changes apply after reconnecting."))
 ```
 
-### content 构建方式变化
+## 焦点与关闭行为
 
-`.content()` 现在接收 builder function，而不是预先构造好的 `DialogContent`：
-
-```rust
-// Old approach (still works)
-dialog.child(DialogHeader::new()...)
-
-// New declarative API
-dialog.content(|content, window, cx| {
-    content
-        .child(DialogHeader::new()...)
-        .child(DialogFooter::new()...)
-})
-```
-
-## 可访问性
-
-使用 `aria_label` 将对话框标题设置为明确的 AccessKit 名称。可见 `title` 仍是视觉内容，因为它可以是任意 element。
+- 打开时优先聚焦显式 `initial_focus`；否则聚焦第一个启用的 Tab stop；仍不存在时保留 Dialog surface 焦点。
+- Tab 和 Shift-Tab 被限制在最上层 Dialog 内。
+- 关闭后恢复此前控件的焦点。
+- Escape 和点击遮罩统一分发取消，并遵循返回 `false` 的 `on_cancel` 回调。
+- Enter 分发标准 Dialog 确认操作；Space 继续激活当前聚焦的 Button。
+- `AlertDialog` 不使用全局 Enter 确认。
 
 ```rust
 dialog
-    .aria_label("编辑个人资料")
-    .title("编辑个人资料")
+    .initial_focus(input_focus)
+    .dismiss_on_escape(true)
+    .confirm_on_enter(true)
+    .dismiss_on_overlay_click(true)
+    .show_close_button(true)
+    .show_overlay(true)
 ```
 
-## 最佳实践
+## 尺寸和位置
 
-1. 优先使用 `DialogHeader`、`DialogTitle`、`DialogDescription` 和 `DialogFooter`
-2. 简单场景优先用 trigger 模式
-3. 复杂逻辑或复杂状态更适合 `window.open_dialog` + builder
-4. 尽量保持语义结构完整，标题和说明建议成对出现
-5. 所有操作按钮尽量放在 `DialogFooter` 中保持一致性
-6. 对内容尺寸敏感的弹窗，建议显式设置宽度
+默认宽度由当前 Style Preset 解析，并在视口两侧保留至少 16 px。显式宽度和最大宽度同样受该安全范围限制。
+
+```rust
+dialog
+    .w(px(560.))
+    .max_w(px(720.))
+    .margin_top(px(96.))
+```
+
+## Style Preset 与动效
+
+- Vega 是默认基准：首选宽度 448 px、24 px padding、紧凑标题和不分隔的 Footer。
+- Nova 使用紧凑的 384 px 几何以及带分隔线和弱化背景的 Footer。
+- Maia 使用舒适密度、更大圆角和更强遮罩。
+- Dialog 只读取语义 Theme 和 Style Metrics，不判断 Preset ID。
+
+项目有意保留桌面 Dialog 动效，不采用 shadcn 的居中 zoom：Surface 最终位于视口顶部约 10%，使用语义化的 250 ms emphasis 时长、进出缓动、透明度、位移和阴影过渡。退出完成前保持挂载，支持中途反向，并在 Reduced Motion 下立即到达最终状态。
+
+当前固定版本的 GPUI renderer 不支持元素级 backdrop filter。遮罩颜色和透明度已按 Style Preset 对齐，backdrop blur 记录在 `docs/shadcn/TODO.md` 中延期实现。

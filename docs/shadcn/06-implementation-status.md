@@ -21,6 +21,7 @@
 | Motion contract | Shared fast/normal/slow/emphasis/loading durations, semantic enter/exit/move easing, placement offsets, and reduced-motion duration override |
 | Overlay lifecycle | Tooltip, Popover, HoverCard, Dropdown/Context Menu, Select, Combobox, Dialog/AlertDialog, Sheet, and Notification use interruptible open/close ownership or an owning lifecycle wrapper |
 | AlertDialog | Uses one semantic content API with default/small layouts, Media, typed Action/Cancel controls, accessible text fallbacks, preset-owned modal geometry, non-dismissible backdrop, and stable 100 ms fade motion |
+| Dialog | Uses typed Button Trigger/Action/Close composition, accessible text slots, responsive preset-aware geometry, semantic overlays, independent Escape/Enter policies, default first-tab-stop focus, cancellation veto, and the retained interruptible desktop motion contract |
 | Overlay correctness | Exit content remains mounted and blocks input; stale close completion, duplicate dismissal, nested Dialog close-all, and interrupted reopen paths have focused tests |
 | Loading motion | Skeleton uses a restrained pulse; Spinner and indeterminate Progress use shared loading duration and easing |
 | Navigation | Tabs and Sidebar consume named motion durations |

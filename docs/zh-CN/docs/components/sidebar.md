@@ -125,7 +125,7 @@ SidebarMenuItem::new("Notifications")
 ```rust
 Sidebar::new()
     .side(Side::Right)
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Right Panel")
@@ -151,7 +151,7 @@ SidebarMenuItem::new("Project Files")
 
 ```rust
 Sidebar::new()
-    .width(280)
+    .w(280)
     .border_width(2)
     .header(
         SidebarHeader::new()
@@ -210,7 +210,7 @@ Sidebar::new()
 
 ```rust
 Sidebar::new()
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Settings")

@@ -60,10 +60,10 @@ impl MyTableDelegate {
                 MyData { id: 2, name: "Jane".to_string(), age: 25, email: "jane@example.com".to_string() },
             ],
             columns: vec![
-                Column::new("id", "ID").width(60.),
-                Column::new("name", "Name").width(150.).sortable(),
-                Column::new("age", "Age").width(80.).sortable(),
-                Column::new("email", "Email").width(200.),
+                Column::new("id", "ID").w(60.),
+                Column::new("name", "Name").w(150.).sortable(),
+                Column::new("age", "Age").w(80.).sortable(),
+                Column::new("email", "Email").w(200.),
             ],
         }
     }
@@ -112,7 +112,7 @@ Column::new("id", "ID")
 // Sortable column
 Column::new("name", "Name")
     .sortable()
-    .width(150.)
+    .w(150.)
 
 // Right-aligned column
 Column::new("price", "Price")
@@ -127,12 +127,12 @@ Column::new("actions", "Actions")
 
 // Column with custom padding
 Column::new("description", "Description")
-    .width(200.)
+    .w(200.)
     .paddings(px(8.))
 
 // Non-resizable column
 Column::new("status", "Status")
-    .width(100.)
+    .w(100.)
     .resizable(false)
 
 // Custom sort orders
@@ -473,13 +473,13 @@ impl UserTableDelegate {
         Self {
             users: Vec::new(),
             columns: vec![
-                Column::new("avatar", "").width(50.).resizable(false).movable(false),
-                Column::new("name", "Name").width(150.).sortable().fixed_left(),
-                Column::new("email", "Email").width(200.).sortable(),
-                Column::new("role", "Role").width(100.).sortable(),
-                Column::new("status", "Status").width(100.),
-                Column::new("last_login", "Last Login").width(120.).sortable(),
-                Column::new("actions", "Actions").width(100.).resizable(false),
+                Column::new("avatar", "").w(50.).resizable(false).movable(false),
+                Column::new("name", "Name").w(150.).sortable().fixed_left(),
+                Column::new("email", "Email").w(200.).sortable(),
+                Column::new("role", "Role").w(100.).sortable(),
+                Column::new("status", "Status").w(100.),
+                Column::new("last_login", "Last Login").w(120.).sortable(),
+                Column::new("actions", "Actions").w(100.).resizable(false),
             ],
         }
     }
@@ -555,7 +555,7 @@ Prevent specific columns from being selected (useful for action columns):
 
 ```rust
 Column::new("actions", "Actions")
-    .width(100.)
+    .w(100.)
     .selectable(false)  // This column's cells cannot be selected
     .resizable(false)
 ```

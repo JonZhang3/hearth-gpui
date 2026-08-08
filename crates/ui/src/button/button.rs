@@ -13,6 +13,8 @@ use gpui::{
     Toggled, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
+pub(crate) const BUTTON_KEY_CONTEXT: &str = "Button";
+
 #[derive(Default, Clone, Copy, PartialEq)]
 enum ButtonRounding {
     #[default]
@@ -127,7 +129,9 @@ impl Button {
             id: id.clone(),
             // ID must be set after div is created;
             // `dropdown_menu` uses this id to create the popup menu.
-            base: div().flex_shrink_0().id(id),
+            // The semantic key context lets parent composites preserve native
+            // Enter/Space activation instead of overriding a focused Button.
+            base: div().flex_shrink_0().id(id).key_context(BUTTON_KEY_CONTEXT),
             style: StyleRefinement::default(),
             icon: None,
             trailing_icon: None,

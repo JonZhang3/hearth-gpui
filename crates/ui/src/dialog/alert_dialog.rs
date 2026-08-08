@@ -8,7 +8,7 @@ use gpui::{
 use crate::{
     ActiveTheme as _, Disableable as _, Icon, Root, Sizable as _, Size, StyledExt as _,
     button::{Button, ButtonVariant, ButtonVariants as _},
-    dialog::{ConfirmDialog, Dialog, DialogButtonProps},
+    dialog::{ConfirmDialog, Dialog, DialogCallbacks},
     h_flex, v_flex,
 };
 
@@ -229,7 +229,7 @@ impl AlertDialogContent {
     fn into_dialog(
         self,
         mut dialog: Dialog,
-        button_props: DialogButtonProps,
+        callbacks: DialogCallbacks,
         window: &mut Window,
         cx: &mut App,
     ) -> Dialog {
@@ -381,15 +381,15 @@ impl AlertDialogContent {
 
         dialog = dialog
             .alert_dialog_role()
-            .width(width)
-            .close_button(false)
-            .overlay_closable(false)
-            .button_props(button_props)
+            .w(width)
+            .show_close_button(false)
+            .dismiss_on_overlay_click(false)
+            .callbacks(callbacks)
             .when_some(initial_focus, |this, focus_handle| {
                 this.initial_focus(focus_handle)
             })
             .header(header)
-            .footer(footer)
+            .footer_element(footer)
             .children(children);
 
         if let Some(label) = self.aria_label.or(self.title_text) {
@@ -426,17 +426,20 @@ pub struct AlertDialog {
     base: Dialog,
     trigger: Option<TriggerBuilder>,
     content_builder: Option<ContentBuilder>,
-    button_props: DialogButtonProps,
+    callbacks: DialogCallbacks,
 }
 
 impl AlertDialog {
     /// Creates an alert dialog with non-dismissible overlay and no close button.
     pub fn new(cx: &mut App) -> Self {
         Self {
-            base: Dialog::new(cx).overlay_closable(false).close_button(false),
+            base: Dialog::new(cx)
+                .dismiss_on_overlay_click(false)
+                .show_close_button(false)
+                .confirm_on_enter(false),
             trigger: None,
             content_builder: None,
-            button_props: DialogButtonProps::default(),
+            callbacks: DialogCallbacks::default(),
         }
     }
 
@@ -464,7 +467,7 @@ impl AlertDialog {
 
     /// Sets whether Escape may cancel the dialog. The default is `true`.
     pub fn dismiss_on_escape(mut self, dismiss: bool) -> Self {
-        self.base = self.base.keyboard(dismiss);
+        self.base = self.base.dismiss_on_escape(dismiss);
         self
     }
 
@@ -473,7 +476,7 @@ impl AlertDialog {
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
     ) -> Self {
-        self.button_props = self.button_props.on_ok(handler);
+        self.callbacks = self.callbacks.on_ok(handler);
         self
     }
 
@@ -482,7 +485,7 @@ impl AlertDialog {
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
     ) -> Self {
-        self.button_props = self.button_props.on_cancel(handler);
+        self.callbacks = self.callbacks.on_cancel(handler);
         self
     }
 
@@ -491,7 +494,7 @@ impl AlertDialog {
         mut self,
         handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
-        self.button_props.on_close = Rc::new(handler);
+        self.callbacks.on_close = Rc::new(handler);
         self
     }
 
@@ -502,25 +505,25 @@ impl AlertDialog {
             .map(|builder| builder(AlertDialogContent::new(), window, cx))
             .unwrap_or_default();
 
-        content.into_dialog(self.base, self.button_props, window, cx)
+        content.into_dialog(self.base, self.callbacks, window, cx)
     }
 
     fn render_trigger(self, trigger: TriggerBuilder) -> AnyElement {
         let style = self.base.style.clone();
         let props = self.base.props.clone();
         let content_builder = self.content_builder.clone();
-        let button_props = self.button_props.clone();
+        let callbacks = self.callbacks.clone();
 
         let open: TriggerHandler = Rc::new(move |_, window, cx| {
             let style = style.clone();
             let props = props.clone();
             let content_builder = content_builder.clone();
-            let button_props = button_props.clone();
+            let callbacks = callbacks.clone();
             Root::update(window, cx, move |root, window, cx| {
                 let style = style.clone();
                 let props = props.clone();
                 let content_builder = content_builder.clone();
-                let button_props = button_props.clone();
+                let callbacks = callbacks.clone();
                 root.open_dialog_with_presentation(
                     super::DialogPresentation::Alert,
                     move |dialog, window, cx| {
@@ -530,7 +533,7 @@ impl AlertDialog {
                             .unwrap_or_default();
                         content.into_dialog(
                             dialog.refine_style(&style).with_props(props.clone()),
-                            button_props.clone(),
+                            callbacks.clone(),
                             window,
                             cx,
                         )

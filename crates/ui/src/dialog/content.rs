@@ -34,10 +34,11 @@ impl Styled for DialogContent {
 
 impl RenderOnce for DialogContent {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        // Direct children are the Dialog's major content sections and share the preset modal gap.
         v_flex()
             .w_full()
             .flex_1()
-            .rounded(cx.theme().style.radii.lg)
+            .gap(cx.theme().style.modals.gap)
             .refine_style(&self.style)
             .children(self.children)
     }

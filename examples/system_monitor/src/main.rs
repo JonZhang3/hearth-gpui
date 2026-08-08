@@ -97,13 +97,13 @@ impl ProcessTableDelegate {
         Self {
             processes: Vec::new(),
             columns: vec![
-                Column::new("pid", "PID").width(70.).sortable(),
-                Column::new("name", "Name").width(380.).sortable(),
+                Column::new("pid", "PID").w(70.).sortable(),
+                Column::new("name", "Name").w(380.).sortable(),
                 Column::new("cpu", "CPU %")
-                    .width(80.)
+                    .w(80.)
                     .sortable()
                     .sort(ColumnSort::Descending),
-                Column::new("memory", "Memory").width(100.).sortable(),
+                Column::new("memory", "Memory").w(100.).sortable(),
             ],
             sort_field: ProcessSortField::Cpu,
             sort_order: ColumnSort::Descending,

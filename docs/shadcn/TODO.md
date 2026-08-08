@@ -2,6 +2,16 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## Element-level backdrop filters for Dialog overlays
+
+**Status:** Renderer support deferred; semantic overlay fallback implemented
+
+The pinned shadcn Dialog overlay uses a translucent black surface and conditionally applies `backdrop-blur-xs`. Dialog now resolves the Vega, Nova, and Maia overlay opacity from semantic Modal Metrics, but GPUI cannot blur only the content behind one element subtree.
+
+Do not add a Dialog-only framebuffer path. Revisit this with the shared compositing-layer work described under element-level blend modes. The renderer contract must define offscreen backdrop capture, rounded and nested clipping, scale-factor behavior, animation invalidation, hit testing, and equivalent Metal, WGPU, Direct3D, Web, and headless output.
+
+Acceptance requires Vega and Nova blur parity without changing Maia's stronger overlay, no blur leakage outside the overlay bounds, correct nested modal composition, and no material regression to overlay frame time or batching.
+
 ## Rounded overflow masks
 
 **Status:** Renderer support deferred; Card workaround implemented

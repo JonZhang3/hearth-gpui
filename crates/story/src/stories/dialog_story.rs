@@ -42,11 +42,11 @@ struct MyTable {
 impl MyTable {
     fn new(_: &mut App) -> Self {
         let columns = vec![
-            Column::new("id", "ID").width(px(50.)),
-            Column::new("name", "Name").width(px(150.)),
-            Column::new("email", "Email").width(px(250.)),
-            Column::new("role", "Role").width(px(150.)),
-            Column::new("status", "Status").width(px(100.)),
+            Column::new("id", "ID").w(px(50.)),
+            Column::new("name", "Name").w(px(150.)),
+            Column::new("email", "Email").w(px(250.)),
+            Column::new("role", "Role").w(px(150.)),
+            Column::new("status", "Status").w(px(100.)),
         ];
 
         Self { columns }
@@ -89,7 +89,7 @@ impl super::Story for DialogStory {
     }
 
     fn description() -> &'static str {
-        "A dialog dialog"
+        "A modal surface for focused content and actions"
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
@@ -158,10 +158,13 @@ impl DialogStory {
         section("Basic Dialog").child(
             Dialog::new(cx)
                 .trigger(Button::new("show-dialog").outline().label("Open Dialog"))
-                .overlay(dialog_overlay)
-                .keyboard(self.keyboard)
-                .close_button(self.close_button)
-                .overlay_closable(overlay_closable)
+                .title("Basic Dialog")
+                .description("Enter your details, then confirm the dialog.")
+                .show_overlay(dialog_overlay)
+                .dismiss_on_escape(self.keyboard)
+                .confirm_on_enter(self.keyboard)
+                .show_close_button(self.close_button)
+                .dismiss_on_overlay_click(overlay_closable)
                 .on_ok({
                     let view = view.clone();
                     let input1 = input1.clone();
@@ -181,64 +184,45 @@ impl DialogStory {
                         true
                     }
                 })
-                .p_0()
                 .content({
-                    move |content, _, cx| {
-                        content
-                            .child(
-                                DialogHeader::new()
-                                    .p_4()
-                                    .child(DialogTitle::new().child("Basic Dialog"))
-                                    .child(DialogDescription::new().child(
-                                        "This is a basic dialog created \
-                                        using the declarative API.",
-                                    )),
-                            )
-                            .child(
-                                v_flex()
-                                    .px_4()
-                                    .pb_4()
-                                    .gap_3()
-                                    .child(
-                                        "This is a dialog dialog, \
-                                        you can put anything here.",
-                                    )
-                                    .child(Input::new(&input1))
-                                    .child(Select::new(&select))
-                                    .child(DatePicker::new(&date).placeholder("Date of Birth")),
-                            )
-                            .child(
-                                DialogFooter::new()
-                                    .p_4()
-                                    .bg(cx.theme().muted)
-                                    .justify_between()
-                                    .child(
-                                        Button::new("new-dialog")
-                                            .label("Open Other Dialog")
-                                            .outline()
-                                            .on_click(move |_, window, cx| {
-                                                window.open_dialog(cx, move |dialog, _, _| {
-                                                    dialog
-                                                        .title("Other Dialog")
-                                                        .child("This is another dialog.")
-                                                        .min_h(px(100.))
-                                                        .overlay_closable(overlay_closable)
-                                                });
-                                            }),
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .gap_2()
-                                            .child(DialogClose::new().child(
-                                                Button::new("cancel").label("Cancel").outline(),
-                                            ))
-                                            .child(
-                                                DialogAction::new()
-                                                    .child(Button::new("confirm").label("Confirm")),
-                                            ),
-                                    ),
-                            )
+                    move |content, _, _| {
+                        content.child(
+                            v_flex()
+                                .gap_3()
+                                .child(Input::new(&input1))
+                                .child(Select::new(&select))
+                                .child(DatePicker::new(&date).placeholder("Date of Birth")),
+                        )
                     }
+                })
+                .footer(move |_, _| {
+                    DialogFooter::new()
+                        .justify_between()
+                        .child(
+                            Button::new("new-dialog")
+                                .label("Open Other Dialog")
+                                .outline()
+                                .on_click(move |_, window, cx| {
+                                    window.open_dialog(cx, move |dialog, _, _| {
+                                        dialog
+                                            .title("Other Dialog")
+                                            .description(
+                                                "This dialog was opened from another dialog.",
+                                            )
+                                            .child("This is another dialog.")
+                                            .min_h(px(100.))
+                                            .dismiss_on_overlay_click(overlay_closable)
+                                    });
+                                }),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(DialogClose::new(
+                                    Button::new("cancel").label("Cancel").outline(),
+                                ))
+                                .child(DialogAction::new(Button::new("confirm").label("Confirm"))),
+                        )
                 }),
         )
     }
@@ -274,8 +258,8 @@ impl DialogStory {
                 .on_click(cx.listener(move |_, _, window, cx| {
                     window.open_dialog(cx, move |dialog, _, _| {
                         dialog
-                            .overlay(dialog_overlay)
-                            .overlay_closable(overlay_closable)
+                            .show_overlay(dialog_overlay)
+                            .dismiss_on_overlay_click(overlay_closable)
                             .child(
                                 "This is a dialog without title, \
                                 you can use it when the title is not necessary.",
@@ -297,8 +281,8 @@ impl DialogStory {
                     window.open_dialog(cx, move |dialog, _, cx| {
                         dialog
                             .rounded(cx.theme().style.radii.lg)
-                            .overlay(dialog_overlay)
-                            .overlay_closable(overlay_closable)
+                            .show_overlay(dialog_overlay)
+                            .dismiss_on_overlay_click(overlay_closable)
                             .child(
                                 v_flex()
                                     .gap_3()
@@ -319,17 +303,15 @@ impl DialogStory {
                                         we need to restart the application.",
                                     ),
                             )
-                            .footer(
+                            .footer(|_, _| {
                                 DialogFooter::new()
-                                    .child(
-                                        DialogClose::new()
-                                            .child(Button::new("cancel").label("Later").outline()),
-                                    )
-                                    .child(
-                                        DialogAction::new()
-                                            .child(Button::new("ok").label("Restart Now")),
-                                    ),
-                            )
+                                    .child(DialogClose::new(
+                                        Button::new("cancel").label("Later").outline(),
+                                    ))
+                                    .child(DialogAction::new(
+                                        Button::new("ok").label("Restart Now"),
+                                    ))
+                            })
                             .on_ok(|_, window, cx| {
                                 window.push_notification("You have pressed restart.", cx);
                                 true
@@ -356,22 +338,20 @@ impl DialogStory {
                         dialog
                             .w(px(720.))
                             .h(px(600.))
-                            .overlay(dialog_overlay)
-                            .overlay_closable(overlay_closable)
+                            .show_overlay(dialog_overlay)
+                            .dismiss_on_overlay_click(overlay_closable)
                             .title("Dialog with scrollbar")
                             .child(markdown(include_str!("../../../../README.md")))
-                            .footer(
+                            .footer(|_, _| {
                                 DialogFooter::new()
                                     .gap_2()
-                                    .child(
-                                        DialogClose::new()
-                                            .child(Button::new("cancel").label("Cancel").outline()),
-                                    )
-                                    .child(
-                                        DialogAction::new()
-                                            .child(Button::new("confirm").label("Confirm")),
-                                    ),
-                            )
+                                    .child(DialogClose::new(
+                                        Button::new("cancel").label("Cancel").outline(),
+                                    ))
+                                    .child(DialogAction::new(
+                                        Button::new("confirm").label("Confirm"),
+                                    ))
+                            })
                     });
                 })),
         )
@@ -393,8 +373,8 @@ impl DialogStory {
                                 dialog
                                     .w(px(800.))
                                     .h(px(600.))
-                                    .overlay(dialog_overlay)
-                                    .overlay_closable(overlay_closable)
+                                    .show_overlay(dialog_overlay)
+                                    .dismiss_on_overlay_click(overlay_closable)
                                     .title("Dialog with Table")
                                     .child(
                                         v_flex()
@@ -506,10 +486,11 @@ impl DialogStory {
                         .outline()
                         .label("TextView Dialog"),
                 )
-                .overlay(dialog_overlay)
-                .keyboard(self.keyboard)
-                .close_button(self.close_button)
-                .overlay_closable(overlay_closable)
+                .show_overlay(dialog_overlay)
+                .dismiss_on_escape(self.keyboard)
+                .confirm_on_enter(self.keyboard)
+                .show_close_button(self.close_button)
+                .dismiss_on_overlay_click(overlay_closable)
                 .p_0()
                 .content({
                     move |content, _, cx| {
@@ -534,14 +515,12 @@ impl DialogStory {
                                 DialogFooter::new()
                                     .p_4()
                                     .bg(cx.theme().muted)
-                                    .child(
-                                        DialogClose::new()
-                                            .child(Button::new("cancel").label("Cancel").outline()),
-                                    )
-                                    .child(
-                                        DialogAction::new()
-                                            .child(Button::new("confirm").label("Confirm")),
-                                    ),
+                                    .child(DialogClose::new(
+                                        Button::new("cancel").label("Cancel").outline(),
+                                    ))
+                                    .child(DialogAction::new(
+                                        Button::new("confirm").label("Confirm"),
+                                    )),
                             )
                     }
                 }),
@@ -571,7 +550,7 @@ impl Render for DialogStory {
                             .gap_3()
                             .child(
                                 Checkbox::new("dialog-overlay")
-                                    .label("Dialog Overlay")
+                                    .label("Show Overlay")
                                     .checked(self.dialog_overlay)
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.dialog_overlay = !view.dialog_overlay;
@@ -580,7 +559,7 @@ impl Render for DialogStory {
                             )
                             .child(
                                 Checkbox::new("overlay-closable")
-                                    .label("Overlay Closable")
+                                    .label("Dismiss on Overlay Click")
                                     .checked(self.overlay_closable)
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.overlay_closable = !view.overlay_closable;
@@ -589,7 +568,7 @@ impl Render for DialogStory {
                             )
                             .child(
                                 Checkbox::new("dialog-show-close")
-                                    .label("Model Close Button")
+                                    .label("Show Close Button")
                                     .checked(self.close_button)
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.close_button = !view.close_button;
@@ -598,7 +577,7 @@ impl Render for DialogStory {
                             )
                             .child(
                                 Checkbox::new("dialog-keyboard")
-                                    .label("Keyboard")
+                                    .label("Escape and Enter")
                                     .checked(self.keyboard)
                                     .on_click(cx.listener(|view, _, _, cx| {
                                         view.keyboard = !view.keyboard;

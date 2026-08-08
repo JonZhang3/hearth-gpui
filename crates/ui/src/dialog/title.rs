@@ -1,9 +1,9 @@
 use gpui::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    StyleRefinement, Styled, Window, div, relative,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, relative,
 };
 
-use crate::StyledExt as _;
+use crate::{ActiveTheme as _, StyledExt as _, theme::Density};
 
 /// Title element for a dialog header.
 #[derive(IntoElement)]
@@ -34,11 +34,16 @@ impl Styled for DialogTitle {
 }
 
 impl RenderOnce for DialogTitle {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .id("dialog-title")
-            .text_base()
-            .font_semibold()
+            .when(cx.theme().style.density == Density::Standard, |this| {
+                this.text_sm()
+            })
+            .when(cx.theme().style.density != Density::Standard, |this| {
+                this.text_base()
+            })
+            .font_medium()
             .line_height(relative(1.))
             .refine_style(&self.style)
             .children(self.children)

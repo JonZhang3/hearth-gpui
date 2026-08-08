@@ -59,10 +59,10 @@ impl MyTableDelegate {
                 MyData { id: 2, name: "Jane".to_string(), age: 25, email: "jane@example.com".to_string() },
             ],
             columns: vec![
-                Column::new("id", "ID").width(60.),
-                Column::new("name", "Name").width(150.).sortable(),
-                Column::new("age", "Age").width(80.).sortable(),
-                Column::new("email", "Email").width(200.),
+                Column::new("id", "ID").w(60.),
+                Column::new("name", "Name").w(150.).sortable(),
+                Column::new("age", "Age").w(80.).sortable(),
+                Column::new("email", "Email").w(200.),
             ],
         }
     }
@@ -108,7 +108,7 @@ Column::new("id", "ID")
 
 Column::new("name", "Name")
     .sortable()
-    .width(150.)
+    .w(150.)
 
 Column::new("price", "Price")
     .text_right()
