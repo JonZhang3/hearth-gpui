@@ -529,3 +529,15 @@ impl ThemeColor {
         DEFAULT_THEME_COLORS[&ThemeMode::Dark].0.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{neutral_400, neutral_500};
+
+    #[test]
+    fn default_focus_ring_matches_shadcn_neutral_theme() {
+        assert_eq!(ThemeColor::light().ring, neutral_400());
+        assert_eq!(ThemeColor::dark().ring, neutral_500());
+    }
+}

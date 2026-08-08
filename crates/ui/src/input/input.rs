@@ -1,22 +1,27 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AccessibleAction, AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, Hsla,
-    InteractiveElement as _, IntoElement, MouseButton, MouseDownEvent, ParentElement as _, Rems,
-    RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window,
-    div, px, relative,
+    AccessibleAction, Animation, AnimationExt as _, AnyElement, App, Corners, DefiniteLength,
+    Edges, EdgesRefinement, ElementId, Entity, Hsla, InteractiveElement as _, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement as _, Pixels, Rems, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window, div, px, relative,
 };
 use rust_i18n::t;
 
+use crate::animation::Lerp;
 use crate::button::Button;
 use crate::input::clear_button;
 use crate::native_menu::NativeMenu;
 use crate::spinner::Spinner;
-use crate::{ActiveTheme, Colorize, v_flex};
+use crate::{ActiveTheme, Colorize, Density, MotionEasing, StylePreset, v_flex};
 use crate::{IconName, Size};
-use crate::{Selectable, StyledExt, h_flex};
 use crate::{Sizable, StyleSized};
+use crate::{StyledExt, h_flex};
 
 use super::{
     InputContentType, InputState, content_type::sync_native_content_type, element::EditorScrollbar,
@@ -32,6 +37,222 @@ pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
     } else {
         (cx.theme().input_background(), cx.theme().foreground)
     }
+}
+
+/// The properties animated by a Style Preset's Input transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InputMotionKind {
+    Colors,
+    Shadow,
+}
+
+/// Input-specific presentation derived from semantic Style Preset values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct InputMetrics {
+    radius: Pixels,
+    shadow: bool,
+    motion_kind: InputMotionKind,
+    light_background_alpha: f32,
+    dark_background_alpha: f32,
+    disabled_light_background_alpha: f32,
+    disabled_dark_background_alpha: f32,
+}
+
+/// Resolves Vega, Nova, and Maia Input presentation without branching on preset IDs.
+fn input_metrics(style: &StylePreset) -> InputMetrics {
+    match style.density {
+        Density::Standard => InputMetrics {
+            radius: style.radii.md,
+            shadow: style.elevation.enabled,
+            motion_kind: InputMotionKind::Shadow,
+            light_background_alpha: 0.,
+            dark_background_alpha: 0.3,
+            disabled_light_background_alpha: 0.,
+            disabled_dark_background_alpha: 0.3,
+        },
+        Density::Compact => InputMetrics {
+            radius: style.radii.xl,
+            shadow: false,
+            motion_kind: InputMotionKind::Colors,
+            light_background_alpha: 0.,
+            dark_background_alpha: 0.3,
+            disabled_light_background_alpha: 0.5,
+            disabled_dark_background_alpha: 0.8,
+        },
+        Density::Comfortable => InputMetrics {
+            radius: style.radii.xl,
+            shadow: false,
+            motion_kind: InputMotionKind::Colors,
+            light_background_alpha: 0.3,
+            dark_background_alpha: 0.3,
+            disabled_light_background_alpha: 0.3,
+            disabled_dark_background_alpha: 0.3,
+        },
+    }
+}
+
+/// Renderable Input colors captured before a state transition begins.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct InputPaintState {
+    background: Hsla,
+    border: Hsla,
+    ring: Hsla,
+}
+
+/// An active Input transition with enough timing data to resume after rerenders.
+#[derive(Debug, Clone, Copy)]
+struct ActiveInputTransition {
+    from: InputPaintState,
+    target: InputPaintState,
+    started_at: Instant,
+    duration: Duration,
+    easing: MotionEasing,
+    kind: InputMotionKind,
+}
+
+/// A renderable transition segment resolved from the current visual value.
+#[derive(Debug, Clone, Copy)]
+struct InputTransition {
+    from: InputPaintState,
+    to: InputPaintState,
+    duration: Duration,
+    epoch: u64,
+}
+
+/// Previous and active paint state used for interruptible Input transitions.
+#[derive(Debug, Clone, Copy)]
+struct InputMotionState {
+    target: InputPaintState,
+    active: Option<ActiveInputTransition>,
+    epoch: u64,
+}
+
+impl InputMotionState {
+    /// Creates stable motion state without animating the first render.
+    fn new(target: InputPaintState) -> Self {
+        Self {
+            target,
+            active: None,
+            epoch: 0,
+        }
+    }
+
+    /// Resolves the currently visible value and clears completed transitions.
+    fn current(&mut self, now: Instant) -> InputPaintState {
+        let Some(active) = self.active else {
+            return self.target;
+        };
+        let elapsed = now.saturating_duration_since(active.started_at);
+        let linear_delta = if active.duration.is_zero() {
+            1.
+        } else {
+            elapsed.as_secs_f32() / active.duration.as_secs_f32()
+        };
+        let current = interpolate_input_paint(
+            active.from,
+            active.target,
+            active.easing.sample(linear_delta),
+            active.kind,
+        );
+        if linear_delta >= 1. {
+            self.active = None;
+            active.target
+        } else {
+            current
+        }
+    }
+
+    /// Records a target and resumes from the current visual value on interruption.
+    fn transition_to(
+        &mut self,
+        target: InputPaintState,
+        now: Instant,
+        duration: Duration,
+        easing: MotionEasing,
+        kind: InputMotionKind,
+    ) -> Option<InputTransition> {
+        let previous_active = self.active;
+        let target_unchanged = self.target == target;
+        let current = self.current(now);
+        if target_unchanged && self.active.is_none() {
+            return None;
+        }
+
+        self.target = target;
+        self.epoch = self.epoch.wrapping_add(1);
+        let duration = previous_active
+            .map(|active| {
+                let elapsed = now
+                    .saturating_duration_since(active.started_at)
+                    .min(active.duration);
+                if target_unchanged {
+                    active.duration.saturating_sub(elapsed)
+                } else if target == active.from {
+                    elapsed
+                } else {
+                    duration
+                }
+            })
+            .unwrap_or(duration);
+        if duration.is_zero() || current == target {
+            self.active = None;
+            return None;
+        }
+        self.active = Some(ActiveInputTransition {
+            from: current,
+            target,
+            started_at: now,
+            duration,
+            easing,
+            kind,
+        });
+        Some(InputTransition {
+            from: current,
+            to: target,
+            duration,
+            epoch: self.epoch,
+        })
+    }
+}
+
+/// Interpolates only properties covered by the active Style Preset transition.
+fn interpolate_input_paint(
+    from: InputPaintState,
+    to: InputPaintState,
+    delta: f32,
+    kind: InputMotionKind,
+) -> InputPaintState {
+    match kind {
+        InputMotionKind::Colors => InputPaintState {
+            background: Lerp::lerp(&from.background, &to.background, delta),
+            border: Lerp::lerp(&from.border, &to.border, delta),
+            ring: to.ring,
+        },
+        InputMotionKind::Shadow => InputPaintState {
+            background: to.background,
+            border: to.border,
+            ring: Lerp::lerp(&from.ring, &to.ring, delta),
+        },
+    }
+}
+
+/// Mirrors the browser `:focus-visible` policy used by shadcn Input.
+fn input_focus_visible(focused: bool, last_input_was_keyboard: bool) -> bool {
+    focused && last_input_was_keyboard
+}
+
+/// Returns whether the preset may paint its semantic color-transition surface.
+///
+/// Caller-provided paint values have higher priority than preset motion. GPUI backgrounds may be
+/// arbitrary fills, so they cannot be safely interpolated as semantic solid colors. Disabling the
+/// entire color surface also prevents an animated background child from covering a custom border.
+fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
+    style.background.is_none() && style.border_color.is_none()
+}
+
+/// Derives an internal Input element ID from the stable state-backed root ID.
+fn input_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
 }
 
 /// A text input element bind to an [`InputState`].
@@ -52,9 +273,10 @@ pub struct Input {
     bordered: bool,
     focus_bordered: bool,
     tab_index: isize,
-    selected: bool,
     content_type: Option<InputContentType>,
     role: Option<Role>,
+    aria_label: Option<SharedString>,
+    aria_description: Option<SharedString>,
 
     /// An optional context menu builder to allow a custom context menu on the input.
     ///
@@ -66,17 +288,6 @@ impl Sizable for Input {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
         self
-    }
-}
-
-impl Selectable for Input {
-    fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
-        self
-    }
-
-    fn is_selected(&self) -> bool {
-        self.selected
     }
 }
 
@@ -99,9 +310,10 @@ impl Input {
             bordered: true,
             focus_bordered: true,
             tab_index: 0,
-            selected: false,
             content_type: None,
             role: None,
+            aria_label: None,
+            aria_description: None,
             context_menu_builder: None,
         }
     }
@@ -175,6 +387,18 @@ impl Input {
         self
     }
 
+    /// Sets the accessible name announced for the input.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Sets supporting text announced for the input.
+    pub fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
+        self.aria_description = Some(description.into());
+        self
+    }
+
     /// Set to disable the input field.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -242,6 +466,9 @@ impl Input {
         disabled: bool,
     ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static {
         move |event, window, cx| {
+            if disabled {
+                return;
+            }
             sync_native_content_type(window, content_type, disabled);
             state.update(cx, |state, cx| state.on_mouse_down(event, window, cx));
         }
@@ -333,6 +560,78 @@ impl Input {
         });
     }
 
+    /// Resolves the semantic Input surface for the current theme and state.
+    fn surface_background(metrics: InputMetrics, disabled: bool, cx: &App) -> Hsla {
+        let alpha = match (disabled, cx.theme().is_dark()) {
+            (false, false) => metrics.light_background_alpha,
+            (false, true) => metrics.dark_background_alpha,
+            (true, false) => metrics.disabled_light_background_alpha,
+            (true, true) => metrics.disabled_dark_background_alpha,
+        };
+        cx.theme().input.opacity(alpha)
+    }
+
+    /// Resolves border widths and expanded corner radii for a layout-neutral outer ring.
+    fn outer_ring_geometry(
+        style: &StyleRefinement,
+        ring_width: Pixels,
+        window: &Window,
+    ) -> (Edges<Pixels>, StyleRefinement) {
+        let rem_size = window.rem_size();
+        let border_widths = Edges::<Pixels> {
+            top: style
+                .border_widths
+                .top
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            right: style
+                .border_widths
+                .right
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            bottom: style
+                .border_widths
+                .bottom
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            left: style
+                .border_widths
+                .left
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+        };
+        let radii = Corners::<Pixels> {
+            top_left: style
+                .corner_radii
+                .top_left
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            top_right: style
+                .corner_radii
+                .top_right
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            bottom_right: style
+                .corner_radii
+                .bottom_right
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+            bottom_left: style
+                .corner_radii
+                .bottom_left
+                .map(|value| value.to_pixels(rem_size))
+                .unwrap_or_default(),
+        }
+        .map(|radius| *radius + ring_width);
+
+        let mut ring_style = StyleRefinement::default();
+        ring_style.corner_radii.top_left = Some(radii.top_left.into());
+        ring_style.corner_radii.top_right = Some(radii.top_right.into());
+        ring_style.corner_radii.bottom_right = Some(radii.bottom_right.into());
+        ring_style.corner_radii.bottom_left = Some(radii.bottom_left.into());
+        (border_widths, ring_style)
+    }
+
     /// This method must after the refine_style.
     fn render_editor(
         paddings: EdgesRefinement<DefiniteLength>,
@@ -388,6 +687,7 @@ impl RenderOnce for Input {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         const LINE_HEIGHT: Rems = Rems(1.25);
         let text_align = self.style.text.text_align.unwrap_or(TextAlign::Left);
+        let uses_semantic_color_motion = input_uses_semantic_color_motion(&self.style);
 
         self.state.update(cx, |state, _| {
             state.context_menu_builder = self.context_menu_builder.clone();
@@ -413,30 +713,52 @@ impl RenderOnce for Input {
             && Self::exposes_accessibility_value(state.masked, content_type))
         .then(|| state.text.to_string());
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
+        let focus_visible = input_focus_visible(focused, window.last_input_was_keyboard());
         if focused {
             sync_native_content_type(window, content_type, state.disabled);
         }
 
-        let gap_x = match self.size {
-            Size::Small => px(4.),
-            Size::Large => px(8.),
-            _ => px(6.),
-        };
-
-        let (bg, _) = input_style(state.disabled, cx);
-        let bg = if state.mode.is_code_editor() {
+        let metrics = input_metrics(&cx.theme().style);
+        let control_metrics = cx.theme().style.controls.for_size(self.size);
+        let background = if state.mode.is_code_editor() {
             cx.theme().editor_background()
         } else {
-            bg
+            Self::surface_background(metrics, state.disabled, cx)
         };
-        let bg = if state.disabled { bg.opacity(0.5) } else { bg };
-        let border_color = if state.disabled {
-            cx.theme().input.opacity(0.5)
-        } else if self.invalid {
-            cx.theme().danger
+        let disabled_opacity = if state.disabled { 0.5 } else { 1. };
+        let invalid_border = cx
+            .theme()
+            .danger
+            .opacity(if cx.theme().is_dark() { 0.5 } else { 1. });
+        let border = if self.invalid {
+            invalid_border
+        } else if focus_visible && self.focus_bordered {
+            cx.theme().ring
         } else {
             cx.theme().input
+        }
+        .opacity(disabled_opacity);
+        let ring_visible = self.appearance
+            && self.bordered
+            && (self.invalid || (focus_visible && self.focus_bordered));
+        let ring_color = if self.invalid {
+            cx.theme()
+                .danger
+                .opacity(if cx.theme().is_dark() { 0.4 } else { 0.2 })
+        } else {
+            cx.theme().ring.opacity(0.5)
+        }
+        .opacity(disabled_opacity);
+        let paint = InputPaintState {
+            background: background.opacity(disabled_opacity),
+            border,
+            ring: if ring_visible {
+                ring_color
+            } else {
+                ring_color.opacity(0.)
+            },
         };
+        let root_id: ElementId = ("input", self.state.entity_id()).into();
 
         let prefix = self.prefix;
         let suffix = self.suffix;
@@ -447,97 +769,119 @@ impl RenderOnce for Input {
             && state.text.len() > 0
             && state.mode.is_single_line();
         let has_suffix = suffix.is_some() || state.loading || self.mask_toggle || show_clear_button;
+        let appearance = self.appearance;
+        let bordered = self.bordered;
+        let size = self.size;
+        let input_state = self.state.clone();
 
-        let element = div()
-            .id(("input", self.state.entity_id()))
+        let mut element = div()
+            .id(root_id.clone())
             .role(accessibility_role)
             .when_some(accessibility_value, |this, value| this.aria_value(value))
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
+            .when_some(self.aria_description, |this, description| {
+                this.aria_description(description)
+            })
             .flex()
             .key_context(crate::input::CONTEXT)
             .track_focus(&state.focus_handle.clone())
-            .tab_index(self.tab_index)
+            .tab_index(if state.disabled { -1 } else { self.tab_index })
             .when(!state.disabled && !state.read_only, |this| {
                 this.on_a11y_action(AccessibleAction::SetValue, move |data, window, cx| {
                     Self::handle_accessibility_set_value(&accessibility_state, data, window, cx);
                 })
-                .on_action(window.listener_for(&self.state, InputState::backspace))
-                .on_action(window.listener_for(&self.state, InputState::delete))
-                .on_action(
-                    window.listener_for(&self.state, InputState::delete_to_beginning_of_line),
-                )
-                .on_action(window.listener_for(&self.state, InputState::delete_to_end_of_line))
-                .on_action(window.listener_for(&self.state, InputState::delete_previous_word))
-                .on_action(window.listener_for(&self.state, InputState::delete_next_word))
-                .on_action(window.listener_for(&self.state, InputState::enter))
-                .on_action(window.listener_for(&self.state, InputState::escape))
-                .on_action(window.listener_for(&self.state, InputState::paste))
-                .on_action(window.listener_for(&self.state, InputState::cut))
-                .on_action(window.listener_for(&self.state, InputState::undo))
-                .on_action(window.listener_for(&self.state, InputState::redo))
-                .when(state.mode.is_multi_line(), |this| {
-                    this.on_action(window.listener_for(&self.state, InputState::indent_inline))
-                        .on_action(window.listener_for(&self.state, InputState::outdent_inline))
-                        .on_action(window.listener_for(&self.state, InputState::indent_block))
-                        .on_action(window.listener_for(&self.state, InputState::outdent_block))
+            })
+            .when(!state.disabled, |this| {
+                this.when(!state.read_only, |this| {
+                    this.on_action(window.listener_for(&self.state, InputState::backspace))
+                        .on_action(window.listener_for(&self.state, InputState::delete))
+                        .on_action(
+                            window
+                                .listener_for(&self.state, InputState::delete_to_beginning_of_line),
+                        )
+                        .on_action(
+                            window.listener_for(&self.state, InputState::delete_to_end_of_line),
+                        )
+                        .on_action(
+                            window.listener_for(&self.state, InputState::delete_previous_word),
+                        )
+                        .on_action(window.listener_for(&self.state, InputState::delete_next_word))
+                        .on_action(window.listener_for(&self.state, InputState::enter))
+                        .on_action(window.listener_for(&self.state, InputState::escape))
+                        .on_action(window.listener_for(&self.state, InputState::paste))
+                        .on_action(window.listener_for(&self.state, InputState::cut))
+                        .on_action(window.listener_for(&self.state, InputState::undo))
+                        .on_action(window.listener_for(&self.state, InputState::redo))
+                        .when(state.mode.is_multi_line(), |this| {
+                            this.on_action(
+                                window.listener_for(&self.state, InputState::indent_inline),
+                            )
+                            .on_action(window.listener_for(&self.state, InputState::outdent_inline))
+                            .on_action(window.listener_for(&self.state, InputState::indent_block))
+                            .on_action(window.listener_for(&self.state, InputState::outdent_block))
+                        })
+                        .on_action(
+                            window.listener_for(
+                                &self.state,
+                                InputState::on_action_toggle_code_actions,
+                            ),
+                        )
                 })
-                .on_action(
-                    window.listener_for(&self.state, InputState::on_action_toggle_code_actions),
+                .on_action(window.listener_for(&self.state, InputState::left))
+                .on_action(window.listener_for(&self.state, InputState::right))
+                .on_action(window.listener_for(&self.state, InputState::select_left))
+                .on_action(window.listener_for(&self.state, InputState::select_right))
+                .when(state.mode.is_multi_line(), |this| {
+                    let result = this
+                        .on_action(window.listener_for(&self.state, InputState::up))
+                        .on_action(window.listener_for(&self.state, InputState::down))
+                        .on_action(window.listener_for(&self.state, InputState::select_up))
+                        .on_action(window.listener_for(&self.state, InputState::select_down))
+                        .on_action(window.listener_for(&self.state, InputState::page_up))
+                        .on_action(window.listener_for(&self.state, InputState::page_down));
+
+                    let result = result.on_action(
+                        window.listener_for(&self.state, InputState::on_action_go_to_definition),
+                    );
+
+                    result
+                })
+                .on_action(window.listener_for(&self.state, InputState::select_all))
+                .on_action(window.listener_for(&self.state, InputState::select_to_start_of_line))
+                .on_action(window.listener_for(&self.state, InputState::select_to_end_of_line))
+                .on_action(window.listener_for(&self.state, InputState::select_to_previous_word))
+                .on_action(window.listener_for(&self.state, InputState::select_to_next_word))
+                .on_action(window.listener_for(&self.state, InputState::home))
+                .on_action(window.listener_for(&self.state, InputState::end))
+                .on_action(window.listener_for(&self.state, InputState::move_to_start))
+                .on_action(window.listener_for(&self.state, InputState::move_to_end))
+                .on_action(window.listener_for(&self.state, InputState::move_to_previous_word))
+                .on_action(window.listener_for(&self.state, InputState::move_to_next_word))
+                .on_action(window.listener_for(&self.state, InputState::select_to_start))
+                .on_action(window.listener_for(&self.state, InputState::select_to_end))
+                .on_action(window.listener_for(&self.state, InputState::show_character_palette))
+                .on_action(window.listener_for(&self.state, InputState::copy))
+                .on_action(window.listener_for(&self.state, InputState::on_action_search))
+                .on_key_down(window.listener_for(&self.state, InputState::on_key_down))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    Self::mouse_down_handler(self.state.clone(), content_type, disabled),
                 )
+                .on_mouse_down(
+                    MouseButton::Right,
+                    Self::mouse_down_handler(self.state.clone(), content_type, disabled),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    window.listener_for(&self.state, InputState::on_mouse_up),
+                )
+                .on_mouse_up(
+                    MouseButton::Right,
+                    window.listener_for(&self.state, InputState::on_mouse_up),
+                )
+                .on_mouse_move(window.listener_for(&self.state, InputState::on_mouse_move))
+                .on_scroll_wheel(window.listener_for(&self.state, InputState::on_scroll_wheel))
             })
-            .on_action(window.listener_for(&self.state, InputState::left))
-            .on_action(window.listener_for(&self.state, InputState::right))
-            .on_action(window.listener_for(&self.state, InputState::select_left))
-            .on_action(window.listener_for(&self.state, InputState::select_right))
-            .when(state.mode.is_multi_line(), |this| {
-                let result = this
-                    .on_action(window.listener_for(&self.state, InputState::up))
-                    .on_action(window.listener_for(&self.state, InputState::down))
-                    .on_action(window.listener_for(&self.state, InputState::select_up))
-                    .on_action(window.listener_for(&self.state, InputState::select_down))
-                    .on_action(window.listener_for(&self.state, InputState::page_up))
-                    .on_action(window.listener_for(&self.state, InputState::page_down));
-
-                let result = result.on_action(
-                    window.listener_for(&self.state, InputState::on_action_go_to_definition),
-                );
-
-                result
-            })
-            .on_action(window.listener_for(&self.state, InputState::select_all))
-            .on_action(window.listener_for(&self.state, InputState::select_to_start_of_line))
-            .on_action(window.listener_for(&self.state, InputState::select_to_end_of_line))
-            .on_action(window.listener_for(&self.state, InputState::select_to_previous_word))
-            .on_action(window.listener_for(&self.state, InputState::select_to_next_word))
-            .on_action(window.listener_for(&self.state, InputState::home))
-            .on_action(window.listener_for(&self.state, InputState::end))
-            .on_action(window.listener_for(&self.state, InputState::move_to_start))
-            .on_action(window.listener_for(&self.state, InputState::move_to_end))
-            .on_action(window.listener_for(&self.state, InputState::move_to_previous_word))
-            .on_action(window.listener_for(&self.state, InputState::move_to_next_word))
-            .on_action(window.listener_for(&self.state, InputState::select_to_start))
-            .on_action(window.listener_for(&self.state, InputState::select_to_end))
-            .on_action(window.listener_for(&self.state, InputState::show_character_palette))
-            .on_action(window.listener_for(&self.state, InputState::copy))
-            .on_action(window.listener_for(&self.state, InputState::on_action_search))
-            .on_key_down(window.listener_for(&self.state, InputState::on_key_down))
-            .on_mouse_down(
-                MouseButton::Left,
-                Self::mouse_down_handler(self.state.clone(), content_type, disabled),
-            )
-            .on_mouse_down(
-                MouseButton::Right,
-                Self::mouse_down_handler(self.state.clone(), content_type, disabled),
-            )
-            .on_mouse_up(
-                MouseButton::Left,
-                window.listener_for(&self.state, InputState::on_mouse_up),
-            )
-            .on_mouse_up(
-                MouseButton::Right,
-                window.listener_for(&self.state, InputState::on_mouse_up),
-            )
-            .on_mouse_move(window.listener_for(&self.state, InputState::on_mouse_move))
-            .on_scroll_wheel(window.listener_for(&self.state, InputState::on_scroll_wheel))
             .size_full()
             .line_height(LINE_HEIGHT)
             .input_px(self.size, cx)
@@ -550,25 +894,107 @@ impl RenderOnce for Input {
                 this.h_auto()
                     .when_some(self.height, |this, height| this.h(height))
             })
-            .when(self.appearance, |this| {
-                this.bg(bg)
-                    .rounded(cx.theme().style.radii.md)
-                    .when(self.bordered, |this| {
-                        this.border_color(border_color).border_1().when(
-                            focused && self.focus_bordered,
-                            |this| {
-                                if self.invalid {
-                                    this.border_color(cx.theme().danger)
-                                } else {
-                                    this.focused_border(cx)
-                                }
-                            },
-                        )
-                    })
+            .when(appearance, |this| {
+                this.bg(paint.background)
+                    .rounded(metrics.radius)
+                    .when(metrics.shadow, |this| this.shadow_xs())
+                    .when(bordered, |this| this.border_color(paint.border).border_1())
             })
             .items_center()
-            .gap(gap_x)
-            .refine_style(&self.style)
+            .gap(control_metrics.gap)
+            .refine_style(&self.style);
+
+        let motion_key = input_child_id(&root_id, "motion-state");
+        let motion_state =
+            window.use_keyed_state(motion_key, cx, |_, _| InputMotionState::new(paint));
+        let motion_duration = if cx.reduce_motion() {
+            Duration::ZERO
+        } else {
+            cx.theme().style.motion.normal()
+        };
+        let motion_easing = cx.theme().style.motion.move_easing;
+        let transition = motion_state.update(cx, |state, _| {
+            state.transition_to(
+                paint,
+                Instant::now(),
+                motion_duration,
+                motion_easing,
+                metrics.motion_kind,
+            )
+        });
+
+        let color_transition = transition.filter(|transition| {
+            appearance
+                && uses_semantic_color_motion
+                && metrics.motion_kind == InputMotionKind::Colors
+                && (transition.from.background != transition.to.background
+                    || transition.from.border != transition.to.border)
+        });
+        if let Some(transition) = color_transition {
+            let from = transition.from;
+            let to = transition.to;
+            let easing = cx.theme().style.motion.move_easing;
+            let mut surface_style = StyleRefinement::default();
+            surface_style.corner_radii = element.style().corner_radii.clone();
+            surface_style.border_widths = element.style().border_widths.clone();
+            let surface = div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
+                .bg(from.background)
+                .border_color(from.border)
+                .refine_style(&surface_style)
+                .with_animation(
+                    input_child_id(&root_id, format!("colors-{}", transition.epoch)),
+                    Animation::new(transition.duration)
+                        .with_easing(move |delta| easing.sample(delta)),
+                    move |this, delta| {
+                        this.bg(Lerp::lerp(&from.background, &to.background, delta))
+                            .border_color(Lerp::lerp(&from.border, &to.border, delta))
+                    },
+                );
+            element = element.child(surface);
+        }
+
+        let ring_transition = transition.filter(|transition| {
+            metrics.motion_kind == InputMotionKind::Shadow
+                && transition.from.ring != transition.to.ring
+        });
+        if appearance && bordered && (ring_visible || ring_transition.is_some()) {
+            let ring_width = cx.theme().style.focus.ring_width;
+            let ring_inset = ring_width + cx.theme().style.focus.ring_offset;
+            let (border_widths, ring_style) =
+                Self::outer_ring_geometry(element.style(), ring_width, window);
+            let ring = div()
+                .absolute()
+                .top(-(ring_inset + border_widths.top))
+                .right(-(ring_inset + border_widths.right))
+                .bottom(-(ring_inset + border_widths.bottom))
+                .left(-(ring_inset + border_widths.left))
+                .border(ring_width)
+                .border_color(paint.ring)
+                .refine_style(&ring_style);
+            let ring = if let Some(transition) = ring_transition {
+                let from = transition.from;
+                let to = transition.to;
+                let easing = cx.theme().style.motion.move_easing;
+                ring.with_animation(
+                    input_child_id(&root_id, format!("ring-{}", transition.epoch)),
+                    Animation::new(transition.duration)
+                        .with_easing(move |delta| easing.sample(delta)),
+                    move |this, delta| this.border_color(Lerp::lerp(&from.ring, &to.ring, delta)),
+                )
+                .into_any_element()
+            } else {
+                ring.into_any_element()
+            };
+            element = element.child(ring);
+        }
+
+        let state = self.state.read(cx);
+        element = element
             .children(prefix.map(|p| {
                 div()
                     .when(state.disabled, |this| this.opacity(0.5))
@@ -576,16 +1002,16 @@ impl RenderOnce for Input {
             }))
             .when(state.mode.is_multi_line(), |mut this| {
                 let paddings = this.style().padding.clone();
-                this.child(Self::render_editor(paddings, &self.state, &state, window))
+                this.child(Self::render_editor(paddings, &self.state, state, window))
             })
             .when(!state.mode.is_multi_line(), |this| {
-                this.child(self.state.clone())
+                this.child(input_state.clone())
             })
             .when(has_suffix, |this| {
-                this.pr(self.size.input_px(cx)).child(
+                this.pr(size.input_px(cx)).child(
                     h_flex()
                         .id("suffix")
-                        .gap(gap_x)
+                        .gap(control_metrics.gap)
                         .items_center()
                         .cursor_default()
                         .when(state.disabled, |this| this.opacity(0.5))
@@ -593,11 +1019,11 @@ impl RenderOnce for Input {
                             this.child(Spinner::new().color(cx.theme().muted_foreground))
                         })
                         .when(self.mask_toggle, |this| {
-                            this.child(Self::render_toggle_mask_button(&self.state, cx))
+                            this.child(Self::render_toggle_mask_button(&input_state, cx))
                         })
                         .when(show_clear_button, |this| {
                             this.child(clear_button(cx).on_click({
-                                let state = self.state.clone();
+                                let state = input_state.clone();
                                 move |_, window, cx| {
                                     state.update(cx, |state, cx| {
                                         state.clean(window, cx);
@@ -803,5 +1229,197 @@ mod tests {
             false,
             Some(InputContentType::NewPassword)
         ));
+    }
+
+    #[test]
+    fn input_metrics_match_builtin_shadcn_presets() {
+        let vega = input_metrics(&StylePreset::vega());
+        assert_eq!(vega.radius, px(8.));
+        assert!(vega.shadow);
+        assert_eq!(vega.motion_kind, InputMotionKind::Shadow);
+        assert_eq!(vega.light_background_alpha, 0.);
+        assert_eq!(vega.dark_background_alpha, 0.3);
+
+        let nova = input_metrics(&StylePreset::nova());
+        assert_eq!(nova.radius, px(10.));
+        assert!(!nova.shadow);
+        assert_eq!(nova.motion_kind, InputMotionKind::Colors);
+        assert_eq!(nova.disabled_light_background_alpha, 0.5);
+        assert_eq!(nova.disabled_dark_background_alpha, 0.8);
+
+        let maia = input_metrics(&StylePreset::maia());
+        assert_eq!(maia.radius, px(18.));
+        assert!(!maia.shadow);
+        assert_eq!(maia.motion_kind, InputMotionKind::Colors);
+        assert_eq!(maia.light_background_alpha, 0.3);
+        assert_eq!(maia.disabled_light_background_alpha, 0.3);
+    }
+
+    #[test]
+    fn input_motion_state_skips_initial_render_and_advances_changed_targets() {
+        let initial = InputPaintState {
+            background: Hsla::white(),
+            border: Hsla::black(),
+            ring: Hsla::transparent_black(),
+        };
+        let target = InputPaintState {
+            background: Hsla::black(),
+            border: Hsla::red(),
+            ring: Hsla::red(),
+        };
+        let mut state = InputMotionState::new(initial);
+        let now = Instant::now();
+        let duration = Duration::from_millis(100);
+
+        assert!(
+            state
+                .transition_to(
+                    initial,
+                    now,
+                    duration,
+                    MotionEasing::Linear,
+                    InputMotionKind::Colors,
+                )
+                .is_none()
+        );
+        let transition = state
+            .transition_to(
+                target,
+                now,
+                duration,
+                MotionEasing::Linear,
+                InputMotionKind::Colors,
+            )
+            .unwrap();
+        assert_eq!(transition.from, initial);
+        assert_eq!(transition.to, target);
+        assert_eq!(transition.duration, duration);
+        assert_eq!(transition.epoch, 1);
+    }
+
+    #[test]
+    fn input_motion_resumes_from_current_value_on_rerender_and_reverse() {
+        let initial = InputPaintState {
+            background: Hsla::white(),
+            border: Hsla::white(),
+            ring: Hsla::transparent_black(),
+        };
+        let target = InputPaintState {
+            background: Hsla::black(),
+            border: Hsla::black(),
+            ring: Hsla::red(),
+        };
+        let now = Instant::now();
+        let duration = Duration::from_millis(100);
+
+        let mut rerendered = InputMotionState::new(initial);
+        rerendered.transition_to(
+            target,
+            now,
+            duration,
+            MotionEasing::Linear,
+            InputMotionKind::Colors,
+        );
+        let resumed = rerendered
+            .transition_to(
+                target,
+                now + Duration::from_millis(50),
+                duration,
+                MotionEasing::Linear,
+                InputMotionKind::Colors,
+            )
+            .unwrap();
+        assert_eq!(
+            resumed.from,
+            interpolate_input_paint(initial, target, 0.5, InputMotionKind::Colors)
+        );
+        assert_eq!(resumed.duration, Duration::from_millis(50));
+
+        let mut reversed = InputMotionState::new(initial);
+        reversed.transition_to(
+            target,
+            now,
+            duration,
+            MotionEasing::Linear,
+            InputMotionKind::Shadow,
+        );
+        let reverse = reversed
+            .transition_to(
+                initial,
+                now + Duration::from_millis(75),
+                duration,
+                MotionEasing::Linear,
+                InputMotionKind::Shadow,
+            )
+            .unwrap();
+        assert_eq!(
+            reverse.from,
+            interpolate_input_paint(initial, target, 0.75, InputMotionKind::Shadow)
+        );
+        assert_eq!(reverse.to, initial);
+        assert_eq!(reverse.duration, Duration::from_millis(75));
+    }
+
+    #[test]
+    fn input_motion_reaches_target_immediately_when_reduced() {
+        let initial = InputPaintState {
+            background: Hsla::white(),
+            border: Hsla::white(),
+            ring: Hsla::transparent_black(),
+        };
+        let target = InputPaintState {
+            background: Hsla::black(),
+            border: Hsla::black(),
+            ring: Hsla::red(),
+        };
+        let mut state = InputMotionState::new(initial);
+
+        assert!(
+            state
+                .transition_to(
+                    target,
+                    Instant::now(),
+                    Duration::ZERO,
+                    MotionEasing::Linear,
+                    InputMotionKind::Colors,
+                )
+                .is_none()
+        );
+        assert_eq!(state.target, target);
+        assert!(state.active.is_none());
+    }
+
+    #[test]
+    fn input_focus_ring_uses_focus_visible_semantics() {
+        assert!(!input_focus_visible(false, false));
+        assert!(!input_focus_visible(false, true));
+        assert!(!input_focus_visible(true, false));
+        assert!(input_focus_visible(true, true));
+    }
+
+    #[test]
+    fn caller_paint_overrides_disable_semantic_color_surface() {
+        let default_style = StyleRefinement::default();
+        assert!(input_uses_semantic_color_motion(&default_style));
+
+        let mut background_override = StyleRefinement::default();
+        background_override.background = Some(gpui::white().into());
+        assert!(!input_uses_semantic_color_motion(&background_override));
+
+        let mut border_override = StyleRefinement::default();
+        border_override.border_color = Some(gpui::white());
+        assert!(!input_uses_semantic_color_motion(&border_override));
+    }
+
+    #[test]
+    fn input_internal_ids_preserve_structural_identity() {
+        let structured = ElementId::NamedInteger("foo".into(), 1);
+        let textual = ElementId::Name("foo-1".into());
+
+        assert_eq!(structured.to_string(), textual.to_string());
+        assert_ne!(
+            input_child_id(&structured, "motion"),
+            input_child_id(&textual, "motion")
+        );
     }
 }

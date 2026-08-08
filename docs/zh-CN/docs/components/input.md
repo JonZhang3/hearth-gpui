@@ -101,6 +101,16 @@ Input::new(&input).small()
 Input::new(&input).disabled(true)
 ```
 
+禁用 Input 会退出键盘焦点顺序，并忽略指针、键盘和辅助功能写入操作。
+
+### 只读态
+
+```rust
+Input::new(&input).read_only(true)
+```
+
+只读 Input 仍可聚焦，用户可以导航、选择并复制其中的值。
+
 ### 按 ESC 清空
 
 ```rust
@@ -124,7 +134,29 @@ let input = cx.new(|cx|
     InputState::new(window, cx)
         .pattern(regex::Regex::new(r"^[a-zA-Z0-9]*$").unwrap())
 );
+
+Input::new(&input)
+    .invalid(true)
+    .aria_description("输入值只能包含字母和数字")
 ```
+
+`invalid(true)` 会应用与 shadcn 对齐的 destructive 边框和外环，并向辅助技术暴露无效状态。
+
+### 可访问性
+
+当 Input 没有关联的可见 Label 时，应提供可访问名称：
+
+```rust
+Input::new(&input)
+    .aria_label("电子邮箱")
+    .aria_description("用于接收账户通知")
+```
+
+密码值不会通过辅助功能 value 暴露。禁用 Input 不提供 `SetValue`；只读 Input 保留读取和选择能力，但不提供编辑操作。
+
+### Style Preset 与动效
+
+Input 使用语义化 Style Preset metrics。Vega 是默认基线；Nova 使用紧凑几何，Maia 使用舒适的胶囊几何。焦点、无效态、背景与边框过渡使用当前 preset 的 motion tokens，并自动遵循 reduced-motion 设置。
 
 ### 输入掩码
 

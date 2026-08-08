@@ -104,6 +104,16 @@ Input::new(&input).small()
 Input::new(&input).disabled(true)
 ```
 
+Disabled inputs are removed from keyboard focus and ignore pointer, keyboard, and accessibility write actions.
+
+### Read-only Input
+
+```rust
+Input::new(&input).read_only(true)
+```
+
+Read-only inputs remain focusable so users can navigate, select, and copy their value.
+
 ### Clean on ESC
 
 ```rust
@@ -129,7 +139,29 @@ let input = cx.new(|cx|
     InputState::new(window, cx)
         .pattern(regex::Regex::new(r"^[a-zA-Z0-9]*$").unwrap())
 );
+
+Input::new(&input)
+    .invalid(true)
+    .aria_description("The value must contain only letters and numbers")
 ```
+
+`invalid(true)` applies the shadcn destructive border and ring while exposing the invalid state to assistive technology.
+
+### Accessibility
+
+Provide an accessible name whenever no visible label is associated with the input:
+
+```rust
+Input::new(&input)
+    .aria_label("Email address")
+    .aria_description("Used for account notifications")
+```
+
+Password values are not exposed through the accessibility value. Disabled inputs do not advertise `SetValue`; read-only inputs preserve reading and selection behavior without exposing edit actions.
+
+### Style Presets and Motion
+
+Input consumes semantic Style Preset metrics. Vega is the default baseline; Nova uses compact geometry and Maia uses comfortable pill geometry. Focus, invalid, background, and border transitions follow the active preset's motion tokens and automatically respect reduced-motion settings.
 
 ### Input Masking
 
