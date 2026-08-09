@@ -134,3 +134,19 @@ GPUI is currently consumed from the pinned Zed Git dependency. Renderer work mus
 - Metal, WGPU, Direct3D, Web, and headless captures produce equivalent results within documented color-space tolerances.
 - Normal blending retains the existing batching and frame-time baseline.
 - AvatarGroup and AvatarBadge background separation rings remain unchanged.
+
+## Cross-element accessible label relations
+
+**Status:** Deferred GPUI accessibility capability
+
+`Label::for_focus` provides the expected pointer behavior by focusing an associated control, but it cannot expose the semantic relationship represented by HTML `label[for]` or ARIA `labelledby`. The pinned GPUI API does not provide a public way to reference another element's AccessKit node from a separate element.
+
+Until that capability exists, form controls paired with `Label` must provide their own accessible name. `Checkbox`, `Radio`, and `Switch` should continue using their integrated label APIs where available.
+
+The preferred GPUI contract should:
+
+- Create a stable accessibility-node identifier independently of paint timing.
+- Allow a control to reference one or more visible label nodes.
+- Preserve pointer label activation and disabled behavior.
+- Work across rerenders without stale AccessKit relationships.
+- Support macOS, Windows, Linux, and headless accessibility verification.

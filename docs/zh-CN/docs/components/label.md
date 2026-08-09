@@ -1,227 +1,84 @@
 ---
 title: Label
-description: 支持高亮、次要文本和样式定制的文本标签组件。
+description: 用于表单控件和行内组合内容的标签组件。
 ---
 
 # Label
 
-Label 是一个灵活的文本标签组件，可用于表单标签、说明文字和通用文本展示。它支持次要文本、高亮、掩码显示以及丰富的样式定制。
+`Label` 默认采用 shadcn Vega 基准：行内 flex 布局、`gap-2`、`text-sm`、中等字重和紧凑行高。组件没有内置动效。
 
 ## 导入
 
 ```rust
-use gpui_component::label::{Label, HighlightsMatch};
+use gpui_component::{Disableable as _, label::Label};
 ```
 
-## 用法
-
-### 基础标签
+## 基础用法
 
 ```rust
-Label::new("This is a label")
+Label::new("Username")
 ```
 
-### 带次要文本
+## 与 Input 组合
+
+使用 `for_focus` 让鼠标点击 Label 时聚焦关联控件。GPUI 当前没有公开跨元素的 `labelled_by` 关系，因此控件仍需提供自己的无障碍名称。
+
+```rust
+let input_focus = input_state.read(cx).focus_handle(cx);
+
+v_flex()
+    .gap_2()
+    .child(Label::new("Username").for_focus(&input_focus))
+    .child(Input::new(&input_state).aria_label("Username"))
+```
+
+## 禁用状态
+
+禁用后的 Label 使用 50% 透明度，并且不会聚焦关联控件。
+
+```rust
+Label::new("Username")
+    .for_focus(&input_focus)
+    .disabled(true)
+```
+
+## 组合内容
+
+使用 `empty` 和 `ParentElement` 组合图标或其他行内元素。
+
+```rust
+Label::empty()
+    .child(Icon::new(IconName::Info).xsmall())
+    .child("Additional information")
+```
+
+对于 `Checkbox`、`Radio` 和 `Switch`，优先使用组件自身的 `label` API，确保视觉标签和无障碍语义保持一致。
+
+## 项目扩展能力
+
+原有的次要文本、掩码、高亮和 `Styled` 覆盖能力继续保留。
 
 ```rust
 Label::new("Company Address")
     .secondary("(optional)")
+    .highlights("company")
 
-Label::new("Email Address")
-    .secondary("(required)")
+Label::new("9,182.1 USD").masked(true)
 ```
 
-### 文本对齐
+`HighlightsMatch::Prefix` 只高亮从第一个字符开始的匹配。匹配不区分大小写，并保证返回有效的 UTF-8 字节边界。
 
-```rust
-Label::new("Text align left")
-
-Label::new("Text align center")
-    .text_center()
-
-Label::new("Text align right")
-    .text_right()
-```
-
-### 文本高亮
-
-```rust
-Label::new("Hello World Hello")
-    .highlights("Hello")
-
-Label::new("Hello World")
-    .highlights(HighlightsMatch::Prefix("Hello".into()))
-
-Label::new("Company Name")
-    .secondary("(optional)")
-    .highlights("Company")
-```
-
-### 颜色与字体样式
-
-```rust
-use gpui_component::green_500;
-
-Label::new("Color Label")
-    .text_color(green_500())
-
-Label::new("Font Size Label")
-    .text_size(px(20.))
-    .font_semibold()
-    .line_height(rems(1.8))
-```
-
-### 掩码文本
-
-```rust
-Label::new("9,182,1 USD")
-    .text_2xl()
-    .masked(true)
-
-Label::new("500 USD")
-    .text_xl()
-    .masked(self.masked)
-```
-
-### 多行文本
-
-```rust
-div().w(px(200.)).child(
-    Label::new(
-        "Label should support text wrap in default, \
-        if the text is too long, it should wrap to the next line."
-    )
-    .line_height(rems(1.8))
-)
-```
-
-### 不同尺寸
-
-```rust
-Label::new("Extra Large").text_2xl()
-Label::new("Large").text_xl()
-Label::new("Medium").text_base()
-Label::new("Small").text_sm()
-Label::new("Extra Small").text_xs()
-```
-
-## API 参考
-
-### Label
+## API
 
 | 方法 | 说明 |
-| ------------------- | ------------------------------------------------------------- |
-| `new(text)` | 使用文本创建标签 |
-| `secondary(text)` | 添加次要文本，常用于 optional 或 required 标识 |
-| `masked(bool)` | 使用圆点字符隐藏文本 |
-| `highlights(match)` | 高亮匹配内容 |
+| --- | --- |
+| `Label::new(text)` | 创建文本标签 |
+| `Label::empty()` | 创建用于组合子元素的标签 |
+| `.for_focus(&handle)` | 主鼠标键按下时聚焦启用的目标 |
+| `.disabled(bool)` | 设置禁用样式和交互 |
+| `.secondary(text)` | 添加弱化的次要文本 |
+| `.highlights(match)` | 高亮完整匹配或前缀匹配 |
+| `.masked(bool)` | 使用圆点替换显示字符 |
+| `.child(element)` | 添加行内组合内容 |
 
-### HighlightsMatch
-
-| 变体 | 说明 |
-| -------------- | ------------------------------------------------ |
-| `Full(text)` | 高亮所有匹配内容 |
-| `Prefix(text)` | 仅在文本开头匹配时高亮 |
-
-| 方法 | 说明 |
-| ------------- | ------------------------------- |
-| `as_str()` | 获取匹配字符串 |
-| `is_prefix()` | 判断是否为前缀匹配 |
-
-### 样式方法（来自 Styled trait）
-
-| 方法 | 说明 |
-| --------------------- | --------------------------- |
-| `text_color(color)` | 设置文字颜色 |
-| `text_size(size)` | 设置字体大小 |
-| `text_center()` | 居中对齐 |
-| `text_right()` | 右对齐 |
-| `font_semibold()` | 半粗体 |
-| `font_bold()` | 粗体 |
-| `line_height(height)` | 设置行高 |
-| `text_xs()` | 超小字号 |
-| `text_sm()` | 小字号 |
-| `text_base()` | 默认字号 |
-| `text_lg()` | 大字号 |
-| `text_xl()` | 超大字号 |
-| `text_2xl()` | 2 倍大字号 |
-
-## 示例
-
-### 表单标签
-
-```rust
-Label::new("Email Address")
-    .secondary("*")
-    .text_color(cx.theme().destructive)
-
-Label::new("Phone Number")
-    .secondary("(optional)")
-
-Label::new("Password")
-    .secondary("(minimum 8 characters)")
-```
-
-### 搜索高亮
-
-```rust
-let search_term = "Hello";
-Label::new("Hello World Hello Universe")
-    .highlights(search_term)
-```
-
-### 敏感信息
-
-```rust
-h_flex()
-    .child(
-        Label::new("$9,182.50 USD")
-            .text_2xl()
-            .masked(self.is_masked)
-    )
-    .child(
-        Button::new("toggle-mask")
-            .ghost()
-            .icon(if self.is_masked { IconName::EyeOff } else { IconName::Eye })
-            .on_click(|this, _, _, _| {
-                this.is_masked = !this.is_masked;
-            })
-    )
-```
-
-### 多语言支持
-
-```rust
-Label::new("这是一个标签")
-Label::new("こんにちは世界")
-Label::new("🌍 Hello World 🚀")
-```
-
-### 状态提示
-
-```rust
-Label::new("✓ Verified")
-    .text_color(cx.theme().success)
-
-Label::new("⚠ Pending Review")
-    .text_color(cx.theme().warning)
-
-Label::new("✗ Failed")
-    .text_color(cx.theme().destructive)
-```
-
-### 自定义布局
-
-```rust
-h_flex()
-    .justify_between()
-    .child(Label::new("Total Amount"))
-    .child(Label::new("$1,234.56").font_semibold())
-
-v_flex()
-    .gap_2()
-    .child(Label::new("Name:").font_semibold())
-    .child(Label::new("John Doe"))
-    .child(Label::new("Email:").font_semibold())
-    .child(Label::new("john@example.com"))
-```
+可以使用所有标准 `Styled` 方法覆盖默认样式。
