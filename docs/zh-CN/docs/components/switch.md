@@ -19,6 +19,7 @@ use gpui_component::switch::Switch;
 
 ```rust
 Switch::new("my-switch")
+    .aria_label("Airplane mode")
     .checked(false)
     .on_click(|checked, _, _| {
         println!("Switch is now: {}", checked);
@@ -35,6 +36,7 @@ struct MyView {
 impl Render for MyView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         Switch::new("switch")
+            .aria_label("Enable feature")
             .checked(self.is_enabled)
             .on_click(cx.listener(|view, checked, _, cx| {
                 view.is_enabled = *checked;
@@ -84,6 +86,19 @@ Switch::new("disabled-on")
     .checked(true)
 ```
 
+### 无效状态与可访问名称
+
+```rust
+Switch::new("required-setting")
+    .aria_label("Enable required setting")
+    .invalid(true)
+    .checked(false)
+```
+
+具有 `on_click` handler 的启用状态 Switch 可通过键盘聚焦，按 `Space` 切换状态。没有
+activation handler 的 Switch 按只读状态呈现，不会产生无效的 Tab stop。焦点环只用于
+键盘焦点，鼠标操作不会显示 keyboard focus-visible ring。
+
 ### 自定义颜色
 
 `color()` 用于覆盖选中状态下的背景色；禁用态透明度会自动叠加：
@@ -124,7 +139,11 @@ Switch::new("switch")
 | `new(id)` | 使用给定 ID 创建开关 |
 | `checked(bool)` | 设置当前选中状态 |
 | `label(text)` | 设置标签文本 |
+| `aria_label(text)` | 设置独立于可见标签的可访问名称 |
 | `label_side(side)` | 设置标签位置，`Side::Left` 或 `Side::Right` |
+| `invalid(bool)` | 设置 destructive 无效状态及其可访问语义 |
+| `tab_stop(bool)` | 设置是否参与顺序键盘焦点 |
+| `tab_index(index)` | 设置键盘 Tab index |
 | `disabled(bool)` | 设置禁用状态 |
 | `tooltip(text)` | 添加提示文本 |
 | `color(color)` | 设置选中时的背景色，默认 `theme.primary` |
@@ -134,8 +153,8 @@ Switch::new("switch")
 
 实现了 `Sizable` 和 `Disableable` trait：
 
-- `small()`：小尺寸，开关区域约 `28x16px`
-- `medium()`：中尺寸，默认，开关区域约 `36x20px`
+- `small()`：shadcn 小尺寸，`24x14px`，thumb 为 `12px`
+- `medium()`：shadcn 默认尺寸，`32x18.4px`，thumb 为 `16px`
 - `with_size(size)`：显式设置尺寸
 - `disabled(bool)`：禁用状态
 
@@ -202,9 +221,11 @@ v_flex()
 
 ## 动画
 
-Switch 包含平滑切换动画：
+Switch 使用当前 Style Preset 的语义 motion tokens：
 
-- 切换动画时长约 150ms
-- 背景色会在关闭色与激活色之间过渡
-- 圆点位置会平滑移动
-- 禁用状态下不会触发交互动效
+- Track 背景、边框、焦点环、禁用透明度与 Thumb 位置共享同一个 150ms normal
+  transition 采样进度，保证每一帧同步。
+- Thumb 在选中与未选中位置之间移动，不进行条件挂载。
+- 快速反向切换从当前采样值继续，不会从端点重新开始。
+- Reduced motion 立即显示最终状态。
+- GPUI 无法插值任意 fill，因此 gradient 背景采用原子切换。

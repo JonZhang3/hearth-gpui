@@ -824,7 +824,7 @@ impl ThemeColor {
         apply_background_color!(skeleton, fallback = tokens.secondary);
         apply_background_color!(slider_bar, fallback = tokens.primary);
         apply_background_color!(slider_thumb, fallback = self.primary_foreground);
-        apply_background_color!(switch, fallback = tokens.secondary_active);
+        apply_background_color!(switch, fallback = self.input);
         apply_background_color!(switch_thumb, fallback = tokens.background);
         apply_background_color!(tab, fallback = tokens.background);
         apply_background_color!(tab_active, fallback = tokens.background);

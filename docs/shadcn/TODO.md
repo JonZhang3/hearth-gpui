@@ -57,6 +57,16 @@ GPUI is consumed from the pinned Zed Git dependency. Develop this work in an exp
 - Metal, WGPU, Direct3D, Web, and headless captures agree within documented anti-aliasing tolerances.
 - Rectangular-only clipping retains the existing fast path, batching behavior, and frame-time baseline.
 
+## Renderable background interpolation
+
+**Status:** Deferred animation capability
+
+Switch preserves Color Theme backgrounds such as gradients, but its checked-state color transition
+can interpolate only solid `Hsla` endpoints. Transitions involving arbitrary GPUI fills switch the
+background atomically while thumb position, border, ring, and opacity continue to animate. A shared
+paint interpolation contract is required before gradients, images, or custom fills can transition
+without replacing the caller's renderable Theme value.
+
 ## HoverCard transform and accessibility parity
 
 **Status:** Deferred platform capabilities
