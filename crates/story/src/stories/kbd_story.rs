@@ -3,7 +3,11 @@ use gpui::{
     Styled, Window,
 };
 
-use gpui_component::{h_flex, kbd::Kbd, v_flex};
+use gpui_component::{
+    Icon, IconName, Sizable as _, h_flex,
+    kbd::{Kbd, KbdGroup},
+    v_flex,
+};
 
 use crate::section;
 
@@ -17,7 +21,7 @@ impl super::Story for KbdStory {
     }
 
     fn description() -> &'static str {
-        "A tag style to display keyboard shortcuts"
+        "Displays textual keyboard input and grouped shortcuts."
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
@@ -46,26 +50,72 @@ impl Render for KbdStory {
         v_flex()
             .gap_6()
             .child(
-                section("Kbd").child(
+                section("Basic").child(
                     h_flex()
                         .gap_2()
-                        .child(Kbd::new(Keystroke::parse("cmd-shift-p").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("cmd-ctrl-t").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("cmd--").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("cmd-+").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("escape").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("backspace").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("/").unwrap()))
-                        .child(Kbd::new(Keystroke::parse("enter").unwrap())),
+                        .child(Kbd::new().child("Ctrl"))
+                        .child(Kbd::new().child("⌘K"))
+                        .child(Kbd::new().child("Ctrl + B")),
                 ),
             )
             .child(
-                section("Outline Style").child(
+                section("Modifier Keys").child(
                     h_flex()
                         .gap_2()
-                        .child(Kbd::new(Keystroke::parse("cmd-shift-p").unwrap()).outline())
-                        .child(Kbd::new(Keystroke::parse("cmd-ctrl-t").unwrap()).outline())
-                        .child(Kbd::new(Keystroke::parse("enter").unwrap()).outline()),
+                        .child(Kbd::new().child("⌘"))
+                        .child(Kbd::new().child("C")),
+                ),
+            )
+            .child(
+                section("KbdGroup").child(
+                    KbdGroup::new()
+                        .child(Kbd::new().child("Ctrl"))
+                        .child(Kbd::new().child("Shift"))
+                        .child(Kbd::new().child("P")),
+                ),
+            )
+            .child(
+                section("Arrow Keys").child(
+                    KbdGroup::new()
+                        .child(Kbd::new().child("↑"))
+                        .child(Kbd::new().child("↓"))
+                        .child(Kbd::new().child("←"))
+                        .child(Kbd::new().child("→")),
+                ),
+            )
+            .child(
+                section("Icons and Text").child(
+                    KbdGroup::new()
+                        .child(
+                            Kbd::new()
+                                .child(Icon::new(IconName::ArrowLeft).xsmall())
+                                .child("Left"),
+                        )
+                        .child(
+                            Kbd::new()
+                                .child(Icon::new(IconName::LoaderCircle).xsmall())
+                                .child("Loading"),
+                        ),
+                ),
+            )
+            .child(
+                section("Platform Keystrokes").child(
+                    h_flex()
+                        .gap_2()
+                        .child(Kbd::from_keystroke(
+                            Keystroke::parse("cmd-shift-p").unwrap(),
+                        ))
+                        .child(Kbd::from_keystroke(Keystroke::parse("cmd-ctrl-t").unwrap()))
+                        .child(Kbd::from_keystroke(Keystroke::parse("escape").unwrap()))
+                        .child(Kbd::from_keystroke(Keystroke::parse("enter").unwrap())),
+                ),
+            )
+            .child(
+                section("Project Extensions").child(
+                    h_flex()
+                        .gap_2()
+                        .child(Kbd::new().child("Outline").outline())
+                        .child(Kbd::new().child("Unstyled").appearance(false)),
                 ),
             )
     }

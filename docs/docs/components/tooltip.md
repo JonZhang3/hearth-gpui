@@ -84,7 +84,7 @@ div()
     .id("custom-kb")
     .tooltip(|window, cx| {
         Tooltip::new("Delete item")
-            .key_binding(Some(Kbd::new("Delete")))
+            .key_binding(Some(Keystroke::parse("delete").unwrap()))
             .build(window, cx)
     })
 ```
@@ -179,7 +179,7 @@ v_flex()
 | `new(text)`               | Create a tooltip with text content           |
 | `element(builder)`        | Create a tooltip with custom element content |
 | `action(action, context)` | Set action to display keybinding information |
-| `key_binding(kbd)`        | Set manual keybinding information            |
+| `key_binding(stroke)`     | Set a platform-aware manual keybinding       |
 | `build(window, cx)`       | Build and return the tooltip as AnyView      |
 
 ### Built-in Tooltip Methods
@@ -301,7 +301,7 @@ v_flex()
                         .child(
                             h_flex()
                                 .gap_1()
-                                .child(Kbd::new("Enter"))
+                                .child(Kbd::new().child("Enter"))
                                 .child("to open")
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)

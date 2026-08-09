@@ -2,8 +2,8 @@ use std::{cell::Cell, rc::Rc, time::Duration};
 
 use gpui::{
     Action, AnyElement, AnyView, App, AppContext, Bounds, Context, Display, Element, ElementId,
-    GlobalElementId, Half, InspectorElementId, InteractiveElement as _, IntoElement, LayoutId,
-    MouseButton, ParentElement, Pixels, Point, Position, Render, SharedString, Size,
+    GlobalElementId, Half, InspectorElementId, InteractiveElement as _, IntoElement, Keystroke,
+    LayoutId, MouseButton, ParentElement, Pixels, Point, Position, Render, SharedString, Size,
     StatefulInteractiveElement, Style, StyleRefinement, Styled, Task, Window, deferred, div, point,
     prelude::FluentBuilder, px,
 };
@@ -33,7 +33,7 @@ enum TooltipContext {
 pub struct Tooltip {
     style: StyleRefinement,
     content: TooltipContext,
-    key_binding: Option<Kbd>,
+    key_binding: Option<Keystroke>,
     action: Option<(Box<dyn Action>, Option<SharedString>)>,
 }
 
@@ -70,8 +70,8 @@ impl Tooltip {
         self
     }
 
-    /// Set KeyBinding information for the tooltip.
-    pub fn key_binding(mut self, key_binding: Option<Kbd>) -> Self {
+    /// Sets an explicit platform-aware key binding for the tooltip.
+    pub fn key_binding(mut self, key_binding: Option<Keystroke>) -> Self {
         self.key_binding = key_binding;
         self
     }
@@ -91,7 +91,7 @@ impl Styled for Tooltip {
 impl Render for Tooltip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let key_binding = if let Some(key_binding) = &self.key_binding {
-            Some(key_binding.clone())
+            Some(Kbd::from_keystroke(key_binding.clone()))
         } else {
             if let Some((action, context)) = &self.action {
                 Kbd::binding_for_action(

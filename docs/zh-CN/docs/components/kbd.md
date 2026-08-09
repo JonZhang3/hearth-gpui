@@ -1,194 +1,129 @@
 ---
 title: Kbd
-description: 以符合平台习惯的方式显示键盘快捷键。
+description: 展示键盘输入和组合快捷键。
 ---
 
 # Kbd
 
-Kbd 用于展示键盘快捷键和组合键，并会自动根据平台采用合适的显示格式。macOS 会使用符号，Windows 和 Linux 则使用文本标签，便于文档、菜单和帮助面板保持一致的快捷键表达。
+`Kbd` 用于展示按键、快捷键文本、图标或其他静态键盘输入。`KbdGroup` 用于组合多个按键，不会引入交互或焦点行为。
 
 ## 导入
 
 ```rust
-use gpui_component::kbd::Kbd;
+use gpui_component::kbd::{Kbd, KbdGroup};
+```
+
+## 基础用法
+
+```rust
+use gpui::ParentElement as _;
+
+Kbd::new().child("Ctrl")
+Kbd::new().child("⌘K")
+Kbd::new().child("Ctrl + B")
+```
+
+## 组合按键
+
+```rust
+KbdGroup::new()
+    .child(Kbd::new().child("Ctrl"))
+    .child(Kbd::new().child("Shift"))
+    .child(Kbd::new().child("P"))
+```
+
+也可以在按键之间直接组合分隔符：
+
+```rust
+KbdGroup::new()
+    .child(Kbd::new().child("Ctrl"))
+    .child("+")
+    .child(Kbd::new().child("B"))
+```
+
+## 平台快捷键
+
+需要根据平台显示快捷键时，使用 `from_keystroke`：
+
+```rust
 use gpui::Keystroke;
+
+let stroke = Keystroke::parse("cmd-shift-p").unwrap();
+let kbd = Kbd::from_keystroke(stroke.clone());
+let kbd: Kbd = stroke.into();
 ```
 
-## 用法
+macOS 使用符号并省略分隔符；Windows 和 Linux 使用文字标签与 `+` 分隔符。
 
-### 基础快捷键
-
-```rust
-let kbd = Kbd::new(Keystroke::parse("cmd-shift-p").unwrap());
-let kbd: Kbd = Keystroke::parse("escape").unwrap().into();
-```
-
-### 常见快捷键
-
-```rust
-Kbd::new(Keystroke::parse("cmd-shift-p").unwrap())
-Kbd::new(Keystroke::parse("cmd-t").unwrap())
-Kbd::new(Keystroke::parse("cmd--").unwrap())
-Kbd::new(Keystroke::parse("cmd-+").unwrap())
-Kbd::new(Keystroke::parse("escape").unwrap())
-Kbd::new(Keystroke::parse("enter").unwrap())
-Kbd::new(Keystroke::parse("backspace").unwrap())
-```
-
-### 多修饰键
-
-```rust
-Kbd::new(Keystroke::parse("cmd-ctrl-shift-a").unwrap())
-Kbd::new(Keystroke::parse("cmd-alt-backspace").unwrap())
-Kbd::new(Keystroke::parse("ctrl-alt-shift-a").unwrap())
-```
-
-### 方向键与功能键
-
-```rust
-Kbd::new(Keystroke::parse("left").unwrap())
-Kbd::new(Keystroke::parse("right").unwrap())
-Kbd::new(Keystroke::parse("up").unwrap())
-Kbd::new(Keystroke::parse("down").unwrap())
-Kbd::new(Keystroke::parse("f12").unwrap())
-Kbd::new(Keystroke::parse("secondary-f12").unwrap())
-Kbd::new(Keystroke::parse("pageup").unwrap())
-Kbd::new(Keystroke::parse("pagedown").unwrap())
-```
-
-### 关闭默认外观
-
-```rust
-Kbd::new(Keystroke::parse("cmd-s").unwrap())
-    .appearance(false)
-```
-
-### 从 Action 绑定读取
-
-```rust
-use gpui::{Action, Window, FocusHandle};
-
-if let Some(kbd) = Kbd::binding_for_action(&MyAction {}, None, window) {
-    // 显示该 action 绑定的快捷键
-}
-
-if let Some(kbd) = Kbd::binding_for_action(&MyAction {}, Some("Editor"), window) {
-    // 显示特定上下文中的快捷键
-}
-
-if let Some(kbd) = Kbd::binding_for_action_in(&MyAction {}, &focus_handle, window) {
-    // 显示焦点元素上的快捷键
-}
-```
-
-## 平台差异
-
-### macOS
-
-- 使用符号：⌃ ⌥ ⇧ ⌘
-- 修饰键之间不加分隔符
-- 顺序为 Control、Option、Shift、Command
-- 特殊键使用 ⌫、⎋、⏎、← → ↑ ↓ 等符号
-
-### Windows / Linux
-
-- 使用文本标签：Ctrl、Alt、Shift、Win
-- 修饰键之间使用 `+`
-- 顺序为 Ctrl、Alt、Shift、Win
-- 特殊键显示为 Backspace、Esc、Enter、Left、Right、Up、Down
-
-### 平台示例
-
-| 输入 | macOS | Windows / Linux |
+| 输入 | macOS | Windows/Linux |
 | --- | --- | --- |
-| `cmd-a` | ⌘A | Win+A |
-| `ctrl-shift-a` | ⌃⇧A | Ctrl+Shift+A |
-| `cmd-alt-backspace` | ⌥⌘⌫ | Win+Alt+Backspace |
-| `escape` | ⎋ | Esc |
-| `enter` | ⏎ | Enter |
-| `left` | ← | Left |
+| `cmd-a` | `⌘A` | `Win+A` |
+| `ctrl-shift-a` | `⌃⇧A` | `Ctrl+Shift+A` |
+| `escape` | `⎋` | `Esc` |
+| `enter` | `⏎` | `Enter` |
 
-## 示例
+## 图标与文字
 
-### 快捷键帮助面板
+图标应使用 12px 的 `xsmall` 尺寸，与 shadcn Kbd 基线一致。
 
 ```rust
-use gpui::{div, h_flex, v_flex};
+use gpui_component::{Icon, IconName, Sizable as _};
 
-v_flex()
-    .gap_2()
-    .child(
-        h_flex()
-            .gap_2()
-            .items_center()
-            .child("Open command palette:")
-            .child(Kbd::new(Keystroke::parse("cmd-shift-p").unwrap()))
-    )
-    .child(
-        h_flex()
-            .gap_2()
-            .items_center()
-            .child("Save file:")
-            .child(Kbd::new(Keystroke::parse("cmd-s").unwrap()))
-    )
-    .child(
-        h_flex()
-            .gap_2()
-            .items_center()
-            .child("Find in files:")
-            .child(Kbd::new(Keystroke::parse("cmd-shift-f").unwrap()))
+Kbd::new()
+    .child(Icon::new(IconName::ArrowLeft).xsmall())
+    .child("Left")
+```
+
+Kbd 是静态内容，不应在内部放置按钮或其他交互控件。
+
+## Input Group
+
+```rust
+InputGroup::new("search")
+    .input(Input::new(&input_state))
+    .addon(
+        InputGroupAddon::new()
+            .align(InputGroupAddonAlign::InlineEnd)
+            .child(Kbd::from_keystroke(
+                Keystroke::parse("cmd-k").unwrap(),
+            )),
     )
 ```
 
-### 带快捷键的菜单项
+## Action 绑定
 
 ```rust
-h_flex()
-    .justify_between()
-    .items_center()
-    .child("New File")
-    .child(Kbd::new(Keystroke::parse("cmd-n").unwrap()))
+if let Some(kbd) = Kbd::binding_for_action(&MyAction {}, None, window) {
+    // 渲染当前平台解析出的快捷键。
+}
+
+if let Some(kbd) =
+    Kbd::binding_for_action_in(&MyAction {}, &focus_handle, window)
+{
+    // 渲染当前焦点上下文中的快捷键。
+}
 ```
 
-### 行内说明
+只需要格式化文字时，使用 `Kbd::format(&stroke)`。
+
+## 项目扩展
+
+默认样式与 shadcn 对齐，同时保留两个项目特有的显式选项：
 
 ```rust
-div()
-    .child("Press ")
-    .child(Kbd::new(Keystroke::parse("escape").unwrap()))
-    .child(" to cancel or ")
-    .child(Kbd::new(Keystroke::parse("enter").unwrap()))
-    .child(" to confirm.")
-```
-
-### 自定义样式
-
-```rust
-Kbd::new(Keystroke::parse("cmd-k").unwrap())
-    .text_color(cx.theme().accent)
-    .border_color(cx.theme().accent)
-    .bg(cx.theme().accent.opacity(0.1))
-```
-
-### 仅获取文本格式
-
-```rust
-let shortcut_text = Kbd::format(&Keystroke::parse("cmd-shift-p").unwrap());
-div().child(format!("Shortcut: {}", shortcut_text))
+Kbd::new().child("Outline").outline()
+Kbd::new().child("Unstyled").appearance(false)
 ```
 
 ## 样式
 
-Kbd 默认包含以下样式：
+默认样式使用语义主题和当前 Style Preset：
 
-- 使用主题边框颜色绘制边框
-- 使用 muted 前景色显示文字
-- 使用主题背景色作为底色
-- 小圆角
-- 文本居中
-- 超小字号
-- 极小的内边距
-- 最小宽度为 5
-- 禁止 flex shrink，避免压缩失真
+- 高度和最小宽度均为 20px
+- 水平内边距与子元素间距均为 4px
+- `text-xs` 与中等字重
+- `muted` 背景与 `muted_foreground` 文字
+- `radii.sm` 圆角
+- 不包含过渡或动画
 
-所有样式都可以通过 `Styled` trait 的方法覆盖。
+`Styled` 覆盖会在默认样式之后应用。

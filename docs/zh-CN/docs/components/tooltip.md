@@ -83,7 +83,7 @@ div()
     .id("custom-kb")
     .tooltip(|window, cx| {
         Tooltip::new("Delete item")
-            .key_binding(Some(Kbd::new("Delete")))
+            .key_binding(Some(Keystroke::parse("delete").unwrap()))
             .build(window, cx)
     })
 ```
@@ -97,7 +97,7 @@ div()
 | `new(text)` | 创建文本型 Tooltip |
 | `element(builder)` | 创建自定义内容 Tooltip |
 | `action(action, context)` | 关联 action，显示对应快捷键信息 |
-| `key_binding(kbd)` | 手动设置快捷键展示 |
+| `key_binding(stroke)` | 手动设置平台感知的快捷键 |
 | `build(window, cx)` | 构建并返回 Tooltip 视图 |
 
 ### 内置 Tooltip 方法

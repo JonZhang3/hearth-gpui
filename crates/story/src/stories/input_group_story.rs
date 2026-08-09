@@ -105,7 +105,9 @@ impl Render for InputGroupStory {
                                 .addon(
                                     InputGroupAddon::new()
                                         .align(InputGroupAddonAlign::InlineEnd)
-                                        .child(Kbd::new(Keystroke::parse("cmd-k").unwrap())),
+                                        .child(Kbd::from_keystroke(
+                                            Keystroke::parse("cmd-k").unwrap(),
+                                        )),
                                 ),
                         ),
                 ),
