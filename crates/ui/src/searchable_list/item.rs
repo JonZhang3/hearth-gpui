@@ -99,15 +99,12 @@ impl RenderOnce for SearchableListItemElement {
             .id(self.id)
             .relative()
             .gap_x_1()
-            .py_1()
-            .px_2()
             .rounded(cx.theme().style.radii.md)
-            .text_base()
             .text_color(cx.theme().foreground)
             .items_center()
             .justify_between()
             .input_text_size(self.size)
-            .list_size(self.size)
+            .list_size(self.size, cx)
             .refine_style(&self.style)
             .when(!self.disabled, |this| {
                 this.when(!self.selected, |this| {

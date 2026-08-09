@@ -73,6 +73,20 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         self.delegate.items_count(section)
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> gpui::SharedString {
+        self.delegate
+            .item(ix)
+            .map(|item| item.title())
+            .unwrap_or_default()
+    }
+
+    fn is_item_enabled(&self, ix: IndexPath, cx: &App) -> bool {
+        self.delegate
+            .item(ix)
+            .map(|item| self.delegate.is_item_enabled(ix, item, cx))
+            .unwrap_or(false)
+    }
+
     fn render_section_header(
         &mut self,
         section: usize,
@@ -90,7 +104,7 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             div()
                 .py_0p5()
                 .px_2()
-                .list_size(self.size)
+                .list_size(self.size, cx)
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
                 .child(item)
@@ -103,10 +117,13 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         ix: IndexPath,
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
+    ) -> Self::Item {
         use gpui::IntoElement as _;
 
-        let item = self.delegate.item(ix)?;
+        let item = self
+            .delegate
+            .item(ix)
+            .expect("items_count must only include renderable searchable-list items");
         // Read check state from the snapshot — never from an external entity, which would panic
         // because the ListState entity is already locked for this render pass.
         let is_checked = self
@@ -116,12 +133,10 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         let size = self.size;
 
         if let Some(el) = self.delegate.render_item(ix, item, is_checked, window, cx) {
-            return Some(
-                SearchableListItemElement::new(ix.row)
-                    .disabled(disabled)
-                    .with_size(size)
-                    .child(el),
-            );
+            return SearchableListItemElement::new(ix.row)
+                .disabled(disabled)
+                .with_size(size)
+                .child(el);
         }
 
         let check_icon = self
@@ -133,14 +148,12 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             .whitespace_nowrap()
             .child(item.render(window, cx).into_any_element());
 
-        Some(
-            SearchableListItemElement::new(ix.row)
-                .checked(is_checked)
-                .check_icon(check_icon)
-                .disabled(disabled)
-                .with_size(size)
-                .child(content.into_any_element()),
-        )
+        SearchableListItemElement::new(ix.row)
+            .checked(is_checked)
+            .check_icon(check_icon)
+            .disabled(disabled)
+            .with_size(size)
+            .child(content.into_any_element())
     }
 
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<ListState<Self>>) {

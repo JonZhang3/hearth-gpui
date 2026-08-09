@@ -409,9 +409,7 @@ pub trait StyleSized<T: Styled> {
     fn input_px(self, size: Size, cx: &App) -> Self;
     fn input_py(self, size: Size, cx: &App) -> Self;
     fn input_h(self, size: Size, cx: &App) -> Self;
-    fn list_size(self, size: Size) -> Self;
-    fn list_px(self, size: Size) -> Self;
-    fn list_py(self, size: Size) -> Self;
+    fn list_size(self, size: Size, cx: &App) -> Self;
     /// Apply size with the given `Size`.
     fn size_with(self, size: Size, cx: &App) -> Self;
     /// Apply the table cell size (Font size, padding) with the given `Size`.
@@ -462,26 +460,12 @@ impl<T: Styled> StyleSized<T> for T {
     }
 
     #[inline]
-    fn list_size(self, size: Size) -> Self {
-        self.list_px(size).list_py(size).input_text_size(size)
-    }
-
-    #[inline]
-    fn list_px(self, size: Size) -> Self {
-        match size {
-            Size::Small => self.px_2(),
-            _ => self.px_3(),
-        }
-    }
-
-    #[inline]
-    fn list_py(self, size: Size) -> Self {
-        match size {
-            Size::Large => self.py_2(),
-            Size::Medium => self.py_1(),
-            Size::Small => self.py_0p5(),
-            _ => self.py_1(),
-        }
+    fn list_size(self, size: Size, cx: &App) -> Self {
+        let padding = size.table_cell_padding(cx);
+        self.min_h(size.table_row_height(cx))
+            .px(padding.left)
+            .py(padding.top)
+            .input_text_size(size)
     }
 
     #[inline]

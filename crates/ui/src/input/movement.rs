@@ -160,6 +160,7 @@ impl InputState {
         }
 
         if self.mode.is_single_line() {
+            cx.propagate();
             return;
         }
 
@@ -180,6 +181,7 @@ impl InputState {
         }
 
         if self.mode.is_single_line() {
+            cx.propagate();
             return;
         }
 

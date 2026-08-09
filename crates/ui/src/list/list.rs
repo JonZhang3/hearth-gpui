@@ -1,8 +1,7 @@
-use instant::Duration;
 use std::ops::Range;
 
-use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::input::InputState;
+use crate::actions::{Cancel, Confirm, SelectDown, SelectFirst, SelectLast, SelectUp};
+use crate::input::{InputState, MoveDown, MoveUp};
 use crate::list::cache::{MeasuredEntrySize, RowEntry, RowsCache};
 use crate::{
     ActiveTheme, IconName, Size,
@@ -10,7 +9,7 @@ use crate::{
     scroll::Scrollbar,
     v_flex,
 };
-use crate::{Icon, IndexPath, Selectable, Sizable, StyledExt};
+use crate::{Disableable, Icon, IndexPath, Selectable, Sizable, StyledExt};
 use crate::{VirtualListScrollHandle, list::ListDelegate, v_virtual_list};
 use gpui::{
     App, AvailableSpace, ClickEvent, Context, DefiniteLength, EdgesRefinement, EventEmitter,
@@ -31,6 +30,8 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("secondary-enter", Confirm { secondary: true }, context),
         KeyBinding::new("up", SelectUp, context),
         KeyBinding::new("down", SelectDown, context),
+        KeyBinding::new("home", SelectFirst, context),
+        KeyBinding::new("end", SelectLast, context),
     ]);
 }
 
@@ -50,6 +51,7 @@ struct ListOptions {
     search_placeholder: Option<SharedString>,
     max_height: Option<Length>,
     paddings: EdgesRefinement<DefiniteLength>,
+    aria_label: SharedString,
 }
 
 impl Default for ListOptions {
@@ -60,6 +62,7 @@ impl Default for ListOptions {
             max_height: None,
             search_placeholder: None,
             paddings: EdgesRefinement::default(),
+            aria_label: t!("List.label").into(),
         }
     }
 }
@@ -76,7 +79,8 @@ pub struct ListState<D: ListDelegate> {
     scroll_handle: VirtualListScrollHandle,
     rows_cache: RowsCache,
     selected_index: Option<IndexPath>,
-    item_to_measure_index: IndexPath,
+    selection_needs_sync: bool,
+    item_to_measure_index: Option<IndexPath>,
     deferred_scroll_to_index: Option<(IndexPath, ScrollStrategy)>,
     mouse_right_clicked_index: Option<IndexPath>,
     reset_on_cancel: bool,
@@ -84,6 +88,9 @@ pub struct ListState<D: ListDelegate> {
     selectable: bool,
     _search_task: Task<()>,
     _load_more_task: Task<()>,
+    search_revision: u64,
+    loading_more: bool,
+    last_load_more_entities_count: Option<usize>,
     _query_input_subscription: Subscription,
 }
 
@@ -106,15 +113,19 @@ where
             query_input,
             last_query: None,
             selected_index: None,
+            selection_needs_sync: false,
             selectable: true,
             searchable: false,
-            item_to_measure_index: IndexPath::default(),
+            item_to_measure_index: None,
             deferred_scroll_to_index: None,
             mouse_right_clicked_index: None,
             scroll_handle: VirtualListScrollHandle::new(),
             reset_on_cancel: true,
             _search_task: Task::ready(()),
             _load_more_task: Task::ready(()),
+            search_revision: 0,
+            loading_more: false,
+            last_load_more_entities_count: None,
             _query_input_subscription,
         }
     }
@@ -135,6 +146,13 @@ where
     /// Sets whether the list is selectable, default is true.
     pub fn selectable(mut self, selectable: bool) -> Self {
         self.selectable = selectable;
+        self
+    }
+
+    /// Sets the initial keyboard selection before the first render.
+    pub fn initial_selected_index(mut self, ix: Option<IndexPath>) -> Self {
+        self.selected_index = ix;
+        self.selection_needs_sync = true;
         self
     }
 
@@ -174,7 +192,9 @@ where
             return;
         }
 
+        let ix = ix.filter(|ix| self.is_valid_enabled_index(*ix, cx));
         self.selected_index = ix;
+        self.selection_needs_sync = false;
         self.delegate.set_selected_index(ix, window, cx);
         self.scroll_to_selected_item(window, cx);
     }
@@ -187,7 +207,9 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let ix = ix.filter(|ix| self.is_valid_enabled_index(*ix, cx));
         self.selected_index = ix;
+        self.selection_needs_sync = false;
         self.delegate.set_selected_index(ix, window, cx);
     }
 
@@ -226,7 +248,7 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.item_to_measure_index = ix;
+        self.item_to_measure_index = Some(ix);
         cx.notify();
     }
 
@@ -277,30 +299,25 @@ where
                     return;
                 }
 
+                self.search_revision = self.search_revision.wrapping_add(1);
+                let revision = self.search_revision;
+                self.last_query = Some(text.clone());
+                self.last_load_more_entities_count = None;
                 self.set_searching(true, window, cx);
                 let search = self.delegate.perform_search(&text, window, cx);
 
-                if self.rows_cache.len() > 0 {
-                    self._set_selected_index(Some(IndexPath::default()), window, cx);
-                } else {
-                    self._set_selected_index(None, window, cx);
-                }
-
                 self._search_task = cx.spawn_in(window, async move |this, window| {
                     search.await;
-
-                    _ = this.update_in(window, |this, _, _| {
-                        this.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
-                        this.last_query = Some(text);
-                    });
-
-                    // Always wait 100ms to avoid flicker
-                    window
-                        .background_executor()
-                        .timer(Duration::from_millis(100))
-                        .await;
                     _ = this.update_in(window, |this, window, cx| {
+                        if this.search_revision != revision {
+                            return;
+                        }
                         this.set_searching(false, window, cx);
+                        this.prepare_items_if_needed(window, cx);
+                        let first = this.first_enabled_index(cx);
+                        this._set_selected_index(first, window, cx);
+                        this.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
+                        cx.notify();
                     });
                 });
             }
@@ -313,6 +330,84 @@ where
             .update(cx, |input, cx| input.set_loading(searching, window, cx));
     }
 
+    fn is_valid_index(&self, ix: IndexPath, cx: &App) -> bool {
+        ix.section < self.delegate.sections_count(cx).max(1)
+            && ix.row < self.delegate.items_count(ix.section, cx)
+    }
+
+    fn is_valid_enabled_index(&self, ix: IndexPath, cx: &App) -> bool {
+        self.is_valid_index(ix, cx) && self.delegate.is_item_enabled(ix, cx)
+    }
+
+    fn first_enabled_index(&self, cx: &App) -> Option<IndexPath> {
+        self.rows_cache
+            .entities
+            .iter()
+            .filter_map(|entry| match entry {
+                RowEntry::Entry(ix) => Some(*ix),
+                _ => None,
+            })
+            .find(|ix| self.delegate.is_item_enabled(*ix, cx))
+    }
+
+    fn last_enabled_index(&self, cx: &App) -> Option<IndexPath> {
+        self.rows_cache
+            .entities
+            .iter()
+            .rev()
+            .filter_map(|entry| match entry {
+                RowEntry::Entry(ix) => Some(*ix),
+                _ => None,
+            })
+            .find(|ix| self.delegate.is_item_enabled(*ix, cx))
+    }
+
+    fn next_enabled_index(&self, forward: bool, cx: &App) -> Option<IndexPath> {
+        let entities_count = self.rows_cache.len();
+        if entities_count == 0 {
+            return None;
+        }
+
+        let start = self
+            .selected_index
+            .and_then(|ix| self.rows_cache.position_of(&ix))
+            .unwrap_or_else(|| if forward { entities_count - 1 } else { 0 });
+
+        // Traverse the flattened cache once so disabled runs remain linear.
+        for offset in 1..=entities_count {
+            let flatten_ix = if forward {
+                start.wrapping_add(offset) % entities_count
+            } else {
+                let step = offset % entities_count;
+                start.wrapping_add(entities_count).wrapping_sub(step) % entities_count
+            };
+
+            let Some(RowEntry::Entry(ix)) = self.rows_cache.get(flatten_ix) else {
+                continue;
+            };
+            if self.delegate.is_item_enabled(ix, cx) {
+                return Some(ix);
+            }
+        }
+        None
+    }
+
+    fn select_previous(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.next_enabled_index(false, cx) {
+            self.select_item(ix, window, cx);
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn select_next(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(ix) = self.next_enabled_index(true, cx) {
+            self.select_item(ix, window, cx);
+        } else {
+            cx.propagate();
+        }
+    }
+
     /// Dispatch delegate's `load_more` method when the
     /// visible range is near the end.
     fn load_more_if_need(
@@ -322,19 +417,25 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // FIXME: Here need void sections items count.
-
         let threshold = self.delegate.load_more_threshold();
         // Securely handle subtract logic to prevent attempt
         // to subtract with overflow
         if visible_end >= entities_count.saturating_sub(threshold) {
-            if !self.delegate.has_more(cx) {
+            if !self.delegate.has_more(cx)
+                || self.loading_more
+                || self.last_load_more_entities_count == Some(entities_count)
+            {
                 return;
             }
 
+            self.loading_more = true;
+            self.last_load_more_entities_count = Some(entities_count);
+            let task = self.delegate.load_more(window, cx);
             self._load_more_task = cx.spawn_in(window, async move |view, cx| {
-                _ = view.update_in(cx, |view, window, cx| {
-                    view.delegate.load_more(window, cx);
+                task.await;
+                _ = view.update_in(cx, |view, _, cx| {
+                    view.loading_more = false;
+                    cx.notify();
                 });
             });
         }
@@ -346,7 +447,10 @@ where
     }
 
     fn on_action_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
-        cx.propagate();
+        if !self.selectable {
+            cx.propagate();
+            return;
+        }
         if self.reset_on_cancel {
             self._set_selected_index(None, window, cx);
         }
@@ -362,11 +466,16 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.rows_cache.len() == 0 {
+        if !self.selectable || self.rows_cache.items_count() == 0 {
+            cx.propagate();
             return;
         }
 
-        let Some(ix) = self.selected_index else {
+        let Some(ix) = self
+            .selected_index
+            .filter(|ix| self.is_valid_enabled_index(*ix, cx))
+        else {
+            cx.propagate();
             return;
         };
 
@@ -378,11 +487,12 @@ where
     }
 
     fn select_item(&mut self, ix: IndexPath, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.selectable {
+        if !self.selectable || !self.is_valid_enabled_index(ix, cx) {
             return;
         }
 
         self.selected_index = Some(ix);
+        self.selection_needs_sync = false;
         self.delegate.set_selected_index(Some(ix), window, cx);
         self.scroll_to_selected_item(window, cx);
         cx.emit(ListEvent::Select(ix));
@@ -395,12 +505,7 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.rows_cache.len() == 0 {
-            return;
-        }
-
-        let prev_ix = self.rows_cache.prev(self.selected_index);
-        self.select_item(prev_ix, window, cx);
+        self.select_previous(window, cx);
     }
 
     pub(crate) fn on_action_select_next(
@@ -409,44 +514,92 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.rows_cache.len() == 0 {
-            return;
-        }
+        self.select_next(window, cx);
+    }
 
-        let next_ix = self.rows_cache.next(self.selected_index);
-        self.select_item(next_ix, window, cx);
+    fn on_action_move_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        self.select_previous(window, cx);
+    }
+
+    fn on_action_move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        self.select_next(window, cx);
+    }
+
+    fn on_action_select_first(
+        &mut self,
+        _: &SelectFirst,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(ix) = self.first_enabled_index(cx) {
+            self.select_item(ix, window, cx);
+        } else {
+            cx.propagate();
+        }
+    }
+
+    fn on_action_select_last(
+        &mut self,
+        _: &SelectLast,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(ix) = self.last_enabled_index(cx) {
+            self.select_item(ix, window, cx);
+        } else {
+            cx.propagate();
+        }
     }
 
     fn prepare_items_if_needed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let sections_count = self.delegate.sections_count(cx).max(1);
         let mut measured_size = MeasuredEntrySize::default();
 
+        let first_item = (0..sections_count).find_map(|section| {
+            (self.delegate.items_count(section, cx) > 0)
+                .then_some(IndexPath::default().section(section))
+        });
+        let measurement_item = self
+            .item_to_measure_index
+            .filter(|ix| self.is_valid_index(*ix, cx))
+            .or(first_item);
+
         // Measure the item_height and section header/footer height.
         let available_space = size(AvailableSpace::MinContent, AvailableSpace::MinContent);
-        measured_size.item_size = self
-            .render_list_item(self.item_to_measure_index, window, cx)
-            .into_any_element()
-            .layout_as_root(available_space, window, cx);
+        if let Some(ix) = measurement_item {
+            measured_size.item_size = self
+                .render_list_item(ix, window, cx)
+                .into_any_element()
+                .layout_as_root(available_space, window, cx);
 
-        if let Some(mut el) = self
-            .delegate
-            .render_section_header(0, window, cx)
-            .map(|r| r.into_any_element())
-        {
-            measured_size.section_header_size = el.layout_as_root(available_space, window, cx);
-        }
-        if let Some(mut el) = self
-            .delegate
-            .render_section_footer(0, window, cx)
-            .map(|r| r.into_any_element())
-        {
-            measured_size.section_footer_size = el.layout_as_root(available_space, window, cx);
+            if let Some(mut el) = self
+                .delegate
+                .render_section_header(ix.section, window, cx)
+                .map(|r| r.into_any_element())
+            {
+                measured_size.section_header_size = el.layout_as_root(available_space, window, cx);
+            }
+            if let Some(mut el) = self
+                .delegate
+                .render_section_footer(ix.section, window, cx)
+                .map(|r| r.into_any_element())
+            {
+                measured_size.section_footer_size = el.layout_as_root(available_space, window, cx);
+            }
         }
 
         self.rows_cache
             .prepare_if_needed(sections_count, measured_size, cx, |section_ix, cx| {
                 self.delegate.items_count(section_ix, cx)
             });
+
+        if self
+            .selected_index
+            .is_some_and(|ix| !self.is_valid_enabled_index(ix, cx))
+        {
+            self.selected_index = None;
+            self.selection_needs_sync = true;
+        }
     }
 
     fn render_list_item(
@@ -456,32 +609,45 @@ where
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let selectable = self.selectable;
+        let enabled = self.delegate.is_item_enabled(ix, cx);
         let selected = self.selected_index.map(|s| s.eq_row(ix)).unwrap_or(false);
         let mouse_right_clicked = self
             .mouse_right_clicked_index
             .map(|s| s.eq_row(ix))
             .unwrap_or(false);
-        let id = SharedString::from(format!("list-item-{}", ix));
+        let id = SharedString::from(format!("list-{}-item-{}", cx.entity().entity_id(), ix));
 
         let total_items = self.rows_cache.items_count();
+        let position = self.rows_cache.item_ordinal(ix).unwrap_or(1);
+        let label = self.delegate.item_label(ix, cx);
+        let item = self
+            .delegate
+            .render_item(ix, window, cx)
+            .with_size(self.options.size)
+            .disabled(!enabled)
+            .selected(selected)
+            .secondary_selected(mouse_right_clicked);
 
-        div()
+        let element = div()
             .id(id)
-            .role(Role::ListItem)
-            .aria_position_in_set(ix.row + 1)
+            .role(if selectable {
+                Role::ListBoxOption
+            } else {
+                Role::ListItem
+            })
+            .aria_label(label)
+            .aria_position_in_set(position)
             .aria_size_of_set(total_items)
-            .aria_selected(selected)
+            .when(selectable, |this| this.aria_selected(selected))
+            .when(selected, |this| this.aria_active_descendant())
             .w_full()
             .relative()
             .overflow_hidden()
-            .children(self.delegate.render_item(ix, window, cx).map(|item| {
-                item.selected(selected)
-                    .secondary_selected(mouse_right_clicked)
-            }))
-            .when(selectable, |this| {
+            .child(item)
+            .when(selectable && enabled, |this| {
                 this.on_click(cx.listener(move |this, e: &ClickEvent, window, cx| {
                     this.set_right_clicked_index(None, window, cx);
-                    this.selected_index = Some(ix);
+                    this.select_item(ix, window, cx);
                     this.on_action_confirm(
                         &Confirm {
                             secondary: e.modifiers().secondary(),
@@ -497,7 +663,9 @@ where
                         cx.notify();
                     }),
                 )
-            })
+            });
+
+        crate::accessibility::accessibility_state(element, false, false, !enabled)
     }
 
     fn render_items(
@@ -510,8 +678,9 @@ where
         let rows_cache = self.rows_cache.clone();
         let scrollbar_visible = self.options.scrollbar_visible;
         let scroll_handle = self.scroll_handle.clone();
-        let item_to_measure_index = rows_cache
-            .position_of(&self.item_to_measure_index)
+        let item_to_measure_index = self
+            .item_to_measure_index
+            .and_then(|ix| rows_cache.position_of(&ix))
             .or_else(|| rows_cache.first_entry_position())
             .unwrap_or(0);
 
@@ -603,6 +772,12 @@ where
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare_items_if_needed(window, cx);
 
+        if self.selection_needs_sync {
+            self.delegate
+                .set_selected_index(self.selected_index, window, cx);
+            self.selection_needs_sync = false;
+        }
+
         // Scroll to the selected item if it is set.
         if let Some((ix, strategy)) = self.deferred_scroll_to_index.take() {
             if let Some(item_ix) = self.rows_cache.position_of(&ix) {
@@ -640,26 +815,43 @@ where
         let items_count = self.rows_cache.items_count();
         let entities_count = self.rows_cache.len();
         let mouse_right_clicked_index = self.mouse_right_clicked_index;
+        let search_padding_x = self.options.size.table_cell_padding(cx).left;
+        let active_item_label = self
+            .selected_index
+            .filter(|ix| self.is_valid_index(*ix, cx))
+            .map(|ix| self.delegate.item_label(ix, cx));
 
         v_flex()
             .key_context("List")
-            .id("list-state")
+            .id(("list-state", cx.entity().entity_id()))
             .track_focus(&self.focus_handle)
+            .role(if self.selectable {
+                Role::ListBox
+            } else {
+                Role::List
+            })
+            .aria_label(self.options.aria_label.clone())
             .size_full()
             .relative()
             .overflow_hidden()
             .when_some(query_input, |this, input| {
                 this.child(
                     div()
-                        .map(|this| match self.options.size {
-                            Size::Small => this.px_1p5(),
-                            _ => this.px_2(),
-                        })
+                        .px(search_padding_x)
                         .border_b_1()
                         .border_color(cx.theme().border)
                         .child(
                             Input::new(&input)
                                 .with_size(self.options.size)
+                                .aria_label(
+                                    self.options
+                                        .search_placeholder
+                                        .clone()
+                                        .unwrap_or_else(|| t!("List.search_placeholder").into()),
+                                )
+                                .when_some(active_item_label.clone(), |this, label| {
+                                    this.aria_description(label)
+                                })
                                 .prefix(
                                     Icon::new(IconName::Search)
                                         .text_color(cx.theme().muted_foreground),
@@ -675,6 +867,10 @@ where
                     .on_action(cx.listener(Self::on_action_confirm))
                     .on_action(cx.listener(Self::on_action_select_next))
                     .on_action(cx.listener(Self::on_action_select_prev))
+                    .on_action(cx.listener(Self::on_action_select_first))
+                    .on_action(cx.listener(Self::on_action_select_last))
+                    .on_action(cx.listener(Self::on_action_move_up))
+                    .on_action(cx.listener(Self::on_action_move_down))
                     .map(|this| {
                         if let Some(view) = initial_view {
                             this.child(view)
@@ -726,6 +922,12 @@ where
         self.options.search_placeholder = Some(placeholder.into());
         self
     }
+
+    /// Sets the accessible name announced for the list.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.options.aria_label = label.into();
+        self
+    }
 }
 
 impl<D> Styled for List<D>
@@ -764,8 +966,7 @@ where
         });
 
         div()
-            .id("list")
-            .role(Role::List)
+            .id(("list", self.state.entity_id()))
             .size_full()
             .refine_style(&self.style)
             .child(self.state.clone())

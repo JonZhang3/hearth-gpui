@@ -12,7 +12,8 @@ const MAX_MENU_WIDTH: Pixels = px(320.);
 const MAX_MENU_HEIGHT: Pixels = px(480.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, Size, StyleSized as _, actions,
+    h_flex,
     input::{self, InputState, popovers::editor_popover},
     list::{List, ListDelegate, ListEvent, ListState},
 };
@@ -47,6 +48,8 @@ struct MenuItem {
     item: Rc<CodeActionItem>,
     children: Vec<AnyElement>,
     selected: bool,
+    size: Size,
+    disabled: bool,
 }
 
 impl MenuItem {
@@ -56,6 +59,8 @@ impl MenuItem {
             item,
             children: vec![],
             selected: false,
+            size: Size::default(),
+            disabled: false,
         }
     }
 }
@@ -67,6 +72,18 @@ impl Selectable for MenuItem {
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+}
+impl Sizable for MenuItem {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+impl Disableable for MenuItem {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
@@ -84,11 +101,13 @@ impl RenderOnce for MenuItem {
         h_flex()
             .id(self.ix)
             .gap_2()
-            .p_1()
-            .text_xs()
+            .list_size(self.size, cx)
             .line_height(relative(1.))
             .rounded(cx.theme().style.radii.md.half())
-            .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
+            .when(!self.disabled, |this| {
+                this.hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
+            })
+            .when(self.disabled, |this| this.opacity(0.5).cursor_not_allowed())
             .when(self.selected, |this| {
                 this.bg(cx.theme().tokens.accent)
                     .text_color(cx.theme().accent_foreground)
@@ -109,14 +128,20 @@ impl ListDelegate for MenuDelegate {
         self.items.len()
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> SharedString {
+        self.items
+            .get(ix.row)
+            .map(|item| item.action.title.clone().into())
+            .unwrap_or_default()
+    }
+
     fn render_item(
         &mut self,
         ix: crate::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
-        let item = self.items.get(ix.row)?;
-        Some(MenuItem::new(ix.row, item.clone()))
+    ) -> Self::Item {
+        MenuItem::new(ix.row, self.items[ix.row].clone())
     }
 
     fn set_selected_index(

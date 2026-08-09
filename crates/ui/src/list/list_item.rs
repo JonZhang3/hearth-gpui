@@ -1,4 +1,6 @@
-use crate::{ActiveTheme, Disableable, Icon, Selectable, Sizable as _, StyledExt, h_flex};
+use crate::{
+    ActiveTheme, Disableable, Icon, Selectable, Sizable, Size, StyleSized as _, StyledExt, h_flex,
+};
 use gpui::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement, Interactivity, IntoElement,
     MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, RenderOnce, Stateful,
@@ -26,6 +28,7 @@ pub struct ListItem {
     base: Stateful<Div>,
     mode: ListItemMode,
     style: StyleRefinement,
+    size: Size,
     disabled: bool,
     selected: bool,
     secondary_selected: bool,
@@ -46,6 +49,7 @@ impl ListItem {
             mode: ListItemMode::Entry,
             base: h_flex().id(id),
             style: StyleRefinement::default(),
+            size: Size::default(),
             disabled: false,
             selected: false,
             secondary_selected: false,
@@ -149,6 +153,13 @@ impl Selectable for ListItem {
     }
 }
 
+impl Sizable for ListItem {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+
 impl Styled for ListItem {
     fn style(&mut self) -> &mut gpui::StyleRefinement {
         &mut self.style
@@ -186,9 +197,7 @@ impl RenderOnce for ListItem {
         self.base
             .relative()
             .gap_x_1()
-            .py_1()
-            .px_3()
-            .text_base()
+            .list_size(self.size, cx)
             .text_color(cx.theme().foreground)
             .relative()
             .items_center()

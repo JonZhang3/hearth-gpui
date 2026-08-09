@@ -37,6 +37,13 @@ impl ListDelegate for ListItemDeletegate {
         self.matches.len()
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> SharedString {
+        self.matches
+            .get(ix.row)
+            .map(|item| item.as_str().into())
+            .unwrap_or_default()
+    }
+
     fn perform_search(
         &mut self,
         query: &str,
@@ -70,36 +77,31 @@ impl ListDelegate for ListItemDeletegate {
         ix: IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
+    ) -> Self::Item {
         let confirmed = Some(ix.row) == self.confirmed_index;
+        let item = &self.matches[ix.row];
+        ListItem::new(("item", ix.row))
+            .check_icon(IconName::Check)
+            .confirmed(confirmed)
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(item.to_string()),
+            )
+            .suffix(|_, _| {
+                Button::new("like")
+                    .tab_stop(false)
+                    .icon(IconName::Heart)
+                    .with_variant(ButtonVariant::Ghost)
+                    .size(px(18.))
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        window.prevent_default();
 
-        if let Some(item) = self.matches.get(ix.row) {
-            let list_item = ListItem::new(("item", ix.row))
-                .check_icon(IconName::Check)
-                .confirmed(confirmed)
-                .child(
-                    h_flex()
-                        .items_center()
-                        .justify_between()
-                        .child(item.to_string()),
-                )
-                .suffix(|_, _| {
-                    Button::new("like")
-                        .tab_stop(false)
-                        .icon(IconName::Heart)
-                        .with_variant(ButtonVariant::Ghost)
-                        .size(px(18.))
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            window.prevent_default();
-
-                            println!("You have clicked like.");
-                        })
-                });
-            Some(list_item)
-        } else {
-            None
-        }
+                        println!("You have clicked like.");
+                    })
+            })
     }
 
     fn render_empty(

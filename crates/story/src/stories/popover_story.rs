@@ -77,13 +77,17 @@ impl ListDelegate for DropdownListDelegate {
         10
     }
 
+    fn item_label(&self, ix: gpui_component::IndexPath, _: &App) -> gpui::SharedString {
+        format!("Item {}", ix.row).into()
+    }
+
     fn render_item(
         &mut self,
         ix: gpui_component::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
-        Some(ListItem::new(ix).child(format!("Item {}", ix.row)))
+    ) -> Self::Item {
+        ListItem::new(ix).child(format!("Item {}", ix.row))
     }
 
     fn set_selected_index(

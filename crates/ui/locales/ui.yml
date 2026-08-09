@@ -338,6 +338,18 @@ Dialog:
     zh-TW: 取消
     it: Annulla
 List:
+  label:
+    en: List
+    zh-CN: 列表
+    zh-HK: 列表
+    zh-TW: 列表
+    it: Elenco
+  empty:
+    en: No items
+    zh-CN: 暂无内容
+    zh-HK: 暫無內容
+    zh-TW: 暫無內容
+    it: Nessun elemento
   search_placeholder:
     en: Search...
     zh-CN: 搜索...
