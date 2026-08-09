@@ -662,7 +662,7 @@ impl Render for ShadcnAlignmentStory {
                                     .outline()
                                     .label("HoverCard"),
                             )
-                            .child(div().w(px(260.)).p_3().child("Hover card content")),
+                            .child(div().child("Hover card content")),
                     )
                     .child(
                         Button::new("align-menu")

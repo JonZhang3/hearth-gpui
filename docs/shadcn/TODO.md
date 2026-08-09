@@ -57,6 +57,30 @@ GPUI is consumed from the pinned Zed Git dependency. Develop this work in an exp
 - Metal, WGPU, Direct3D, Web, and headless captures agree within documented anti-aliasing tolerances.
 - Rectangular-only clipping retains the existing fast path, batching behavior, and frame-time baseline.
 
+## HoverCard transform and accessibility parity
+
+**Status:** Deferred platform capabilities
+
+The aligned HoverCard implements shadcn's 100ms fade and placement-aware 8px entry translation,
+with a fade-only exit. It does not emulate `zoom-in-95` / `zoom-out-95` by changing layout
+dimensions. GPUI needs a layout-independent element-subtree transform before the 0.95 scale can be
+applied without text reflow or geometry jitter.
+
+GPUI also multiplies element opacity into each background, border, shadow, glyph, image, and child
+primitive independently. CSS opacity composites the completed subtree as an isolated layer. A
+shared offscreen compositing layer is required before HoverCard can match overlapping translucent
+pixels and text antialiasing without adding a component-specific renderer path.
+
+The pinned web primitive also excludes preview content from the screen-reader tree. GPUI does not
+currently expose an AccessKit subtree equivalent to `aria-hidden`. HoverCard therefore remains a
+non-modal, non-focusable preview and its documentation requires essential information to remain
+available outside the preview.
+
+Acceptance requires interruption-safe enter and exit scaling, isolated subtree opacity, correct
+transformed hit testing and clipping, no layout change between animation frames, reduced-motion
+completion at the final state, and a subtree accessibility-hiding primitive that does not suppress
+the trigger.
+
 ## Element-level blend modes and Avatar outline parity
 
 **Status:** Deferred

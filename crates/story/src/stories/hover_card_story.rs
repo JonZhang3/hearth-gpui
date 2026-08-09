@@ -1,24 +1,28 @@
 use gpui::{
-    Anchor, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
-    Styled as _, Window, div, px, relative,
+    App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Window, div, px, relative,
 };
 use gpui_component::{
     ActiveTheme, StyledExt,
     avatar::{Avatar, AvatarFallback, AvatarImage},
     button::Button,
     h_flex,
-    hover_card::HoverCard,
+    hover_card::{HoverCard, HoverCardAlign, HoverCardSide},
     v_flex,
 };
 use std::time::Duration;
 
 use crate::{Story, section};
 
-pub struct HoverCardStory {}
+pub struct HoverCardStory {
+    controlled_open: bool,
+}
 
 impl HoverCardStory {
     fn new(_: &mut Window, _: &mut Context<Self>) -> Self {
-        Self {}
+        Self {
+            controlled_open: false,
+        }
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -34,6 +38,8 @@ impl Render for HoverCardStory {
             .child(self.render_user_profile_example(cx))
             .child(self.render_custom_timing_example(cx))
             .child(self.render_positioning_examples(cx))
+            .child(self.render_safe_transfer_example())
+            .child(self.render_controlled_example(cx))
     }
 }
 
@@ -52,7 +58,6 @@ impl HoverCardStory {
                 .child(
                     v_flex()
                         .gap_1()
-                        .w(px(450.))
                         .child(
                             div()
                                 .child("This is a hover card")
@@ -75,6 +80,9 @@ impl HoverCardStory {
                 .child("Hover over ")
                 .child(
                     HoverCard::new("user-profile")
+                        // shadcn's canonical profile example overrides HoverCardContent to w-80.
+                        // Apply the width to the surface, not to its child layout.
+                        .w(px(320.))
                         .trigger(
                             div()
                                 .child("@huacnlee")
@@ -83,8 +91,9 @@ impl HoverCardStory {
                         )
                         .content(|_, _, cx| {
                             h_flex()
-                                .w(px(320.))
-                                .gap_3()
+                                .w_full()
+                                .justify_between()
+                                .gap_4()
                                 .items_start()
                                 .child(
                                     Avatar::new("hover-card-jason", "Jason Lee")
@@ -95,6 +104,8 @@ impl HoverCardStory {
                                 )
                                 .child(
                                     v_flex()
+                                        .flex_1()
+                                        .min_w_0()
                                         .gap_1()
                                         .line_height(relative(1.))
                                         .child(div().child("Jason Lee").font_semibold())
@@ -134,57 +145,73 @@ impl HoverCardStory {
         )
     }
 
-    /// All positioning options
+    /// Displays the four physical placement sides supported by shadcn.
     fn render_positioning_examples(&self, _: &mut Context<Self>) -> impl IntoElement {
         section("Positioning").child(
-            v_flex()
+            h_flex()
                 .gap_4()
                 .items_center()
                 .justify_center()
                 .child(
-                    h_flex()
-                        .gap_4()
-                        .child(
-                            HoverCard::new("anchor-top-left")
-                                .anchor(Anchor::TopLeft)
-                                .trigger(Button::new("tl").label("Top Left").outline())
-                                .child(div().child("Positioned at Top Left").text_sm()),
-                        )
-                        .child(
-                            HoverCard::new("anchor-top-center")
-                                .anchor(Anchor::TopCenter)
-                                .trigger(Button::new("tc").label("Top Center").outline())
-                                .child(div().child("Positioned at Top Center").text_sm()),
-                        )
-                        .child(
-                            HoverCard::new("anchor-top-right")
-                                .anchor(Anchor::TopRight)
-                                .trigger(Button::new("tr").label("Top Right").outline())
-                                .child(div().child("Positioned at Top Right").text_sm()),
-                        ),
+                    HoverCard::new("side-top")
+                        .side(HoverCardSide::Top)
+                        .trigger(Button::new("top").label("Top").outline())
+                        .child("Positioned above the trigger"),
                 )
-                // Bottom row
                 .child(
-                    h_flex()
-                        .gap_4()
-                        .child(
-                            HoverCard::new("anchor-bottom-left")
-                                .anchor(Anchor::BottomLeft)
-                                .trigger(Button::new("bl").label("Bottom Left").outline())
-                                .child(div().child("Positioned at Bottom Left").text_sm()),
-                        )
-                        .child(
-                            HoverCard::new("anchor-bottom-center")
-                                .anchor(Anchor::BottomCenter)
-                                .trigger(Button::new("bc").label("Bottom Center").outline())
-                                .child(div().child("Positioned at Bottom Center").text_sm()),
-                        )
-                        .child(
-                            HoverCard::new("anchor-bottom-right")
-                                .anchor(Anchor::BottomRight)
-                                .trigger(Button::new("br").label("Bottom Right").outline())
-                                .child(div().child("Positioned at Bottom Right").text_sm()),
-                        ),
+                    HoverCard::new("side-right")
+                        .side(HoverCardSide::Right)
+                        .trigger(Button::new("right").label("Right").outline())
+                        .child("Positioned to the right"),
+                )
+                .child(
+                    HoverCard::new("side-bottom")
+                        .side(HoverCardSide::Bottom)
+                        .trigger(Button::new("bottom").label("Bottom").outline())
+                        .child("Positioned below the trigger"),
+                )
+                .child(
+                    HoverCard::new("side-left")
+                        .side(HoverCardSide::Left)
+                        .align(HoverCardAlign::End)
+                        .trigger(Button::new("left").label("Left / End").outline())
+                        .child("Positioned to the left and end-aligned"),
+                ),
+        )
+    }
+
+    /// Demonstrates controlled state and the same focus/hover interaction contract.
+    fn render_controlled_example(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        section("Controlled").child(
+            HoverCard::new("controlled-hover-card")
+                .open(self.controlled_open)
+                .on_open_change(cx.listener(|this, open, _, cx| {
+                    this.controlled_open = *open;
+                    cx.notify();
+                }))
+                .trigger(
+                    Button::new("controlled-trigger")
+                        .label("Hover or focus me")
+                        .outline(),
+                )
+                .child("This preview is controlled by the Story state."),
+        )
+    }
+
+    /// Provides a visible target for checking diagonal trigger-to-content movement.
+    fn render_safe_transfer_example(&self) -> impl IntoElement {
+        section("Safe Pointer Transfer").child(
+            HoverCard::new("safe-transfer")
+                .trigger(
+                    Button::new("safe-transfer-trigger")
+                        .label("Move diagonally into the card")
+                        .outline(),
+                )
+                .child(
+                    v_flex()
+                        .gap_1()
+                        .child(div().font_semibold().child("Safe corridor"))
+                        .child("The preview remains open while the pointer crosses the gap."),
                 ),
         )
     }
@@ -196,7 +223,7 @@ impl Story for HoverCardStory {
     }
 
     fn description() -> &'static str {
-        "A hover card displays content when hovering over a trigger element, with configurable delays."
+        "A non-modal preview opened by pointer hover or keyboard focus, with safe transfer and configurable delays."
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
