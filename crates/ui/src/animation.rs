@@ -1,8 +1,14 @@
-use std::{rc::Rc, time::Duration};
+use std::{
+    rc::Rc,
+    time::{Duration, Instant},
+};
 
 use gpui::{
-    Animation, AnimationExt, App, ElementId, Hsla, IntoElement, Pixels, Point, Styled, point,
-    prelude::FluentBuilder, px,
+    AnyElement, App, Element, ElementId, GlobalElementId, Hsla, InspectorElementId, IntoElement,
+    ParentElement, Pixels, Point, Styled, Window, point, prelude::FluentBuilder, px,
+};
+use gpui_component_motion::{
+    MotionPreference, MotionStatus, MotionValue, TweenSpec, sample_cubic_bezier,
 };
 use smallvec::SmallVec;
 
@@ -14,18 +20,7 @@ use crate::theme::MotionEasing;
 ///
 /// https://cubic-bezier.com
 pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
-    move |t: f32| {
-        let one_t = 1.0 - t;
-        let one_t2 = one_t * one_t;
-        let t2 = t * t;
-        let t3 = t2 * t;
-
-        // The Bezier curve function for x and y, where x0 = 0, y0 = 0, x3 = 1, y3 = 1
-        let _x = 3.0 * x1 * one_t2 * t + 3.0 * x2 * one_t * t2 + t3;
-        let y = 3.0 * y1 * one_t2 * t + 3.0 * y2 * one_t * t2 + t3;
-
-        y
-    }
+    move |t: f32| sample_cubic_bezier(x1, y1, x2, y2, t)
 }
 
 // ── Easing presets ──────────────────────────────────────────────────────────
@@ -113,6 +108,15 @@ impl OverlayLifecycle {
     /// animation state.
     pub fn animation_key(&self) -> u64 {
         self.generation
+    }
+
+    /// Returns the generation token owned by the active enter or exit motion.
+    pub fn active_transition(&self) -> Option<OverlayTransition> {
+        matches!(self.phase, OverlayPhase::Opening | OverlayPhase::Closing).then_some(
+            OverlayTransition {
+                generation: self.generation,
+            },
+        )
     }
 
     /// Returns whether content must remain mounted for enter or exit motion.
@@ -232,8 +236,15 @@ impl Lerp for Hsla {
 #[derive(Clone)]
 pub struct Transition {
     pub duration: Duration,
-    easing: Rc<dyn Fn(f32) -> f32>,
+    easing: TransitionEasing,
     effects: SmallVec<[TransitionEffect; 2]>,
+    on_complete: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+}
+
+#[derive(Clone)]
+enum TransitionEasing {
+    Token(MotionEasing),
+    Custom(Rc<dyn Fn(f32) -> f32>),
 }
 
 #[derive(Clone, Copy)]
@@ -249,20 +260,22 @@ impl Transition {
     pub fn new(duration: Duration) -> Self {
         Self {
             duration,
-            easing: Rc::new(ease_out_cubic),
+            easing: TransitionEasing::Token(MotionEasing::EaseOutCubic),
             effects: SmallVec::new(),
+            on_complete: None,
         }
     }
 
     /// Set the easing function.
     pub fn ease(mut self, easing: impl Fn(f32) -> f32 + 'static) -> Self {
-        self.easing = Rc::new(easing);
+        self.easing = TransitionEasing::Custom(Rc::new(easing));
         self
     }
 
     /// Sets a semantic easing curve resolved from the active Style Preset.
-    pub fn ease_token(self, easing: MotionEasing) -> Self {
-        self.ease(move |delta| easing.sample(delta))
+    pub fn ease_token(mut self, easing: MotionEasing) -> Self {
+        self.easing = TransitionEasing::Token(easing);
+        self
     }
 
     /// Animate vertical offset from `from` to `to`.
@@ -295,44 +308,330 @@ impl Transition {
         self
     }
 
-    /// Apply this transition to a Styled element, returning an AnimationElement.
+    /// Runs once after the active target reaches its final sampled value.
+    pub fn on_complete(mut self, handler: impl Fn(&mut Window, &mut App) + 'static) -> Self {
+        self.on_complete = Some(Rc::new(handler));
+        self
+    }
+
+    /// Applies this transition using persistent GPUI element state.
     pub fn apply<E: IntoElement + Styled + 'static>(
         self,
         element: E,
         id: impl Into<ElementId>,
-    ) -> gpui::AnimationElement<E> {
-        let animation = Animation::new(self.duration).with_easing({
-            let easing = self.easing.clone();
-            move |t| easing(t)
-        });
-        let effects = self.effects;
-        element.with_animation(id, animation, move |el, delta| {
-            let mut el = el;
-            for effect in &effects {
-                match effect {
-                    TransitionEffect::SlideY(from, to) => {
-                        el = el.top(Lerp::lerp(from, to, delta));
-                    }
-                    TransitionEffect::SlideX(from, to) => {
-                        el = el.left(Lerp::lerp(from, to, delta));
-                    }
-                    TransitionEffect::Fade(from, to) => {
-                        el = el.opacity(Lerp::lerp(from, to, delta));
-                    }
-                    TransitionEffect::Width(from, to) => {
-                        el = el.w(Lerp::lerp(from, to, delta));
-                    }
-                    TransitionEffect::Height(from, to) => {
-                        el = el.h(Lerp::lerp(from, to, delta));
-                    }
-                }
-            }
-            el
-        })
+    ) -> MotionElement<E> {
+        MotionElement {
+            id: id.into(),
+            element: Some(element),
+            descriptor: TransitionDescriptor::from_effects(&self.effects),
+            duration: self.duration,
+            easing: self.easing,
+            on_complete: self.on_complete,
+        }
     }
 }
 
 impl FluentBuilder for Transition {}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct TransitionValues {
+    opacity: f32,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct TransitionMask {
+    opacity: bool,
+    x: bool,
+    y: bool,
+    width: bool,
+    height: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TransitionDescriptor {
+    initial: TransitionValues,
+    target: TransitionValues,
+    mask: TransitionMask,
+}
+
+impl TransitionDescriptor {
+    fn from_effects(effects: &[TransitionEffect]) -> Self {
+        let mut descriptor = Self {
+            initial: TransitionValues {
+                opacity: 1.0,
+                ..Default::default()
+            },
+            target: TransitionValues {
+                opacity: 1.0,
+                ..Default::default()
+            },
+            mask: TransitionMask::default(),
+        };
+        for effect in effects {
+            match effect {
+                TransitionEffect::SlideY(from, to) => {
+                    descriptor.initial.y = from.as_f32();
+                    descriptor.target.y = to.as_f32();
+                    descriptor.mask.y = true;
+                }
+                TransitionEffect::SlideX(from, to) => {
+                    descriptor.initial.x = from.as_f32();
+                    descriptor.target.x = to.as_f32();
+                    descriptor.mask.x = true;
+                }
+                TransitionEffect::Fade(from, to) => {
+                    descriptor.initial.opacity = *from;
+                    descriptor.target.opacity = *to;
+                    descriptor.mask.opacity = true;
+                }
+                TransitionEffect::Width(from, to) => {
+                    descriptor.initial.width = from.as_f32();
+                    descriptor.target.width = to.as_f32();
+                    descriptor.mask.width = true;
+                }
+                TransitionEffect::Height(from, to) => {
+                    descriptor.initial.height = from.as_f32();
+                    descriptor.target.height = to.as_f32();
+                    descriptor.mask.height = true;
+                }
+            }
+        }
+        descriptor
+    }
+}
+
+struct MotionElementState {
+    opacity: MotionValue,
+    x: MotionValue,
+    y: MotionValue,
+    width: MotionValue,
+    height: MotionValue,
+    target: TransitionValues,
+    mask: TransitionMask,
+    epoch: u64,
+    completed_epoch: u64,
+}
+
+impl MotionElementState {
+    fn new(initial: TransitionValues) -> Self {
+        Self {
+            opacity: MotionValue::new(initial.opacity),
+            x: MotionValue::new(initial.x),
+            y: MotionValue::new(initial.y),
+            width: MotionValue::new(initial.width),
+            height: MotionValue::new(initial.height),
+            target: initial,
+            mask: TransitionMask::default(),
+            epoch: 0,
+            completed_epoch: 0,
+        }
+    }
+
+    fn retarget(
+        &mut self,
+        descriptor: TransitionDescriptor,
+        duration: Duration,
+        easing: &TransitionEasing,
+        now: Instant,
+        preference: MotionPreference,
+    ) {
+        let first_target = self.epoch == 0;
+        let target_changed = self.target != descriptor.target;
+        if !first_target && !target_changed {
+            return;
+        }
+
+        self.epoch = self.epoch.wrapping_add(1);
+        self.target = descriptor.target;
+        // Translation remains owned by the adapter after entry so an interrupted
+        // close can settle the current offset instead of jumping to zero.
+        self.mask.opacity |= descriptor.mask.opacity;
+        self.mask.x |= descriptor.mask.x;
+        self.mask.y |= descriptor.mask.y;
+        self.mask.width = descriptor.mask.width;
+        self.mask.height = descriptor.mask.height;
+
+        let spec = || match easing {
+            TransitionEasing::Token(easing) => TweenSpec::new(duration, *easing),
+            TransitionEasing::Custom(easing) => {
+                let easing = easing.clone();
+                TweenSpec::with_easing_fn(duration, move |delta| easing(delta))
+            }
+        };
+        self.opacity
+            .animate_to(descriptor.target.opacity, spec(), now, preference);
+        self.x
+            .animate_to(descriptor.target.x, spec(), now, preference);
+        self.y
+            .animate_to(descriptor.target.y, spec(), now, preference);
+        if descriptor.mask.width {
+            self.width
+                .animate_to(descriptor.target.width, spec(), now, preference);
+        }
+        if descriptor.mask.height {
+            self.height
+                .animate_to(descriptor.target.height, spec(), now, preference);
+        }
+    }
+
+    fn sample(&mut self, now: Instant) -> (TransitionValues, bool, bool) {
+        let opacity = self.opacity.sample(now);
+        let x = self.x.sample(now);
+        let y = self.y.sample(now);
+        let width = self.width.sample(now);
+        let height = self.height.sample(now);
+        let running = [
+            opacity.status,
+            x.status,
+            y.status,
+            width.status,
+            height.status,
+        ]
+        .into_iter()
+        .any(|status| status == MotionStatus::Running);
+        let completed = !running && self.completed_epoch != self.epoch;
+        if completed {
+            self.completed_epoch = self.epoch;
+        }
+        (
+            TransitionValues {
+                opacity: opacity.value,
+                x: x.value,
+                y: y.value,
+                width: width.value,
+                height: height.value,
+            },
+            running,
+            completed,
+        )
+    }
+}
+
+/// GPUI adapter that applies an interruptible transition to a styled element.
+pub struct MotionElement<E> {
+    id: ElementId,
+    element: Option<E>,
+    descriptor: TransitionDescriptor,
+    duration: Duration,
+    easing: TransitionEasing,
+    on_complete: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+}
+
+impl<E: ParentElement> ParentElement for MotionElement<E> {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        if let Some(element) = &mut self.element {
+            element.extend(elements);
+        }
+    }
+}
+
+impl<E: IntoElement + Styled + 'static> IntoElement for MotionElement<E> {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+impl<E: IntoElement + Styled + 'static> Element for MotionElement<E> {
+    type RequestLayoutState = AnyElement;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        Some(self.id.clone())
+    }
+
+    fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        global_id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+        let descriptor = self.descriptor;
+        let duration = self.duration;
+        let easing = self.easing.clone();
+        let preference = if cx.reduce_motion() {
+            MotionPreference::Reduced
+        } else {
+            MotionPreference::Full
+        };
+        let mut element = self
+            .element
+            .take()
+            .expect("motion element is requested once");
+        let ((layout_id, element), completed) = window.with_element_state(
+            global_id.expect("motion element requires a stable id"),
+            |state: Option<MotionElementState>, window| {
+                let now = Instant::now();
+                let mut state =
+                    state.unwrap_or_else(|| MotionElementState::new(descriptor.initial));
+                state.retarget(descriptor, duration, &easing, now, preference);
+                let (values, running, completed) = state.sample(now);
+
+                if state.mask.opacity {
+                    element = element.opacity(values.opacity);
+                }
+                if state.mask.x {
+                    element = element.left(px(values.x));
+                }
+                if state.mask.y {
+                    element = element.top(px(values.y));
+                }
+                if state.mask.width {
+                    element = element.w(px(values.width));
+                }
+                if state.mask.height {
+                    element = element.h(px(values.height));
+                }
+                let mut element = element.into_any_element();
+                let layout_id = element.request_layout(window, cx);
+                if running {
+                    window.request_animation_frame();
+                }
+                (((layout_id, element), completed), state)
+            },
+        );
+
+        if completed && let Some(on_complete) = self.on_complete.clone() {
+            window.defer(cx, move |window, cx| on_complete(window, cx));
+        }
+        (layout_id, element)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: gpui::Bounds<Pixels>,
+        element: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        element.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: gpui::Bounds<Pixels>,
+        element: &mut Self::RequestLayoutState,
+        _: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        element.paint(window, cx);
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -382,6 +681,64 @@ mod tests {
         assert_ne!(lifecycle.animation_key(), closing_key);
         assert!(!lifecycle.complete_close(closing));
         assert!(lifecycle.complete_open(reopening));
+    }
+
+    #[test]
+    fn adapter_retargets_opacity_and_settles_entry_translation_without_a_jump() {
+        let opening = TransitionDescriptor::from_effects(&[
+            TransitionEffect::SlideY(px(-8.), px(0.)),
+            TransitionEffect::Fade(0., 1.),
+        ]);
+        let closing = TransitionDescriptor::from_effects(&[TransitionEffect::Fade(1., 0.)]);
+        let start = Instant::now();
+        let mut state = MotionElementState::new(opening.initial);
+        let easing = TransitionEasing::Token(MotionEasing::Linear);
+        state.retarget(
+            opening,
+            Duration::from_millis(100),
+            &easing,
+            start,
+            MotionPreference::Full,
+        );
+        let (before_reverse, _, _) = state.sample(start + Duration::from_millis(40));
+
+        let reverse_at = start + Duration::from_millis(40);
+        state.retarget(
+            closing,
+            Duration::from_millis(100),
+            &easing,
+            reverse_at,
+            MotionPreference::Full,
+        );
+        let (after_reverse, _, _) = state.sample(reverse_at);
+        assert!((after_reverse.opacity - before_reverse.opacity).abs() < 1e-5);
+        assert!((after_reverse.y - before_reverse.y).abs() < 1e-5);
+
+        let (finished, running, completed) = state.sample(reverse_at + Duration::from_millis(100));
+        assert_eq!(finished.opacity, 0.);
+        assert_eq!(finished.y, 0.);
+        assert!(!running);
+        assert!(completed);
+    }
+
+    #[test]
+    fn adapter_reduced_motion_completes_at_the_target_once() {
+        let descriptor = TransitionDescriptor::from_effects(&[TransitionEffect::Fade(0., 1.)]);
+        let start = Instant::now();
+        let mut state = MotionElementState::new(descriptor.initial);
+        state.retarget(
+            descriptor,
+            Duration::from_millis(100),
+            &TransitionEasing::Token(MotionEasing::EaseOutCubic),
+            start,
+            MotionPreference::Reduced,
+        );
+
+        let (values, running, completed) = state.sample(start);
+        assert_eq!(values.opacity, 1.);
+        assert!(!running);
+        assert!(completed);
+        assert!(!state.sample(start).2);
     }
 
     #[gpui::test]

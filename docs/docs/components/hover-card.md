@@ -116,8 +116,11 @@ HoverCard::new("custom")
 - `appearance(bool)`
 - all `Styled` builders
 
-Enter motion uses a 100ms fade with an 8px placement-aware translation. Exit uses a 100ms fade
-without translation, matching shadcn's directional-motion contract. GPUI does not currently apply
+Enter motion uses a 100ms, placement-aware `8px -> 0` translation. Exit mirrors it with a
+`0 -> 8px` translation and keeps the content mounted until the final frame. HoverCard does not
+animate opacity. This intentional divergence
+avoids GPUI's per-primitive opacity composition while arbitrary element subtrees cannot be isolated
+into one composited layer. GPUI also does not currently apply
 shadcn's `scale(0.95)` transform because arbitrary element subtrees lack a layout-independent scale
 transform. Opacity is multiplied into individual GPUI paint primitives rather than compositing the
 finished subtree as one isolated layer.

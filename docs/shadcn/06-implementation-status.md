@@ -19,6 +19,7 @@
 | Icon-button names | `Button::aria_label` names icon-only controls without adding visible text; Dialog, Sheet, Notification, Search, and Inspector close buttons use the localized Close label |
 | Focus | Shared focus ring width and offset are Style metrics; Color Theme retains ring color |
 | Motion contract | Shared fast/normal/slow/emphasis/loading durations, semantic enter/exit/move easing, placement offsets, and reduced-motion duration override |
+| Motion runtime | Renderer-independent scalar tween state, current-value retargeting, distance-scaled reversal, stable GPUI element state, and generation-safe deferred completion; HoverCard is the first lifecycle consumer |
 | Overlay lifecycle | Tooltip, Popover, HoverCard, Dropdown/Context Menu, Select, Combobox, Dialog/AlertDialog, Sheet, and Notification use interruptible open/close ownership or an owning lifecycle wrapper |
 | AlertDialog | Uses one semantic content API with default/small layouts, Media, typed Action/Cancel controls, accessible text fallbacks, preset-owned modal geometry, non-dismissible backdrop, and stable 100 ms fade motion |
 | Dialog | Uses typed Button Trigger/Action/Close composition, accessible text slots, responsive preset-aware geometry, semantic overlays, independent Escape/Enter policies, default first-tab-stop focus, cancellation veto, and the retained interruptible desktop motion contract |

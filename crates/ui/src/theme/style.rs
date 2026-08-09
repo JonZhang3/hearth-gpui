@@ -2,6 +2,7 @@ use std::{collections::HashMap, rc::Rc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use gpui::{App, Global, Pixels, Point, SharedString, point, px};
+pub use gpui_component_motion::MotionEasing;
 
 use crate::Size;
 
@@ -178,29 +179,6 @@ pub struct DisclosureMetrics {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ElevationMetrics {
     pub enabled: bool,
-}
-
-/// Named easing curves used by component state transitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotionEasing {
-    Linear,
-    EaseInCubic,
-    EaseOutCubic,
-    EaseInOutCubic,
-}
-
-impl MotionEasing {
-    /// Samples the easing curve while clamping input to a stable `0..=1` range.
-    pub fn sample(self, delta: f32) -> f32 {
-        let delta = delta.clamp(0.0, 1.0);
-        match self {
-            Self::Linear => delta,
-            Self::EaseInCubic => delta.powi(3),
-            Self::EaseOutCubic => 1.0 - (1.0 - delta).powi(3),
-            Self::EaseInOutCubic if delta < 0.5 => 4.0 * delta.powi(3),
-            Self::EaseInOutCubic => 1.0 - (-2.0 * delta + 2.0).powi(3) / 2.0,
-        }
-    }
 }
 
 /// Named motion durations and easing curves used by component transitions.

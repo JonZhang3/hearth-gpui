@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use crate::{
     ActiveTheme as _, ElementExt, StyledExt as _,
-    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
+    animation::{OverlayLifecycle, OverlayPhase, OverlayTransition, Transition},
     theme::Density,
     v_flex,
 };
@@ -278,22 +278,23 @@ impl HoverCard {
         }
     }
 
-    /// Returns shadcn's directional entry translation; exit has no translation.
+    /// Returns mirrored directional translations for enter and exit motion.
     fn motion_translation(
         side: HoverCardSide,
         closing: bool,
     ) -> Option<(Point<Pixels>, Point<Pixels>)> {
-        if closing {
-            return None;
-        }
-
-        let from = match side {
+        let offset = match side {
             HoverCardSide::Top => point(px(0.), px(8.)),
             HoverCardSide::Right => point(px(-8.), px(0.)),
             HoverCardSide::Bottom => point(px(0.), px(-8.)),
             HoverCardSide::Left => point(px(8.), px(0.)),
         };
-        Some((from, point(px(0.), px(0.))))
+        let resting = point(px(0.), px(0.));
+        if closing {
+            Some((resting, offset))
+        } else {
+            Some((offset, resting))
+        }
     }
 }
 
@@ -429,16 +430,18 @@ impl HoverCardState {
         self.set_open(open, true, window, cx);
     }
 
-    /// Applies an internal lifecycle transition and retains content through exit motion.
+    /// Applies an internal lifecycle transition.
+    ///
+    /// Opening and closing remain mounted until their directional translations complete.
     fn set_open(&mut self, open: bool, notify: bool, window: &mut Window, cx: &mut Context<Self>) {
         let transition = if open {
             self.lifecycle.begin_open()
         } else {
             self.lifecycle.begin_close()
         };
-        let Some(transition) = transition else {
+        if transition.is_none() {
             return;
-        };
+        }
 
         if notify {
             if let Some(callback) = self.on_open_change.as_ref() {
@@ -446,22 +449,23 @@ impl HoverCardState {
             }
         }
         cx.notify();
+    }
 
-        let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
-        cx.spawn_in(window, async move |state, cx| {
-            cx.background_executor().timer(duration).await;
-            let _ = state.update(cx, |state, cx| {
-                let completed = if open {
-                    state.lifecycle.complete_open(transition)
-                } else {
-                    state.lifecycle.complete_close(transition)
-                };
-                if completed {
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
+    /// Completes the active enter or exit after its final translation frame is sampled.
+    fn complete_motion(
+        &mut self,
+        opening: bool,
+        transition: OverlayTransition,
+        cx: &mut Context<Self>,
+    ) {
+        let completed = if opening {
+            self.lifecycle.complete_open(transition)
+        } else {
+            self.lifecycle.complete_close(transition)
+        };
+        if completed {
+            cx.notify();
+        }
     }
 
     /// Updates trigger hover state and starts pointer transfer when leaving.
@@ -613,9 +617,9 @@ impl RenderOnce for HoverCard {
         });
 
         let phase = state.read(cx).lifecycle.phase();
-        let animation_key = state.read(cx).lifecycle.animation_key();
-        let mounted = state.read(cx).lifecycle.is_mounted();
         let closing = phase == OverlayPhase::Closing;
+        let active_transition = state.read(cx).lifecycle.active_transition();
+        let mounted = state.read(cx).lifecycle.is_mounted();
         let trigger_bounds = state.read(cx).trigger_bounds;
         let trigger_bounds_captured = state.read(cx).trigger_bounds_captured;
         let focus_handle = state.read(cx).focus_handle.clone();
@@ -732,6 +736,7 @@ impl RenderOnce for HoverCard {
                 this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
             })
             .children(self.children)
+            // Keep the exiting subtree visible while preventing pointer interaction.
             .when(closing, |this| {
                 this.child(div().absolute().top_0().left_0().size_full().occlude())
             })
@@ -753,28 +758,33 @@ impl RenderOnce for HoverCard {
             .child(content);
 
         let motion = cx.theme().style.motion;
-        let translation = Self::motion_translation(self.side, closing);
-        let content = if phase == OverlayPhase::Open {
-            content.into_any_element()
-        } else {
-            Transition::new(motion.fast())
-                .ease_token(if closing {
-                    motion.exit_easing
-                } else {
-                    motion.enter_easing
-                })
-                // shadcn defines a directional slide only for entry. Exit is a
-                // fade plus zoom-out; GPUI omits the unavailable subtree scale.
-                .when_some(translation, |this, (from, to)| {
-                    this.slide_x(from.x, to.x).slide_y(from.y, to.y)
-                })
-                .fade(if closing { 1. } else { 0. }, if closing { 0. } else { 1. })
-                .apply(
-                    content,
-                    ElementId::NamedInteger("hover-card-motion".into(), animation_key),
-                )
-                .into_any_element()
+        let translation = match phase {
+            OverlayPhase::Opening => Self::motion_translation(self.side, false),
+            OverlayPhase::Closing => Self::motion_translation(self.side, true),
+            OverlayPhase::Closed | OverlayPhase::Open => None,
         };
+        let opening = phase == OverlayPhase::Opening;
+        let state_for_completion = state.clone();
+        let content = Transition::new(motion.fast())
+            .ease_token(if closing {
+                motion.exit_easing
+            } else {
+                motion.enter_easing
+            })
+            // Enter and exit use mirrored directional translation. Opacity and
+            // the unavailable subtree scale are intentionally not animated.
+            .when_some(translation, |this, (from, to)| {
+                this.slide_x(from.x, to.x).slide_y(from.y, to.y)
+            })
+            .when_some(active_transition, |this, transition| {
+                this.on_complete(move |_, cx| {
+                    state_for_completion.update(cx, |state, cx| {
+                        state.complete_motion(opening, transition, cx);
+                    });
+                })
+            })
+            .apply(content, "hover-card-motion")
+            .into_any_element();
 
         let (anchor, position) = Self::anchor_and_position(side, align, trigger_bounds);
         let overlay = deferred(
@@ -813,21 +823,40 @@ mod tests {
     }
 
     #[gpui::test]
-    fn reopen_during_hover_card_exit_keeps_latest_generation(cx: &mut TestAppContext) {
+    fn reopening_during_exit_rejects_stale_close_completion(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (state, cx) = cx.add_window_view(|_, cx| {
             HoverCardState::new(false, Duration::ZERO, Duration::ZERO, cx)
         });
 
-        state.update_in(cx, |state, window, cx| {
+        let opening = state.update_in(cx, |state, window, cx| {
             state.set_open(true, false, window, cx);
-            state.set_open(false, false, window, cx);
-            state.set_open(true, false, window, cx);
+            state.lifecycle.active_transition().unwrap()
         });
-        cx.background_executor
-            .advance_clock(Duration::from_millis(150));
-        cx.run_until_parked();
 
+        state.update(cx, |state, cx| {
+            state.complete_motion(true, opening, cx);
+        });
+
+        let (closing, reopening) = state.update_in(cx, |state, window, cx| {
+            state.set_open(false, false, window, cx);
+            let closing = state.lifecycle.active_transition().unwrap();
+            state.set_open(true, false, window, cx);
+            let reopening = state.lifecycle.active_transition().unwrap();
+            (closing, reopening)
+        });
+
+        state.update(cx, |state, cx| {
+            state.complete_motion(false, closing, cx);
+        });
+        assert_eq!(
+            state.read_with(cx, |state, _| state.lifecycle.phase()),
+            OverlayPhase::Opening
+        );
+
+        state.update(cx, |state, cx| {
+            state.complete_motion(true, reopening, cx);
+        });
         assert_eq!(
             state.read_with(cx, |state, _| state.lifecycle.phase()),
             OverlayPhase::Open
@@ -864,7 +893,7 @@ mod tests {
     }
 
     #[test]
-    fn motion_uses_directional_translation_only_on_entry() {
+    fn exit_translation_is_the_inverse_of_entry() {
         assert_eq!(
             HoverCard::motion_translation(HoverCardSide::Bottom, false),
             Some((point(px(0.), px(-8.)), point(px(0.), px(0.))))
@@ -875,7 +904,7 @@ mod tests {
         );
         assert_eq!(
             HoverCard::motion_translation(HoverCardSide::Bottom, true),
-            None
+            Some((point(px(0.), px(0.)), point(px(0.), px(-8.))))
         );
     }
 

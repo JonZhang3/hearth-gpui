@@ -107,6 +107,7 @@ The complete contract is defined in [Style Preset architecture](./05-style-prese
 | [Style Preset architecture](./05-style-presets.md) | Runtime authority, Registry, metrics, preset scope, and selection rules |
 | [Implementation status](./06-implementation-status.md) | Implemented scope, verification evidence, and remaining release checks |
 | [Release evidence](./07-release-evidence.md) | Fixed visual matrix, intentional differences, platform review, and performance evidence |
+| [Motion runtime](./08-motion-runtime.md) | Renderer-independent timing, GPUI adapter, interruption, completion, and adoption contract |
 | [Deferred TODO](./TODO.md) | Explicitly deferred visual parity and GPUI renderer work |
 
 ## Decision rules

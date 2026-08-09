@@ -61,10 +61,14 @@ GPUI is consumed from the pinned Zed Git dependency. Develop this work in an exp
 
 **Status:** Deferred platform capabilities
 
-The aligned HoverCard implements shadcn's 100ms fade and placement-aware 8px entry translation,
-with a fade-only exit. It does not emulate `zoom-in-95` / `zoom-out-95` by changing layout
-dimensions. GPUI needs a layout-independent element-subtree transform before the 0.95 scale can be
-applied without text reflow or geometry jitter.
+HoverCard currently uses mirrored placement-aware translations for enter (`8px -> 0`) and exit
+(`0 -> 8px`) while intentionally omitting opacity changes. Closing remains mounted until the exit
+translation completes. This avoids the
+visible per-primitive alpha composition artifact until GPUI can composite the completed subtree as
+one isolated layer. It does not emulate `zoom-in-95` / `zoom-out-95` by changing layout dimensions.
+GPUI needs a
+layout-independent element-subtree transform before the 0.95 scale can be applied without text
+reflow or geometry jitter.
 
 GPUI also multiplies element opacity into each background, border, shadow, glyph, image, and child
 primitive independently. CSS opacity composites the completed subtree as an isolated layer. A
@@ -76,10 +80,9 @@ currently expose an AccessKit subtree equivalent to `aria-hidden`. HoverCard the
 non-modal, non-focusable preview and its documentation requires essential information to remain
 available outside the preview.
 
-Acceptance requires interruption-safe enter and exit scaling, isolated subtree opacity, correct
-transformed hit testing and clipping, no layout change between animation frames, reduced-motion
-completion at the final state, and a subtree accessibility-hiding primitive that does not suppress
-the trigger.
+Remaining renderer acceptance requires interruption-safe enter and exit scaling, isolated subtree
+opacity, correct transformed hit testing and clipping, no layout change between animation frames,
+and a subtree accessibility-hiding primitive that does not suppress the trigger.
 
 ## Element-level blend modes and Avatar outline parity
 

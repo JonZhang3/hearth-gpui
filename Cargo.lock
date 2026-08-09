@@ -3104,6 +3104,7 @@ dependencies = [
  "gpui",
  "gpui-component-assets",
  "gpui-component-macros",
+ "gpui-component-motion",
  "gpui_macros",
  "gpui_platform",
  "html5ever 0.27.0",
@@ -3196,6 +3197,10 @@ dependencies = [
  "quote",
  "syn 2.0.117",
 ]
+
+[[package]]
+name = "gpui-component-motion"
+version = "0.1.0"
 
 [[package]]
 name = "gpui-component-story"
