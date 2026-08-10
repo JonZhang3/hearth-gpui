@@ -1,8 +1,12 @@
+use std::sync::Arc;
+
+use gpui::Pixels;
 use gpui::{
-    Anchor, App, Context, Edges, ElementId, InteractiveElement as _, IntoElement, ParentElement,
-    RenderOnce, SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
+    Anchor, App, Axis, Context, ElementId, InteractiveElement as _, IntoElement, ParentElement,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Window, div, prelude::FluentBuilder,
 };
-use gpui::{Corners, Pixels};
+use rust_i18n::t;
 
 use crate::{
     Disableable, IconName, Selectable, Sizable, Size, StyledExt as _,
@@ -10,7 +14,15 @@ use crate::{
     tooltip::ComponentTooltip,
 };
 
-use super::{Button, ButtonVariant, ButtonVariants};
+use super::{
+    Button, ButtonVariant, ButtonVariants,
+    button_group::{group_corners, group_edges},
+};
+
+/// Derives a stable menu-trigger identity without colliding across DropdownButton instances.
+fn menu_trigger_id(id: &ElementId) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), "menu-trigger".into())
+}
 
 #[derive(IntoElement)]
 pub struct DropdownButton {
@@ -27,6 +39,8 @@ pub struct DropdownButton {
     radius: Option<Pixels>,
     anchor: Anchor,
     tooltip: ComponentTooltip,
+    aria_label: Option<SharedString>,
+    menu_aria_label: Option<SharedString>,
 }
 
 impl DropdownButton {
@@ -44,12 +58,26 @@ impl DropdownButton {
             radius: None,
             anchor: Anchor::TopRight,
             tooltip: ComponentTooltip::default(),
+            aria_label: None,
+            menu_aria_label: None,
         }
     }
 
     /// Set tooltip text for the dropdown button.
     pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
         self.tooltip.text = Some((tooltip.into(), None));
+        self
+    }
+
+    /// Set the accessible name of the composite button group.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Set the accessible name of the dropdown-menu trigger segment.
+    pub fn menu_aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.menu_aria_label = Some(label.into());
         self
     }
 
@@ -126,28 +154,24 @@ impl Selectable for DropdownButton {
 
 impl RenderOnce for DropdownButton {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let rounded = self.variant.is_ghost() && !self.selected;
+        let menu_trigger_id = menu_trigger_id(&self.id);
+        let menu_aria_label = self
+            .menu_aria_label
+            .unwrap_or_else(|| t!("DropdownButton.more_options").into());
 
         div()
             .id(self.id.clone())
+            .role(Role::Group)
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
             .h_flex()
             .refine_style(&self.style)
             .when_some(self.button, |this, button| {
                 this.child(
                     button
                         .when_some(self.radius, |this, radius| this.rounded(radius))
-                        .border_corners(Corners {
-                            top_left: true,
-                            top_right: rounded,
-                            bottom_left: true,
-                            bottom_right: rounded,
-                        })
-                        .border_edges(Edges {
-                            left: true,
-                            top: true,
-                            right: true,
-                            bottom: true,
-                        })
+                        .border_corners(group_corners(Axis::Horizontal, true, false))
+                        .border_edges(group_edges(Axis::Horizontal, true))
+                        .pressed_offset(false)
                         .selected(self.selected)
                         .disabled(self.disabled)
                         .with_size(self.size)
@@ -155,21 +179,13 @@ impl RenderOnce for DropdownButton {
                 )
                 .when_some(self.menu, |this, menu| {
                     this.child(
-                        Button::new("popup")
+                        Button::new(menu_trigger_id)
                             .icon(IconName::ChevronDown)
+                            .aria_label(menu_aria_label)
                             .when_some(self.radius, |this, radius| this.rounded(radius))
-                            .border_edges(Edges {
-                                left: rounded,
-                                top: true,
-                                right: true,
-                                bottom: true,
-                            })
-                            .border_corners(Corners {
-                                top_left: rounded,
-                                top_right: true,
-                                bottom_left: rounded,
-                                bottom_right: true,
-                            })
+                            .border_corners(group_corners(Axis::Horizontal, false, true))
+                            .border_edges(group_edges(Axis::Horizontal, false))
+                            .pressed_offset(false)
                             .selected(self.selected)
                             .disabled(self.disabled)
                             .with_size(self.size)
@@ -190,6 +206,8 @@ mod tests {
     fn test_dropdown_button_builder(_cx: &mut gpui::TestAppContext) {
         let button = Button::new("inner").label("Action");
         let dropdown = DropdownButton::new("complex-dropdown")
+            .aria_label("Document actions")
+            .menu_aria_label("Open document options")
             .button(button)
             .outline()
             .large()
@@ -206,5 +224,18 @@ mod tests {
         assert_eq!(dropdown.radius, Some(gpui::px(8.)));
         assert!(dropdown.menu.is_some());
         assert_eq!(dropdown.anchor, Anchor::BottomLeft);
+        assert_eq!(dropdown.aria_label, Some("Document actions".into()));
+        assert_eq!(
+            dropdown.menu_aria_label,
+            Some("Open document options".into())
+        );
+    }
+
+    #[test]
+    fn menu_trigger_ids_preserve_parent_identity() {
+        let first: ElementId = ("dropdown", 1_u32).into();
+        let second: ElementId = "dropdown-1".into();
+
+        assert_ne!(menu_trigger_id(&first), menu_trigger_id(&second));
     }
 }

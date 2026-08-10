@@ -18,6 +18,13 @@ Common:
     zh-HK: 通知
     zh-TW: 通知
     it: Notifica
+DropdownButton:
+  more_options:
+    en: More options
+    zh-CN: 更多选项
+    zh-HK: 更多選項
+    zh-TW: 更多選項
+    it: Altre opzioni
 Calendar:
   previous:
     en: Previous month

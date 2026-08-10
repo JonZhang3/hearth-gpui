@@ -330,7 +330,7 @@ impl RenderOnce for ButtonGroup {
     }
 }
 
-fn group_corners(orientation: Axis, first: bool, last: bool) -> Corners<bool> {
+pub(crate) fn group_corners(orientation: Axis, first: bool, last: bool) -> Corners<bool> {
     if orientation == Axis::Vertical {
         Corners {
             top_left: first,
@@ -348,7 +348,7 @@ fn group_corners(orientation: Axis, first: bool, last: bool) -> Corners<bool> {
     }
 }
 
-fn group_edges(orientation: Axis, first: bool) -> Edges<bool> {
+pub(crate) fn group_edges(orientation: Axis, first: bool) -> Edges<bool> {
     if orientation == Axis::Vertical {
         Edges {
             left: true,
