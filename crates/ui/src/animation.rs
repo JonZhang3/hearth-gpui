@@ -5,7 +5,7 @@ use std::{
 
 use gpui::{
     AnyElement, App, Element, ElementId, GlobalElementId, Hsla, InspectorElementId, IntoElement,
-    ParentElement, Pixels, Point, Styled, Window, point, prelude::FluentBuilder, px,
+    ParentElement, Pixels, Point, Styled, Window, point, prelude::FluentBuilder, px, relative,
 };
 use gpui_component_motion::{
     MotionPreference, MotionStatus, MotionValue, TweenSpec, sample_cubic_bezier,
@@ -253,6 +253,7 @@ enum TransitionEffect {
     SlideX(Pixels, Pixels),
     Fade(f32, f32),
     Width(Pixels, Pixels),
+    RelativeWidth(f32, f32),
     Height(Pixels, Pixels),
 }
 
@@ -302,6 +303,15 @@ impl Transition {
         self
     }
 
+    /// Animate width as a fraction of the containing block.
+    pub fn relative_width(mut self, from: f32, to: f32) -> Self {
+        self.effects.push(TransitionEffect::RelativeWidth(
+            from.clamp(0., 1.),
+            to.clamp(0., 1.),
+        ));
+        self
+    }
+
     /// Animate height from `from` to `to`.
     pub fn height(mut self, from: Pixels, to: Pixels) -> Self {
         self.effects.push(TransitionEffect::Height(from, to));
@@ -348,6 +358,7 @@ struct TransitionMask {
     x: bool,
     y: bool,
     width: bool,
+    relative_width: bool,
     height: bool,
 }
 
@@ -392,6 +403,13 @@ impl TransitionDescriptor {
                     descriptor.initial.width = from.as_f32();
                     descriptor.target.width = to.as_f32();
                     descriptor.mask.width = true;
+                    descriptor.mask.relative_width = false;
+                }
+                TransitionEffect::RelativeWidth(from, to) => {
+                    descriptor.initial.width = *from;
+                    descriptor.target.width = *to;
+                    descriptor.mask.width = false;
+                    descriptor.mask.relative_width = true;
                 }
                 TransitionEffect::Height(from, to) => {
                     descriptor.initial.height = from.as_f32();
@@ -453,6 +471,7 @@ impl MotionElementState {
         self.mask.x |= descriptor.mask.x;
         self.mask.y |= descriptor.mask.y;
         self.mask.width = descriptor.mask.width;
+        self.mask.relative_width = descriptor.mask.relative_width;
         self.mask.height = descriptor.mask.height;
 
         let spec = || match easing {
@@ -468,7 +487,7 @@ impl MotionElementState {
             .animate_to(descriptor.target.x, spec(), now, preference);
         self.y
             .animate_to(descriptor.target.y, spec(), now, preference);
-        if descriptor.mask.width {
+        if descriptor.mask.width || descriptor.mask.relative_width {
             self.width
                 .animate_to(descriptor.target.width, spec(), now, preference);
         }
@@ -586,7 +605,9 @@ impl<E: IntoElement + Styled + 'static> Element for MotionElement<E> {
                 if state.mask.y {
                     element = element.top(px(values.y));
                 }
-                if state.mask.width {
+                if state.mask.relative_width {
+                    element = element.w(relative(values.width));
+                } else if state.mask.width {
                     element = element.w(px(values.width));
                 }
                 if state.mask.height {
@@ -739,6 +760,37 @@ mod tests {
         assert!(!running);
         assert!(completed);
         assert!(!state.sample(start).2);
+    }
+
+    #[test]
+    fn relative_width_retargets_from_the_current_sample() {
+        let start = Instant::now();
+        let opening =
+            TransitionDescriptor::from_effects(&[TransitionEffect::RelativeWidth(0.25, 0.75)]);
+        let closing =
+            TransitionDescriptor::from_effects(&[TransitionEffect::RelativeWidth(0.75, 0.1)]);
+        let easing = TransitionEasing::Token(MotionEasing::Linear);
+        let duration = Duration::from_millis(100);
+        let mut state = MotionElementState::new(opening.initial);
+
+        state.retarget(opening, duration, &easing, start, MotionPreference::Full);
+        let reverse_at = start + Duration::from_millis(50);
+        let (before_reverse, _, _) = state.sample(reverse_at);
+        state.retarget(
+            closing,
+            duration,
+            &easing,
+            reverse_at,
+            MotionPreference::Full,
+        );
+        let (after_reverse, _, _) = state.sample(reverse_at);
+
+        assert!(state.mask.relative_width);
+        assert!(!state.mask.width);
+        assert!((after_reverse.width - before_reverse.width).abs() < 1e-5);
+        let (finished, running, _) = state.sample(reverse_at + duration);
+        assert_eq!(finished.width, 0.1);
+        assert!(!running);
     }
 
     #[gpui::test]
