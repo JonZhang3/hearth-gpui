@@ -1,4 +1,4 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -16,7 +16,7 @@ use crate::{
 
 use super::input::{
     InputMotionKind, InputMotionState, InputPaintState, input_child_id, input_focus_visible,
-    input_metrics,
+    input_metrics, input_motion_timing, input_uses_semantic_color_motion,
 };
 use super::{Input, InputState};
 
@@ -384,7 +384,7 @@ impl RenderOnce for InputGroup {
             .as_ref()
             .is_some_and(|state| state.focus_handle(cx).is_focused(window))
             && !self.disabled;
-        let focus_visible = input_focus_visible(focused, window.last_input_was_keyboard());
+        let focus_visible = input_focus_visible(focused);
         let multi_line = state
             .as_ref()
             .is_some_and(|state| state.read(cx).is_multi_line());
@@ -416,7 +416,7 @@ impl RenderOnce for InputGroup {
                 ring_color.opacity(0.)
             },
         };
-        let has_custom_paint = self.style.background.is_some() || self.style.border_color.is_some();
+        let uses_semantic_color_motion = input_uses_semantic_color_motion(&self.style);
 
         let mut inline_start = Vec::new();
         let mut inline_end = Vec::new();
@@ -443,19 +443,14 @@ impl RenderOnce for InputGroup {
             window.use_keyed_state(input_child_id(&root_id, "motion-state"), cx, |_, _| {
                 InputMotionState::new(paint)
             });
-        let motion_duration = if cx.reduce_motion() {
-            Duration::ZERO
-        } else {
-            cx.theme().style.motion.normal()
-        };
-        let easing = cx.theme().style.motion.move_easing;
+        let (motion_duration, easing) = input_motion_timing(ring_visible, cx);
         let transition = motion_state.update(cx, |motion, _| {
             motion.transition_to(
                 paint,
                 Instant::now(),
                 motion_duration,
                 easing,
-                input_metrics.motion_kind,
+                InputMotionKind::ColorsAndShadow,
             )
         });
 
@@ -480,22 +475,23 @@ impl RenderOnce for InputGroup {
             })
             .rounded(group_radius)
             .border_1()
-            .border_color(paint.border)
-            .bg(paint.background)
+            .border_color(if uses_semantic_color_motion {
+                cx.theme().transparent
+            } else {
+                paint.border
+            })
+            .bg(if uses_semantic_color_motion {
+                cx.theme().transparent
+            } else {
+                paint.background
+            })
             .when(input_metrics.shadow, |this| this.shadow_xs())
             .when(self.disabled && metrics.compact_disabled_opacity, |this| {
                 this.opacity(0.5)
             })
             .refine_style(&self.style);
 
-        if let Some(transition) = transition.filter(|transition| {
-            !has_custom_paint
-                && input_metrics.motion_kind == InputMotionKind::Colors
-                && (transition.from.background != transition.to.background
-                    || transition.from.border != transition.to.border)
-        }) {
-            let from = transition.from;
-            let to = transition.to;
+        if uses_semantic_color_motion {
             let mut surface_style = StyleRefinement::default();
             surface_style.corner_radii = element.style().corner_radii.clone();
             surface_style.border_widths = element.style().border_widths.clone();
@@ -505,36 +501,53 @@ impl RenderOnce for InputGroup {
                 .right_0()
                 .bottom_0()
                 .left_0()
-                .bg(from.background)
-                .border_color(from.border)
+                .bg(paint.background)
+                .border_color(paint.border)
                 .refine_style(&surface_style)
-                .with_animation(
-                    input_child_id(&root_id, format!("colors-{}", transition.epoch)),
-                    Animation::new(transition.duration)
-                        .with_easing(move |delta| easing.sample(delta)),
-                    move |this, delta| {
-                        this.bg(Lerp::lerp(&from.background, &to.background, delta))
-                            .border_color(Lerp::lerp(&from.border, &to.border, delta))
-                    },
-                );
+                .into_any_element();
+            let surface = if let Some(transition) = transition.filter(|transition| {
+                transition.from.background != transition.to.background
+                    || transition.from.border != transition.to.border
+            }) {
+                let from = transition.from;
+                let to = transition.to;
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .bg(from.background)
+                    .border_color(from.border)
+                    .refine_style(&surface_style)
+                    .with_animation(
+                        input_child_id(&root_id, format!("surface-{}", transition.epoch)),
+                        Animation::new(transition.duration)
+                            .with_easing(move |delta| easing.sample(delta)),
+                        move |this, delta| {
+                            this.bg(Lerp::lerp(&from.background, &to.background, delta))
+                                .border_color(Lerp::lerp(&from.border, &to.border, delta))
+                        },
+                    )
+                    .into_any_element()
+            } else {
+                surface
+            };
             element = element.child(surface);
         }
 
-        let ring_transition = transition.filter(|transition| {
-            input_metrics.motion_kind == InputMotionKind::Shadow
-                && transition.from.ring != transition.to.ring
-        });
+        let ring_transition =
+            transition.filter(|transition| transition.from.ring != transition.to.ring);
         if ring_visible || ring_transition.is_some() {
             let ring_width = cx.theme().style.focus.ring_width;
-            let ring_inset = ring_width + cx.theme().style.focus.ring_offset;
-            let (border_widths, ring_style) =
-                Input::outer_ring_geometry(element.style(), ring_width, window);
+            let ring_outset = ring_width + cx.theme().style.focus.ring_offset;
+            let ring_style = Input::outer_ring_geometry(element.style(), ring_outset, window);
             let ring = div()
                 .absolute()
-                .top(-(ring_inset + border_widths.top))
-                .right(-(ring_inset + border_widths.right))
-                .bottom(-(ring_inset + border_widths.bottom))
-                .left(-(ring_inset + border_widths.left))
+                .top(-ring_outset)
+                .right(-ring_outset)
+                .bottom(-ring_outset)
+                .left(-ring_outset)
                 .border(ring_width)
                 .border_color(paint.ring)
                 .refine_style(&ring_style);

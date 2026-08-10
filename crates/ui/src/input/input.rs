@@ -44,6 +44,7 @@ pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
 pub(super) enum InputMotionKind {
     Colors,
     Shadow,
+    ColorsAndShadow,
 }
 
 /// Input-specific presentation derived from semantic Style Preset values.
@@ -233,12 +234,20 @@ fn interpolate_input_paint(
             border: to.border,
             ring: Lerp::lerp(&from.ring, &to.ring, delta),
         },
+        InputMotionKind::ColorsAndShadow => InputPaintState {
+            background: Lerp::lerp(&from.background, &to.background, delta),
+            border: Lerp::lerp(&from.border, &to.border, delta),
+            ring: Lerp::lerp(&from.ring, &to.ring, delta),
+        },
     }
 }
 
-/// Mirrors the browser `:focus-visible` policy used by shadcn Input.
-pub(super) fn input_focus_visible(focused: bool, last_input_was_keyboard: bool) -> bool {
-    focused && last_input_was_keyboard
+/// Keeps the active editing surface visible regardless of how it received focus.
+///
+/// Text-entry controls require keyboard input after pointer focus, so they retain
+/// their focus treatment instead of using the keyboard-only policy of buttons.
+pub(super) fn input_focus_visible(focused: bool) -> bool {
+    focused
 }
 
 /// Returns whether the preset may paint its semantic color-transition surface.
@@ -246,8 +255,23 @@ pub(super) fn input_focus_visible(focused: bool, last_input_was_keyboard: bool) 
 /// Caller-provided paint values have higher priority than preset motion. GPUI backgrounds may be
 /// arbitrary fills, so they cannot be safely interpolated as semantic solid colors. Disabling the
 /// entire color surface also prevents an animated background child from covering a custom border.
-fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
+pub(super) fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
     style.background.is_none() && style.border_color.is_none()
+}
+
+/// Resolves the shared Input-family feedback timing for the target focus state.
+pub(super) fn input_motion_timing(ring_visible: bool, cx: &App) -> (Duration, MotionEasing) {
+    let duration = if cx.reduce_motion() {
+        Duration::ZERO
+    } else {
+        cx.theme().style.motion.fast()
+    };
+    let easing = if ring_visible {
+        cx.theme().style.motion.enter_easing
+    } else {
+        cx.theme().style.motion.exit_easing
+    };
+    (duration, easing)
 }
 
 /// Derives an internal Input element ID from the stable state-backed root ID.
@@ -277,6 +301,11 @@ pub struct Input {
     role: Option<Role>,
     aria_label: Option<SharedString>,
     aria_description: Option<SharedString>,
+    aria_numeric_value: Option<f64>,
+    aria_numeric_value_step: Option<f64>,
+    aria_min_numeric_value: Option<f64>,
+    aria_max_numeric_value: Option<f64>,
+    numeric_step_actions: bool,
 
     /// An optional context menu builder to allow a custom context menu on the input.
     ///
@@ -314,6 +343,11 @@ impl Input {
             role: None,
             aria_label: None,
             aria_description: None,
+            aria_numeric_value: None,
+            aria_numeric_value_step: None,
+            aria_min_numeric_value: None,
+            aria_max_numeric_value: None,
+            numeric_step_actions: false,
             context_menu_builder: None,
         }
     }
@@ -411,6 +445,23 @@ impl Input {
     /// Sets supporting text announced for the input.
     pub fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
         self.aria_description = Some(description.into());
+        self
+    }
+
+    /// Configures numeric accessibility metadata for a typed input-family composite.
+    pub(super) fn numeric_accessibility(
+        mut self,
+        value: Option<f64>,
+        step: Option<f64>,
+        min: Option<f64>,
+        max: Option<f64>,
+        step_actions: bool,
+    ) -> Self {
+        self.aria_numeric_value = value;
+        self.aria_numeric_value_step = step;
+        self.aria_min_numeric_value = min;
+        self.aria_max_numeric_value = max;
+        self.numeric_step_actions = step_actions;
         self
     }
 
@@ -586,35 +637,17 @@ impl Input {
         cx.theme().input.opacity(alpha)
     }
 
-    /// Resolves border widths and expanded corner radii for a layout-neutral outer ring.
+    /// Resolves expanded corner radii for a layout-neutral outer ring.
+    ///
+    /// The ring is positioned outside the control by `ring_outset`. Its geometry
+    /// must not include the control's border width, otherwise a visible gap is
+    /// introduced even when the semantic ring offset is zero.
     pub(super) fn outer_ring_geometry(
         style: &StyleRefinement,
-        ring_width: Pixels,
+        ring_outset: Pixels,
         window: &Window,
-    ) -> (Edges<Pixels>, StyleRefinement) {
+    ) -> StyleRefinement {
         let rem_size = window.rem_size();
-        let border_widths = Edges::<Pixels> {
-            top: style
-                .border_widths
-                .top
-                .map(|value| value.to_pixels(rem_size))
-                .unwrap_or_default(),
-            right: style
-                .border_widths
-                .right
-                .map(|value| value.to_pixels(rem_size))
-                .unwrap_or_default(),
-            bottom: style
-                .border_widths
-                .bottom
-                .map(|value| value.to_pixels(rem_size))
-                .unwrap_or_default(),
-            left: style
-                .border_widths
-                .left
-                .map(|value| value.to_pixels(rem_size))
-                .unwrap_or_default(),
-        };
         let radii = Corners::<Pixels> {
             top_left: style
                 .corner_radii
@@ -637,14 +670,14 @@ impl Input {
                 .map(|value| value.to_pixels(rem_size))
                 .unwrap_or_default(),
         }
-        .map(|radius| *radius + ring_width);
+        .map(|radius| *radius + ring_outset);
 
         let mut ring_style = StyleRefinement::default();
         ring_style.corner_radii.top_left = Some(radii.top_left.into());
         ring_style.corner_radii.top_right = Some(radii.top_right.into());
         ring_style.corner_radii.bottom_right = Some(radii.bottom_right.into());
         ring_style.corner_radii.bottom_left = Some(radii.bottom_left.into());
-        (border_widths, ring_style)
+        ring_style
     }
 
     /// This method must after the refine_style.
@@ -728,7 +761,7 @@ impl RenderOnce for Input {
             && Self::exposes_accessibility_value(state.masked, content_type))
         .then(|| state.text.to_string());
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
-        let focus_visible = input_focus_visible(focused, window.last_input_was_keyboard());
+        let focus_visible = input_focus_visible(focused);
         if focused {
             sync_native_content_type(window, content_type, state.disabled);
         }
@@ -788,11 +821,24 @@ impl RenderOnce for Input {
         let bordered = self.bordered;
         let size = self.size;
         let input_state = self.state.clone();
+        let numeric_step_actions = self.numeric_step_actions;
 
         let mut element = div()
             .id(root_id.clone())
             .role(accessibility_role)
             .when_some(accessibility_value, |this, value| this.aria_value(value))
+            .when_some(self.aria_numeric_value, |this, value| {
+                this.aria_numeric_value(value)
+            })
+            .when_some(self.aria_numeric_value_step, |this, step| {
+                this.aria_numeric_value_step(step)
+            })
+            .when_some(self.aria_min_numeric_value, |this, min| {
+                this.aria_min_numeric_value(min)
+            })
+            .when_some(self.aria_max_numeric_value, |this, max| {
+                this.aria_max_numeric_value(max)
+            })
             .when_some(self.aria_label, |this, label| this.aria_label(label))
             .when_some(self.aria_description, |this, description| {
                 this.aria_description(description)
@@ -806,6 +852,30 @@ impl RenderOnce for Input {
                     Self::handle_accessibility_set_value(&accessibility_state, data, window, cx);
                 })
             })
+            .when(
+                numeric_step_actions && !state.disabled && !state.read_only,
+                |this| {
+                    let increment_state = self.state.clone();
+                    let decrement_state = self.state.clone();
+                    this.on_a11y_action(AccessibleAction::Increment, move |_, window, cx| {
+                        increment_state.update(cx, |state, cx| {
+                            state.on_number_input_step(super::StepAction::Increment, window, cx);
+                        });
+                    })
+                    .on_a11y_action(
+                        AccessibleAction::Decrement,
+                        move |_, window, cx| {
+                            decrement_state.update(cx, |state, cx| {
+                                state.on_number_input_step(
+                                    super::StepAction::Decrement,
+                                    window,
+                                    cx,
+                                );
+                            });
+                        },
+                    )
+                },
+            )
             .when(!state.disabled, |this| {
                 this.when(!state.read_only, |this| {
                     this.on_action(window.listener_for(&self.state, InputState::backspace))
@@ -910,10 +980,21 @@ impl RenderOnce for Input {
                     .when_some(self.height, |this, height| this.h(height))
             })
             .when(appearance, |this| {
-                this.bg(paint.background)
-                    .rounded(metrics.radius)
-                    .when(metrics.shadow, |this| this.shadow_xs())
-                    .when(bordered, |this| this.border_color(paint.border).border_1())
+                this.bg(if uses_semantic_color_motion {
+                    cx.theme().transparent
+                } else {
+                    paint.background
+                })
+                .rounded(metrics.radius)
+                .when(metrics.shadow, |this| this.shadow_xs())
+                .when(bordered, |this| {
+                    this.border_color(if uses_semantic_color_motion {
+                        cx.theme().transparent
+                    } else {
+                        paint.border
+                    })
+                    .border_1()
+                })
             })
             .items_center()
             .gap(control_metrics.gap)
@@ -922,33 +1003,18 @@ impl RenderOnce for Input {
         let motion_key = input_child_id(&root_id, "motion-state");
         let motion_state =
             window.use_keyed_state(motion_key, cx, |_, _| InputMotionState::new(paint));
-        let motion_duration = if cx.reduce_motion() {
-            Duration::ZERO
-        } else {
-            cx.theme().style.motion.normal()
-        };
-        let motion_easing = cx.theme().style.motion.move_easing;
+        let (motion_duration, motion_easing) = input_motion_timing(ring_visible, cx);
         let transition = motion_state.update(cx, |state, _| {
             state.transition_to(
                 paint,
                 Instant::now(),
                 motion_duration,
                 motion_easing,
-                metrics.motion_kind,
+                InputMotionKind::ColorsAndShadow,
             )
         });
 
-        let color_transition = transition.filter(|transition| {
-            appearance
-                && uses_semantic_color_motion
-                && metrics.motion_kind == InputMotionKind::Colors
-                && (transition.from.background != transition.to.background
-                    || transition.from.border != transition.to.border)
-        });
-        if let Some(transition) = color_transition {
-            let from = transition.from;
-            let to = transition.to;
-            let easing = cx.theme().style.motion.move_easing;
+        if appearance && uses_semantic_color_motion {
             let mut surface_style = StyleRefinement::default();
             surface_style.corner_radii = element.style().corner_radii.clone();
             surface_style.border_widths = element.style().border_widths.clone();
@@ -958,47 +1024,63 @@ impl RenderOnce for Input {
                 .right_0()
                 .bottom_0()
                 .left_0()
-                .bg(from.background)
-                .border_color(from.border)
+                .bg(paint.background)
+                .border_color(paint.border)
                 .refine_style(&surface_style)
-                .with_animation(
-                    input_child_id(&root_id, format!("colors-{}", transition.epoch)),
-                    Animation::new(transition.duration)
-                        .with_easing(move |delta| easing.sample(delta)),
-                    move |this, delta| {
-                        this.bg(Lerp::lerp(&from.background, &to.background, delta))
-                            .border_color(Lerp::lerp(&from.border, &to.border, delta))
-                    },
-                );
+                .into_any_element();
+            let surface = if let Some(transition) = transition.filter(|transition| {
+                transition.from.background != transition.to.background
+                    || transition.from.border != transition.to.border
+            }) {
+                let from = transition.from;
+                let to = transition.to;
+                div()
+                    .absolute()
+                    .top_0()
+                    .right_0()
+                    .bottom_0()
+                    .left_0()
+                    .bg(from.background)
+                    .border_color(from.border)
+                    .refine_style(&surface_style)
+                    .with_animation(
+                        input_child_id(&root_id, format!("surface-{}", transition.epoch)),
+                        Animation::new(transition.duration)
+                            .with_easing(move |delta| motion_easing.sample(delta)),
+                        move |this, delta| {
+                            this.bg(Lerp::lerp(&from.background, &to.background, delta))
+                                .border_color(Lerp::lerp(&from.border, &to.border, delta))
+                        },
+                    )
+                    .into_any_element()
+            } else {
+                surface
+            };
             element = element.child(surface);
         }
 
-        let ring_transition = transition.filter(|transition| {
-            metrics.motion_kind == InputMotionKind::Shadow
-                && transition.from.ring != transition.to.ring
-        });
+        let ring_transition =
+            transition.filter(|transition| transition.from.ring != transition.to.ring);
         if appearance && bordered && (ring_visible || ring_transition.is_some()) {
             let ring_width = cx.theme().style.focus.ring_width;
-            let ring_inset = ring_width + cx.theme().style.focus.ring_offset;
-            let (border_widths, ring_style) =
-                Self::outer_ring_geometry(element.style(), ring_width, window);
+            let ring_outset = ring_width + cx.theme().style.focus.ring_offset;
+            let ring_style = Self::outer_ring_geometry(element.style(), ring_outset, window);
             let ring = div()
                 .absolute()
-                .top(-(ring_inset + border_widths.top))
-                .right(-(ring_inset + border_widths.right))
-                .bottom(-(ring_inset + border_widths.bottom))
-                .left(-(ring_inset + border_widths.left))
+                .top(-ring_outset)
+                .right(-ring_outset)
+                .bottom(-ring_outset)
+                .left(-ring_outset)
                 .border(ring_width)
                 .border_color(paint.ring)
                 .refine_style(&ring_style);
             let ring = if let Some(transition) = ring_transition {
                 let from = transition.from;
                 let to = transition.to;
-                let easing = cx.theme().style.motion.move_easing;
                 ring.with_animation(
                     input_child_id(&root_id, format!("ring-{}", transition.epoch)),
                     Animation::new(transition.duration)
-                        .with_easing(move |delta| easing.sample(delta)),
+                        .with_easing(move |delta| motion_easing.sample(delta)),
                     move |this, delta| this.border_color(Lerp::lerp(&from.ring, &to.ring, delta)),
                 )
                 .into_any_element()
@@ -1232,6 +1314,64 @@ mod tests {
         assert_eq!(state.read_with(cx, |state, _| state.value()), "updated");
     }
 
+    #[gpui::test]
+    fn numeric_input_exposes_spin_button_metadata(cx: &mut gpui::TestAppContext) {
+        use crate::ElementExt as _;
+        use gpui::{AppContext as _, Element as _, IntoElement as _, Render};
+        use std::sync::{Arc, Mutex};
+
+        type NumericMetadata = Option<(Option<f64>, Option<f64>, Option<f64>, Option<f64>, bool)>;
+
+        struct NumericA11yProbe {
+            state: Entity<InputState>,
+            emitted: Arc<Mutex<NumericMetadata>>,
+        }
+
+        impl Render for NumericA11yProbe {
+            fn render(
+                &mut self,
+                _window: &mut Window,
+                _cx: &mut gpui::Context<Self>,
+            ) -> impl IntoElement {
+                let state = self.state.clone();
+                let emitted = self.emitted.clone();
+                div().on_prepaint(move |_, window, cx| {
+                    let input = Input::new(&state)
+                        .role(Role::SpinButton)
+                        .numeric_accessibility(Some(5.), Some(0.5), Some(0.), Some(10.), true)
+                        .render(window, cx)
+                        .into_element();
+                    let mut node = gpui::accesskit::Node::new(Role::SpinButton);
+                    input.write_a11y_info(&mut node);
+                    *emitted.lock().unwrap() = Some((
+                        node.numeric_value(),
+                        node.numeric_value_step(),
+                        node.min_numeric_value(),
+                        node.max_numeric_value(),
+                        node.supports_action(AccessibleAction::Increment)
+                            && node.supports_action(AccessibleAction::Decrement),
+                    ));
+                })
+            }
+        }
+
+        cx.update(crate::init);
+        let emitted = Arc::new(Mutex::new(None));
+        let captured = emitted.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| NumericA11yProbe {
+            state: cx.new(|cx| InputState::new(window, cx).default_value("5")),
+            emitted,
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        assert_eq!(
+            *captured.lock().unwrap(),
+            Some((Some(5.), Some(0.5), Some(0.), Some(10.), true))
+        );
+    }
+
     #[test]
     fn accessibility_value_is_hidden_for_secret_inputs() {
         assert!(Input::exposes_accessibility_value(false, None));
@@ -1310,6 +1450,29 @@ mod tests {
         assert_eq!(transition.to, target);
         assert_eq!(transition.duration, duration);
         assert_eq!(transition.epoch, 1);
+    }
+
+    #[test]
+    fn combined_input_motion_interpolates_surface_and_ring_together() {
+        let from = InputPaintState {
+            background: Hsla::white(),
+            border: Hsla::black(),
+            ring: Hsla::transparent_black(),
+        };
+        let to = InputPaintState {
+            background: Hsla::black(),
+            border: Hsla::red(),
+            ring: Hsla::red(),
+        };
+
+        assert_eq!(
+            interpolate_input_paint(from, to, 0.5, InputMotionKind::ColorsAndShadow),
+            InputPaintState {
+                background: Lerp::lerp(&from.background, &to.background, 0.5),
+                border: Lerp::lerp(&from.border, &to.border, 0.5),
+                ring: Lerp::lerp(&from.ring, &to.ring, 0.5),
+            }
+        );
     }
 
     #[test]
@@ -1405,11 +1568,9 @@ mod tests {
     }
 
     #[test]
-    fn input_focus_ring_uses_focus_visible_semantics() {
-        assert!(!input_focus_visible(false, false));
-        assert!(!input_focus_visible(false, true));
-        assert!(!input_focus_visible(true, false));
-        assert!(input_focus_visible(true, true));
+    fn input_focus_ring_tracks_editing_focus() {
+        assert!(!input_focus_visible(false));
+        assert!(input_focus_visible(true));
     }
 
     #[test]

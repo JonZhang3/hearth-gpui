@@ -148,13 +148,35 @@ NumberInput::new(&input)
 NumberInput::new(&input).disabled(true)
 ```
 
+### 只读与无效状态
+
+只读状态仍允许聚焦、选择和复制，但禁止编辑及数值步进。无效状态会作用于
+NumberInput 的完整复合表面。
+
+```rust
+NumberInput::new(&input).read_only(true)
+NumberInput::new(&input).invalid(true)
+```
+
+### 无障碍
+
+没有关联可见 Label 时，应提供无障碍名称。获得焦点的输入节点会暴露
+SpinButton 的数值、范围、固定步长以及递增和递减操作；格式化数值使用去除
+掩码后的真实数值。
+
+```rust
+NumberInput::new(&input)
+    .aria_label("数量")
+    .aria_description("使用方向键或步进按钮调整数值")
+```
+
 ### 关闭默认外观
 
 ```rust
 div()
     .w_full()
     .bg(cx.theme().secondary)
-    .rounded(cx.theme().radius)
+    .rounded(cx.theme().style.radii.md)
     .child(NumberInput::new(&input).appearance(false))
 ```
 
@@ -214,12 +236,15 @@ NumberInput::decrement(&number_input, window, cx);
 | 方法 | 说明 |
 | ------------------------------ | ------------------------------------------ |
 | `new(state)` | 使用 `InputState` 创建数值输入组件 |
-| `placeholder(str)` | 设置占位文案 |
 | `size(size)` | 设置尺寸 |
 | `prefix(el)` | 添加前缀元素 |
 | `suffix(el)` | 添加后缀元素 |
 | `appearance(bool)` | 开启或关闭默认样式 |
 | `disabled(bool)` | 设置禁用状态 |
+| `read_only(bool)` | 保留聚焦与复制，同时禁止编辑和步进 |
+| `invalid(bool)` | 设置无效状态的视觉与语义 |
+| `aria_label(str)` | 设置无障碍名称 |
+| `aria_description(str)` | 设置无障碍描述 |
 | `increment(state, window, cx)` | 以代码方式递增 |
 | `decrement(state, window, cx)` | 以代码方式递减 |
 

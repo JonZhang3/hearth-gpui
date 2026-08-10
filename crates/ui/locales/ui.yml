@@ -357,6 +357,18 @@ List:
     zh-TW: 搜尋...
     it: Ricerca...
 Input:
+  Decrease Value:
+    en: Decrease value
+    zh-CN: 减小数值
+    zh-HK: 減小數值
+    zh-TW: 減小數值
+    it: Diminuisci valore
+  Increase Value:
+    en: Increase value
+    zh-CN: 增大数值
+    zh-HK: 增大數值
+    zh-TW: 增大數值
+    it: Aumenta valore
   Show Password:
     en: Show password
     zh-CN: 显示密码

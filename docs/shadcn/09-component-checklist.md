@@ -23,7 +23,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Switch (`ea447322`)
 - [x] Input and TextArea modes (`75b0f1bc`)
 - [x] InputGroup (`09d3799a`)
-- [ ] NumberInput
+- [x] NumberInput — GPUI-native optimization and Style Preset integration
 - [ ] OtpInput
 - [ ] Select
 - [ ] Combobox

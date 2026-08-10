@@ -98,6 +98,7 @@ pub struct Button {
     disabled: bool,
     pub(crate) active: bool,
     pressed: Option<bool>,
+    pressed_offset: bool,
     variant: ButtonVariant,
     rounding: ButtonRounding,
     border_corners: Corners<bool>,
@@ -141,6 +142,7 @@ impl Button {
             disabled: false,
             active: false,
             pressed: None,
+            pressed_offset: true,
             variant: ButtonVariant::default(),
             rounding: ButtonRounding::Preset,
             border_corners: Corners {
@@ -259,6 +261,15 @@ impl Button {
     pub fn pressed(mut self, pressed: bool) -> Self {
         self.pressed = Some(pressed);
         self.active = pressed;
+        self
+    }
+
+    /// Controls the transient one-pixel pressed displacement.
+    ///
+    /// Compound controls disable this so an embedded button cannot move beyond
+    /// the shared surface while the pointer is held down.
+    pub(crate) fn pressed_offset(mut self, enabled: bool) -> Self {
+        self.pressed_offset = enabled;
         self
     }
 
@@ -407,6 +418,7 @@ impl RenderOnce for Button {
         let clickable = self.clickable();
         let is_disabled = self.disabled;
         let hoverable = self.hoverable();
+        let pressed_offset = self.pressed_offset;
         let normal_style = style.normal(cx);
         let control_metrics = cx.theme().style.controls.for_size(self.size);
         let icon_size = Size::Size(self.icon_size.unwrap_or(control_metrics.icon_size));
@@ -526,11 +538,15 @@ impl RenderOnce for Button {
                     })
                     .active(|this| {
                         let active_style = style.active(cx);
-                        this.bg(active_style.bg)
+                        let this = this
+                            .bg(active_style.bg)
                             .border_color(active_style.border)
-                            .text_color(active_style.fg)
-                            .relative()
-                            .top(px(1.))
+                            .text_color(active_style.fg);
+                        if pressed_offset {
+                            this.relative().top(px(1.))
+                        } else {
+                            this
+                        }
                     })
             })
             .when(self.disabled, |this| {
@@ -825,6 +841,10 @@ mod tests {
         assert!(button.icon.is_some());
         assert!(button.trailing_icon.is_some());
         assert!(matches!(button.rounding, ButtonRounding::Full));
+        assert!(button.pressed_offset);
+
+        let compound_button = Button::new("compound").pressed_offset(false);
+        assert!(!compound_button.pressed_offset);
     }
 
     #[gpui::test]

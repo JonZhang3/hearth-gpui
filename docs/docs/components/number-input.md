@@ -171,6 +171,29 @@ NumberInput::new(&input)
 NumberInput::new(&input).disabled(true)
 ```
 
+### Read-only and Invalid States
+
+Read-only inputs retain focus, selection, and copy behavior while text editing
+and numeric stepping are disabled. Invalid styling is applied to the complete
+compound surface.
+
+```rust
+NumberInput::new(&input).read_only(true)
+NumberInput::new(&input).invalid(true)
+```
+
+### Accessibility
+
+Set an accessible name whenever no visible label is associated with the input.
+The focused input exposes SpinButton value, range, fixed step, and increment or
+decrement actions. Formatted values use the unmasked numeric value.
+
+```rust
+NumberInput::new(&input)
+    .aria_label("Quantity")
+    .aria_description("Use the arrow keys or step buttons to change it")
+```
+
 ### Without Default Styling
 
 ```rust
@@ -178,7 +201,7 @@ NumberInput::new(&input).disabled(true)
 div()
     .w_full()
     .bg(cx.theme().secondary)
-    .rounded(cx.theme().radius)
+    .rounded(cx.theme().style.radii.md)
     .child(NumberInput::new(&input).appearance(false))
 ```
 
@@ -245,12 +268,15 @@ NumberInput::decrement(&number_input, window, cx);
 | Method                         | Description                                |
 | ------------------------------ | ------------------------------------------ |
 | `new(state)`                   | Create number input with InputState entity |
-| `placeholder(str)`             | Set placeholder text                       |
 | `size(size)`                   | Set input size (small, medium, large)      |
 | `prefix(el)`                   | Add prefix element                         |
 | `suffix(el)`                   | Add suffix element                         |
 | `appearance(bool)`             | Enable/disable default styling             |
 | `disabled(bool)`               | Set disabled state                         |
+| `read_only(bool)`              | Preserve focus and copy while preventing edits and stepping |
+| `invalid(bool)`                | Set invalid presentation and semantics     |
+| `aria_label(str)`              | Set the accessible name                    |
+| `aria_description(str)`        | Set the accessible description             |
 | `increment(state, window, cx)` | Increment value programmatically           |
 | `decrement(state, window, cx)` | Decrement value programmatically           |
 
