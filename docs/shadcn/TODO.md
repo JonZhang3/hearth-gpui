@@ -43,6 +43,25 @@ Do not broaden the root to arbitrary `AnyElement` controls until GPUI components
 
 `InlineStart` and `InlineEnd` currently resolve to left and right because GPUI Component has no shared logical layout-direction contract. Revisit their physical placement after the repository defines inherited LTR/RTL direction for layout, pointer hit regions, keyboard navigation, and accessibility ordering. Acceptance requires mirrored inline geometry without changing block placement or caller APIs.
 
+## Select scale and isolated-opacity parity
+
+**Status:** Renderer support deferred; interruptible fade and directional translation implemented
+
+The pinned React Aria and Popper Select content uses a 100 ms fade, `0.95 -> 1` enter scale,
+`1 -> 0.95` exit scale, and an 8 px placement-aware translation. Select implements the fade,
+bottom-placement translation, exit retention, rapid reversal, and reduced-motion final state through
+the shared motion runtime.
+
+GPUI cannot yet apply a layout-independent scale to the complete Select subtree. Changing popup
+layout dimensions would reflow labels, alter virtual-list measurement, and move the resolved anchor,
+so it is not an acceptable substitute. GPUI opacity is also applied to individual primitives rather
+than one isolated composited popup layer; the current fade is the closest semantic equivalent but
+overlapping border, shadow, glyph, and background pixels can differ during intermediate frames.
+
+Reuse the shared compositing work described for Tooltip and HoverCard. Acceptance requires stable
+virtual-list geometry, transformed hit testing and clipping, placement-aware transform origins,
+interruption-safe fade and scale, and equivalent Metal, WGPU, Direct3D, Web, and headless output.
+
 ## Element-level backdrop filters for Dialog overlays
 
 **Status:** Renderer support deferred; semantic overlay fallback implemented

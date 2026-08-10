@@ -41,7 +41,7 @@ pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
 
 /// The properties animated by a Style Preset's Input transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum InputMotionKind {
+pub(crate) enum InputMotionKind {
     Colors,
     Shadow,
     ColorsAndShadow,
@@ -49,18 +49,18 @@ pub(super) enum InputMotionKind {
 
 /// Input-specific presentation derived from semantic Style Preset values.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct InputMetrics {
-    pub(super) radius: Pixels,
-    pub(super) shadow: bool,
-    pub(super) motion_kind: InputMotionKind,
-    pub(super) light_background_alpha: f32,
-    pub(super) dark_background_alpha: f32,
-    pub(super) disabled_light_background_alpha: f32,
-    pub(super) disabled_dark_background_alpha: f32,
+pub(crate) struct InputMetrics {
+    pub(crate) radius: Pixels,
+    pub(crate) shadow: bool,
+    pub(crate) motion_kind: InputMotionKind,
+    pub(crate) light_background_alpha: f32,
+    pub(crate) dark_background_alpha: f32,
+    pub(crate) disabled_light_background_alpha: f32,
+    pub(crate) disabled_dark_background_alpha: f32,
 }
 
 /// Resolves Vega, Nova, and Maia Input presentation without branching on preset IDs.
-pub(super) fn input_metrics(style: &StylePreset) -> InputMetrics {
+pub(crate) fn input_metrics(style: &StylePreset) -> InputMetrics {
     match style.density {
         Density::Standard => InputMetrics {
             radius: style.radii.md,
@@ -94,10 +94,10 @@ pub(super) fn input_metrics(style: &StylePreset) -> InputMetrics {
 
 /// Renderable Input colors captured before a state transition begins.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct InputPaintState {
-    pub(super) background: Hsla,
-    pub(super) border: Hsla,
-    pub(super) ring: Hsla,
+pub(crate) struct InputPaintState {
+    pub(crate) background: Hsla,
+    pub(crate) border: Hsla,
+    pub(crate) ring: Hsla,
 }
 
 /// An active Input transition with enough timing data to resume after rerenders.
@@ -113,16 +113,16 @@ struct ActiveInputTransition {
 
 /// A renderable transition segment resolved from the current visual value.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct InputTransition {
-    pub(super) from: InputPaintState,
-    pub(super) to: InputPaintState,
-    pub(super) duration: Duration,
-    pub(super) epoch: u64,
+pub(crate) struct InputTransition {
+    pub(crate) from: InputPaintState,
+    pub(crate) to: InputPaintState,
+    pub(crate) duration: Duration,
+    pub(crate) epoch: u64,
 }
 
 /// Previous and active paint state used for interruptible Input transitions.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct InputMotionState {
+pub(crate) struct InputMotionState {
     target: InputPaintState,
     active: Option<ActiveInputTransition>,
     epoch: u64,
@@ -130,7 +130,7 @@ pub(super) struct InputMotionState {
 
 impl InputMotionState {
     /// Creates stable motion state without animating the first render.
-    pub(super) fn new(target: InputPaintState) -> Self {
+    pub(crate) fn new(target: InputPaintState) -> Self {
         Self {
             target,
             active: None,
@@ -164,7 +164,7 @@ impl InputMotionState {
     }
 
     /// Records a target and resumes from the current visual value on interruption.
-    pub(super) fn transition_to(
+    pub(crate) fn transition_to(
         &mut self,
         target: InputPaintState,
         now: Instant,
@@ -255,12 +255,12 @@ pub(super) fn input_focus_visible(focused: bool) -> bool {
 /// Caller-provided paint values have higher priority than preset motion. GPUI backgrounds may be
 /// arbitrary fills, so they cannot be safely interpolated as semantic solid colors. Disabling the
 /// entire color surface also prevents an animated background child from covering a custom border.
-pub(super) fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
+pub(crate) fn input_uses_semantic_color_motion(style: &StyleRefinement) -> bool {
     style.background.is_none() && style.border_color.is_none()
 }
 
 /// Resolves the shared Input-family feedback timing for the target focus state.
-pub(super) fn input_motion_timing(ring_visible: bool, cx: &App) -> (Duration, MotionEasing) {
+pub(crate) fn input_motion_timing(ring_visible: bool, cx: &App) -> (Duration, MotionEasing) {
     let duration = if cx.reduce_motion() {
         Duration::ZERO
     } else {
@@ -275,7 +275,7 @@ pub(super) fn input_motion_timing(ring_visible: bool, cx: &App) -> (Duration, Mo
 }
 
 /// Derives an internal Input element ID from the stable state-backed root ID.
-pub(super) fn input_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+pub(crate) fn input_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
     ElementId::NamedChild(Arc::new(id.clone()), name.into())
 }
 
@@ -628,7 +628,7 @@ impl Input {
     }
 
     /// Resolves the semantic Input surface for the current theme and state.
-    pub(super) fn surface_background(metrics: InputMetrics, disabled: bool, cx: &App) -> Hsla {
+    pub(crate) fn surface_background(metrics: InputMetrics, disabled: bool, cx: &App) -> Hsla {
         let alpha = match (disabled, cx.theme().is_dark()) {
             (false, false) => metrics.light_background_alpha,
             (false, true) => metrics.dark_background_alpha,
@@ -643,7 +643,7 @@ impl Input {
     /// The ring is positioned outside the control by `ring_outset`. Its geometry
     /// must not include the control's border width, otherwise a visible gap is
     /// introduced even when the semantic ring offset is zero.
-    pub(super) fn outer_ring_geometry(
+    pub(crate) fn outer_ring_geometry(
         style: &StyleRefinement,
         ring_outset: Pixels,
         window: &Window,

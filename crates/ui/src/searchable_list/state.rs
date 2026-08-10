@@ -17,6 +17,8 @@ where
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
     pub focus_handle: FocusHandle,
+    list_focus_handle: FocusHandle,
+    list_search_focus_handle: FocusHandle,
     pub(crate) list: Entity<ListState<SearchableListAdapter<D>>>,
     pub(crate) selection: Vec<(IndexPath, D::Item)>,
     pub(crate) open: bool,
@@ -105,6 +107,8 @@ where
 
         Self {
             focus_handle,
+            list_focus_handle,
+            list_search_focus_handle,
             list,
             selection,
             open: false,
@@ -121,6 +125,21 @@ where
             empty: None,
             _subscriptions,
         }
+    }
+
+    /// Returns the focus target used by the currently configured list mode.
+    pub(crate) fn active_list_focus_handle(&self, searchable: bool) -> FocusHandle {
+        if searchable {
+            self.list_search_focus_handle.clone()
+        } else {
+            self.list_focus_handle.clone()
+        }
+    }
+
+    /// Reports whether focus remains inside either list-owned focus target.
+    pub(crate) fn list_is_focused(&self, window: &Window) -> bool {
+        self.list_focus_handle.is_focused(window)
+            || self.list_search_focus_handle.is_focused(window)
     }
 
     // MARK: Read-only accessors

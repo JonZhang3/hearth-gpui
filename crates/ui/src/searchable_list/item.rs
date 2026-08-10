@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    StyleRefinement, Styled, Window, prelude::FluentBuilder,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::{
@@ -24,6 +24,7 @@ pub struct SearchableListItemElement {
     /// Whether the trailing check icon is shown.
     checked: bool,
     disabled: bool,
+    select_style: bool,
     children: Vec<AnyElement>,
     /// The icon drawn at the trailing edge when `checked` is `true`.
     check_icon: Option<Icon>,
@@ -38,6 +39,7 @@ impl SearchableListItemElement {
             selected: false,
             checked: false,
             disabled: false,
+            select_style: false,
             children: Vec::new(),
             check_icon: Some(Icon::new(IconName::Check)),
         }
@@ -52,6 +54,12 @@ impl SearchableListItemElement {
     /// Override the default check icon.
     pub fn check_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.check_icon = Some(icon.into());
+        self
+    }
+
+    /// Apply Select-specific item geometry while retaining the shared item protocol.
+    pub(crate) fn select_style(mut self, select_style: bool) -> Self {
+        self.select_style = select_style;
         self
     }
 }
@@ -95,41 +103,102 @@ impl Styled for SearchableListItemElement {
 
 impl RenderOnce for SearchableListItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        h_flex()
+        let metrics = crate::select::SelectMetrics::resolve(Size::Medium, cx);
+        let item = h_flex()
             .id(self.id)
             .relative()
-            .gap_x_1()
-            .rounded(cx.theme().style.radii.md)
+            .w_full()
+            .overflow_hidden()
             .text_color(cx.theme().foreground)
             .items_center()
-            .justify_between()
             .input_text_size(self.size)
-            .list_size(self.size, cx)
-            .refine_style(&self.style)
-            .when(!self.disabled, |this| {
-                this.when(!self.selected, |this| {
-                    this.hover(|this| this.bg(cx.theme().accent.opacity(0.7)))
-                })
+            .when(self.select_style, |this| {
+                this.min_h(metrics.item_height)
+                    .pl(metrics.item_padding_left)
+                    .pr(px(32.))
+                    .py(metrics.item_padding_y)
+                    .rounded(metrics.item_radius)
             })
-            .when(self.selected, |this| this.bg(cx.theme().tokens.accent))
+            .when(!self.select_style, |this| {
+                this.gap_x_1()
+                    .rounded(cx.theme().style.radii.md)
+                    .list_size(self.size, cx)
+            })
+            .refine_style(&self.style)
+            .when(
+                !self.disabled && !self.selected && self.select_style,
+                |this| {
+                    this.hover(|this| {
+                        this.bg(cx.theme().tokens.accent)
+                            .text_color(cx.theme().accent_foreground)
+                    })
+                },
+            )
+            .when(
+                !self.disabled && !self.selected && !self.select_style,
+                |this| this.hover(|this| this.bg(cx.theme().accent.opacity(0.7))),
+            )
+            .when(self.selected, |this| {
+                this.bg(cx.theme().tokens.accent)
+                    .when(self.select_style, |this| {
+                        this.text_color(cx.theme().accent_foreground)
+                    })
+            })
             .when(self.disabled, |this| {
                 this.cursor_not_allowed()
                     .text_color(cx.theme().muted_foreground)
             })
             .child(
                 h_flex()
-                    .w_full()
+                    .flex_1()
+                    .min_w_0()
+                    .overflow_hidden()
                     .items_center()
-                    .justify_between()
-                    .gap_x_1()
-                    .child(h_flex().w_full().items_center().children(self.children))
-                    .when_some(self.check_icon, |this, icon| {
-                        this.child(
-                            icon.xsmall()
-                                .text_color(cx.theme().foreground)
+                    .gap(metrics.item_gap)
+                    .child(
+                        h_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .items_center()
+                            .gap(metrics.item_gap)
+                            .children(self.children),
+                    )
+                    .when_some(
+                        self.check_icon.clone().filter(|_| !self.select_style),
+                        |this, icon| {
+                            this.child(
+                                icon.xsmall()
+                                    .text_color(cx.theme().foreground)
+                                    .when(!self.checked, |this| this.invisible()),
+                            )
+                        },
+                    ),
+            );
+
+        item.when(self.select_style, |this| {
+            this.when_some(self.check_icon, |this, icon| {
+                this.child(
+                    div()
+                        .absolute()
+                        .right(px(8.))
+                        .top_0()
+                        .bottom_0()
+                        .w(px(16.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            icon.size(px(16.))
+                                .text_color(if self.selected {
+                                    cx.theme().accent_foreground
+                                } else {
+                                    cx.theme().foreground
+                                })
                                 .when(!self.checked, |this| this.invisible()),
-                        )
-                    }),
-            )
+                        ),
+                )
+            })
+        })
     }
 }

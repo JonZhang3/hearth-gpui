@@ -29,9 +29,10 @@ and styled effects remains in `ui::animation`, avoiding an orphan-rule-driven pu
 
 HoverCard is the first lifecycle consumer. Its mirrored directional enter and exit translations
 complete from sampled motion state, including rapid reversal from the current offset. Opacity motion
-is intentionally disabled because GPUI cannot yet composite subtree opacity as one isolated layer. The next
-adoption group is Popover, Tooltip, Select, Combobox, and ContextMenu, followed by modal surfaces and
-disclosure/layout motion.
+is intentionally disabled because GPUI cannot yet composite subtree opacity as one isolated layer.
+Select also uses stable sampled motion state for its 100 ms enter/exit fade and translation while
+retaining content through exit. The next adoption group is Popover, Tooltip, Combobox, and
+ContextMenu, followed by modal surfaces and disclosure/layout motion.
 
 Spring, inertia, gestures, sequences, layout projection, scroll timelines, and a standalone frame
 loop are outside v1. Layout-independent subtree transforms, isolated opacity, backdrop filters, and

@@ -89,6 +89,7 @@ pub struct ListState<D: ListDelegate> {
     _search_task: Task<()>,
     _load_more_task: Task<()>,
     search_revision: u64,
+    select_first_after_search: bool,
     loading_more: bool,
     last_load_more_entities_count: Option<usize>,
     _query_input_subscription: Subscription,
@@ -124,6 +125,7 @@ where
             _search_task: Task::ready(()),
             _load_more_task: Task::ready(()),
             search_revision: 0,
+            select_first_after_search: false,
             loading_more: false,
             last_load_more_entities_count: None,
             _query_input_subscription,
@@ -301,6 +303,7 @@ where
 
                 self.search_revision = self.search_revision.wrapping_add(1);
                 let revision = self.search_revision;
+                self.select_first_after_search = false;
                 self.last_query = Some(text.clone());
                 self.last_load_more_entities_count = None;
                 self.set_searching(true, window, cx);
@@ -313,10 +316,9 @@ where
                             return;
                         }
                         this.set_searching(false, window, cx);
-                        this.prepare_items_if_needed(window, cx);
-                        let first = this.first_enabled_index(cx);
-                        this._set_selected_index(first, window, cx);
-                        this.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
+                        // Measuring list elements is only valid during layout/render. Defer
+                        // rebuilding the cursor until the next render pass has refreshed rows.
+                        this.select_first_after_search = true;
                         cx.notify();
                     });
                 });
@@ -460,13 +462,13 @@ where
         cx.notify();
     }
 
-    fn on_action_confirm(
+    pub(crate) fn on_action_confirm(
         &mut self,
         confirm: &Confirm,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if !self.selectable || self.rows_cache.items_count() == 0 {
+        if !self.selectable {
             cx.propagate();
             return;
         }
@@ -772,6 +774,13 @@ where
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.prepare_items_if_needed(window, cx);
 
+        if self.select_first_after_search {
+            let first = self.first_enabled_index(cx);
+            self._set_selected_index(first, window, cx);
+            self.scroll_handle.scroll_to_item(0, ScrollStrategy::Top);
+            self.select_first_after_search = false;
+        }
+
         if self.selection_needs_sync {
             self.delegate
                 .set_selected_index(self.selected_index, window, cx);
@@ -970,5 +979,74 @@ where
             .size_full()
             .refine_style(&self.style)
             .child(self.state.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::{AppContext as _, TestAppContext};
+
+    use super::*;
+    use crate::list::ListItem;
+
+    struct SearchDelegate;
+
+    impl ListDelegate for SearchDelegate {
+        type Item = ListItem;
+
+        fn perform_search(
+            &mut self,
+            _: &str,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) -> Task<()> {
+            Task::ready(())
+        }
+
+        fn items_count(&self, _: usize, _: &App) -> usize {
+            1
+        }
+
+        fn item_label(&self, _: IndexPath, _: &App) -> SharedString {
+            "Result".into()
+        }
+
+        fn render_item(
+            &mut self,
+            ix: IndexPath,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) -> Self::Item {
+            ListItem::new(("search-result", ix.row)).child("Result")
+        }
+
+        fn set_selected_index(
+            &mut self,
+            _: Option<IndexPath>,
+            _: &mut Window,
+            _: &mut Context<ListState<Self>>,
+        ) {
+        }
+    }
+
+    #[gpui::test]
+    fn search_completion_defers_measurement_until_render(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let list = cx.update(|window, cx| {
+            cx.new(|cx| ListState::new(SearchDelegate, window, cx).searchable(true))
+        });
+        let input = cx.update(|_, cx| list.read(cx).query_input.clone());
+
+        cx.update(|window, cx| {
+            input.update(cx, |input, cx| input.set_value("result", window, cx));
+            list.update(cx, |list, cx| {
+                list.on_query_input_event(&input, &InputEvent::Change, window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        assert!(cx.update(|_, cx| list.read(cx).select_first_after_search));
+        assert_eq!(cx.update(|_, cx| list.read(cx).rows_cache.items_count()), 0);
     }
 }

@@ -1,7 +1,11 @@
-use gpui::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Window, div};
+use gpui::{
+    AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
+};
 
 use crate::{
-    ActiveTheme, Disableable as _, Icon, IconName, IndexPath, Sizable as _, Size, StyleSized as _,
+    ActiveTheme, Density, Disableable as _, Icon, IconName, IndexPath, Sizable as _, Size,
+    StyleSized as _,
     list::{ListDelegate, ListState},
 };
 
@@ -33,6 +37,10 @@ pub(crate) struct SearchableListAdapter<D: SearchableListDelegate + 'static> {
     pub(crate) size: Size,
     /// Override the trailing check icon; defaults to `IconName::Check`.
     pub(crate) check_icon: Option<Icon>,
+    /// Apply the Select-specific menu geometry instead of the generic searchable-list style.
+    pub(crate) select_style: bool,
+    /// Draw separators between section groups when Select requests them.
+    pub(crate) section_separators: bool,
 }
 
 impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
@@ -52,6 +60,8 @@ impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
             on_render_empty: Box::new(on_render_empty),
             size: Size::default(),
             check_icon: None,
+            select_style: false,
+            section_separators: false,
         }
     }
 
@@ -60,6 +70,11 @@ impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
     pub(crate) fn update_selection_snapshot(&mut self, snapshot: Vec<(IndexPath, D::Item)>) {
         self.selection_snapshot = snapshot;
     }
+}
+
+/// Returns whether the current visible section has another visible section before it.
+fn has_visible_section_before(section: usize, mut is_visible: impl FnMut(usize) -> bool) -> bool {
+    (0..section).any(&mut is_visible)
 }
 
 impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter<D> {
@@ -93,21 +108,69 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
     ) -> Option<impl IntoElement> {
-        if let Some(el) = self.delegate.render_section_header(section, window, cx) {
-            return Some(el.into_any_element());
+        let custom_header = self.delegate.render_section_header(section, window, cx);
+        if !self.select_style {
+            if let Some(header) = custom_header {
+                return Some(header.into_any_element());
+            }
+
+            #[allow(deprecated)]
+            let item = self.delegate.section(section)?;
+            return Some(
+                div()
+                    .py_0p5()
+                    .px_2()
+                    .list_size(self.size, cx)
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(item)
+                    .into_any_element(),
+            );
         }
 
-        #[allow(deprecated)]
-        let item = self.delegate.section(section)?;
+        let metrics = crate::select::SelectMetrics::resolve(Size::Medium, cx);
+        let has_separator = self.section_separators
+            && has_visible_section_before(section, |candidate| {
+                self.delegate.items_count(candidate) > 0
+            });
+        let separator_opacity = match cx.theme().style.density {
+            Density::Comfortable => 0.5,
+            Density::Standard | Density::Compact => 1.0,
+        };
+        let default_header = if custom_header.is_none() {
+            #[allow(deprecated)]
+            self.delegate.section(section).map(|item| {
+                div()
+                    .px(metrics.label_padding_x)
+                    .py(metrics.label_padding_y)
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(item)
+                    .into_any_element()
+            })
+        } else {
+            None
+        };
+        let header = custom_header.or(default_header);
+        if header.is_none() && !has_separator {
+            return None;
+        }
 
         Some(
             div()
-                .py_0p5()
-                .px_2()
-                .list_size(self.size, cx)
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(item)
+                .relative()
+                .when(has_separator, |this| {
+                    this.child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left(px(4.))
+                            .right(px(4.))
+                            .h(px(1.))
+                            .bg(cx.theme().border.opacity(separator_opacity)),
+                    )
+                })
+                .children(header)
                 .into_any_element(),
         )
     }
@@ -136,6 +199,7 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             return SearchableListItemElement::new(ix.row)
                 .disabled(disabled)
                 .with_size(size)
+                .select_style(self.select_style)
                 .child(el);
         }
 
@@ -145,7 +209,11 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             .unwrap_or_else(|| Icon::new(IconName::Check));
 
         let content = div()
+            .w_full()
+            .min_w_0()
+            .overflow_hidden()
             .whitespace_nowrap()
+            .when(self.select_style, |this| this.truncate())
             .child(item.render(window, cx).into_any_element());
 
         SearchableListItemElement::new(ix.row)
@@ -153,6 +221,7 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             .check_icon(check_icon)
             .disabled(disabled)
             .with_size(size)
+            .select_style(self.select_style)
             .child(content.into_any_element())
     }
 
@@ -189,5 +258,18 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         cx: &mut Context<ListState<Self>>,
     ) -> impl IntoElement {
         (self.on_render_empty)(window, cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_visible_section_before;
+
+    #[test]
+    fn separator_predecessor_ignores_empty_sections() {
+        let counts = [0, 2, 0, 3, 0];
+
+        assert!(!has_visible_section_before(1, |section| counts[section] > 0));
+        assert!(has_visible_section_before(3, |section| counts[section] > 0));
     }
 }

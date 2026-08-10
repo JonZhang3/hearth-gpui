@@ -142,20 +142,33 @@ let state = cx.new(|cx| {
 });
 
 Select::new(&state)
+    .group_separators(true)
 ```
 
 ### 尺寸
 
 ```rust
-Select::new(&state).large()
-Select::new(&state)
 Select::new(&state).small()
+Select::new(&state)
 ```
+
+`small` 和默认尺寸与 shadcn 的 canonical size 对齐；`xsmall` 和 `large` 是用于桌面密集布局的 GPUI Component 扩展。
 
 ### 禁用态
 
 ```rust
 Select::new(&state).disabled(true)
+```
+
+单个选项可以通过 `SelectItem::disabled` 返回 `true` 设置为禁用。
+
+### 无效状态
+
+```rust
+Select::new(&state)
+    .aria_label("联系方式")
+    .aria_description("请选择一种联系方式")
+    .invalid(true)
 ```
 
 ### 可清空
@@ -184,13 +197,13 @@ let state = cx.new(|cx| {
 });
 
 Select::new(&state)
-    .empty(
+    .empty(|_, cx| {
         h_flex()
             .h_24()
             .justify_center()
             .text_color(cx.theme().muted_foreground)
             .child("No options available")
-    )
+    })
 ```
 
 ### 事件
@@ -260,7 +273,7 @@ Select::new(&state)
 h_flex()
     .border_1()
     .border_color(cx.theme().input)
-    .rounded(cx.theme().radius_lg)
+    .rounded(cx.theme().style.radii.lg)
     .w_full()
     .gap_1()
     .child(
@@ -285,11 +298,12 @@ h_flex()
 
 ## 可访问性
 
-使用 `aria_label` 为触发器提供可访问名称。当前选中项标题会作为 AccessKit value，展开态和禁用态会自动暴露。
+使用 `aria_label` 为触发器提供可访问名称，使用 `aria_description` 提供补充说明。当前选中项标题会作为 AccessKit value，展开态、无效态和禁用态会自动暴露。
 
 ```rust
 Select::new(&state)
     .aria_label("国家或地区")
+    .aria_description("请选择国家或地区")
 ```
 
 ## 键盘快捷键
@@ -299,10 +313,16 @@ Select::new(&state)
 | `Tab` | 聚焦到 Select |
 | `Enter` | 打开菜单或确认当前项 |
 | `Up/Down` | 在选项间移动 |
+| `Home/End` | 移动到第一个或最后一个可用选项 |
 | `Escape` | 关闭菜单 |
 | `Space` | 打开菜单 |
+| 可打印字符 | 在不可搜索 Select 中选择下一个匹配项 |
 
-## 主题
+## Style Preset
+
+Select 使用语义化的 Control、Focus、Radius、Elevation 和 Motion metrics。Vega 是默认基准；Nova 和 Maia 只改变密度、圆角、间距及弹出层阴影，不改变独立选择的 Color Theme。搜索、清空操作、自定义选项渲染和虚拟化桌面滚动属于 GPUI Component 扩展。
+
+## Color Theme
 
 Select 会使用当前主题中的这些 token：
 

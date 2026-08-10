@@ -231,6 +231,12 @@ Select:
     zh-HK: "請選擇"
     zh-TW: "請選擇"
     it: Seleziona
+  empty:
+    en: "No options found."
+    zh-CN: "未找到选项。"
+    zh-HK: "找不到選項。"
+    zh-TW: "找不到選項。"
+    it: "Nessuna opzione trovata."
 ComboBox:
   placeholder:
     en: "Please select"
