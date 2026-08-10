@@ -174,7 +174,8 @@ impl Render for TabsView {
 
 ### 菜单模式
 
-当标签很多时，可以开启 `menu(true)`，在标签栏末尾显示下拉菜单按钮：
+开启 `menu(true)` 后，标签栏末尾会持续显示下拉菜单按钮。菜单列出全部标签，
+并与直接点击标签使用同一回调；它不会在标签全部可见时自动隐藏。
 
 ```rust
 TabBar::new("tabs-with-menu")
@@ -186,6 +187,24 @@ TabBar::new("tabs-with-menu")
     .child(Tab::new().label("Mail"))
     .child(Tab::new().label("Settings"))
 ```
+
+### 键盘操作
+
+`TabBar` 使用 roving tabindex，并自动跳过禁用标签。
+
+| 按键 | 行为 |
+| --- | --- |
+| `Left` / `Right` | 移动焦点并切换选中项，到达边界后循环 |
+| `Home` / `End` | 移动到第一个或最后一个可用标签 |
+| `Enter` / `Space` | 激活当前聚焦标签 |
+
+键盘焦点环使用当前 Style Preset 的语义指标，鼠标聚焦不显示该焦点环。
+
+### Style Preset
+
+五种样式均消费语义化的控件高度、水平内边距、间距、圆角、阴影和动效指标。
+Vega 保持默认基准，Nova 和 Maia 仅通过指标调整密度，组件不会按 Preset ID 分支。
+自定义高度可使用 `.with_size(Size::Size(px(44.)))`。
 
 ## API 参考
 
@@ -202,7 +221,7 @@ TabBar::new("tabs-with-menu")
 | `suffix(element)` | 在标签后添加元素 |
 | `last_empty_space(element)` | 自定义尾部空白区域 |
 | `track_scroll(handle)` | 配合滚动句柄启用可滚动标签栏 |
-| `with_menu(bool)` | 启用下拉菜单选择 |
+| `menu(bool)` | 持续显示包含全部标签的下拉菜单 |
 
 ### TabBar 变体
 
@@ -218,10 +237,10 @@ TabBar::new("tabs-with-menu")
 
 | 方法 | 说明 |
 | --- | --- |
-| `new(label)` | 创建带标签文本的 Tab |
-| `empty()` | 创建空 Tab |
+| `new()` | 创建可组合的 Tab |
+| `label(text)` | 设置可见标签和默认辅助名称 |
+| `aria_label(text)` | 单独设置辅助名称 |
 | `icon(icon)` | 创建仅图标的 Tab |
-| `id(id)` | 设置自定义 ID |
 | `with_variant(variant)` | 设置当前 Tab 的样式 |
 | `prefix(element)` | 在标签内容前添加元素 |
 | `suffix(element)` | 在标签内容后添加元素 |
@@ -243,4 +262,4 @@ TabBar::new("tabs-with-menu")
 - `TabBar` 负责统一管理所有子标签的选中状态
 - 当设置了 `TabBar.on_click` 时，单个 `Tab.on_click` 通常不会生效
 - 子标签会自动继承父级 `TabBar` 的样式和尺寸
-- 标签过多时可通过 `with_menu` 或滚动支持提升可用性
+- 标签过多时可通过 `menu(true)` 或滚动支持提升可用性

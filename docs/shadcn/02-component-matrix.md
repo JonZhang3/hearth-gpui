@@ -42,7 +42,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 | Notification | `sonner` | Surface hierarchy, action placement, stacking, enter or exit motion | Queue replacement, autohide, manual close, action close, no overlap |
 | Accordion | `accordion` | Trigger typography, focus, indicator, measured content reveal | No clipped content; repeated toggles; keyboard control |
 | Collapsible | `collapsible` | Use the same disclosure lifecycle with a simpler API | Dynamic content height and reduced motion |
-| Tabs and TabBar | `tabs` | Align segmented and line variants, focus, selected text, indicator motion | Rapid switching, scrolling tabs, focus navigation |
+| Tabs and TabBar | `tabs` | GPUI-native multi-variant optimization with semantic metrics, focus, and interruptible indicator motion | Rapid switching, scrolling tabs, focus navigation |
 | Sidebar | `sidebar` | Align density, item states, group labels, floating and inset surfaces, collapse motion | Off-canvas and icon collapse; no layout jitter |
 | Form and fields | `field`, `form` | Standardize label, description, required, invalid, error, and group spacing | Error association and consistent control composition |
 | Calendar and DatePicker | `calendar`, `popover` | Align day states, range states, navigation, surface, and trigger | Locale, keyboard, disabled dates, range edges |
