@@ -213,7 +213,7 @@ This project has custom skills for Claude Code, Codex, and downstream users:
 - **gpui** (`skills/`) - GPUI framework knowledge: actions/keybindings, async, context, custom elements, entity state, events, focus, global state, layout/styling, testing
 - **gpui-component** (`skills/`) - How to use gpui-component: setup, stateless/stateful patterns, common component APIs, theming
 - **gpui-component-dev** (`.claude/skills/`) - Contributing to gpui-component: creating new components, writing stories, writing documentation, writing PR descriptions
-- **align-shadcn-component** (`.agents/skills/`) - Codex workflow for comparing an existing GPUI component with the pinned local shadcn/ui sources, producing a Vega alignment plan, and implementing it only after explicit approval
+- **align-shadcn-component** (`.agents/skills/`) - Codex workflow for comparing an existing GPUI component with the pinned local shadcn/ui sources, producing a Vega alignment plan, then immediately implementing and verifying it unless the user requests planning only
 
 Each supported agent discovers the skills from its corresponding directory.
 

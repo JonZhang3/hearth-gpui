@@ -1,11 +1,11 @@
 ---
 name: align-shadcn-component
-description: Compare an existing GPUI Component implementation with the pinned local shadcn/ui sources, produce a decision-complete Vega alignment plan, and implement that plan only after explicit approval. Use for component-by-component shadcn visual, API, state, motion, interaction, accessibility, Story, or documentation alignment work in this repository.
+description: Compare an existing GPUI Component implementation with the pinned local shadcn/ui sources, produce a decision-complete Vega alignment plan, and immediately implement and verify that plan unless the user explicitly requests analysis or planning only. Use for component-by-component shadcn visual, API, state, motion, interaction, accessibility, Story, or documentation alignment work in this repository.
 ---
 
 # Align shadcn Component
 
-Use a strict two-phase workflow. Never combine analysis and implementation in one phase.
+Use a strict sequential workflow: complete comparison and planning before editing, then continue directly into implementation in the same task. Do not wait for a separate implementation command unless the user explicitly limits the request to analysis or planning.
 
 ## Establish the baseline
 
@@ -26,7 +26,7 @@ Use this reference order:
 
 ## Phase 1: compare and plan
 
-Perform this phase when the user requests comparison, optimization, alignment, or a plan and no previously approved plan exists.
+Perform this phase when the user requests comparison, optimization, or alignment and no current plan exists. If the user explicitly asks only for comparison, findings, or a plan, complete this phase and stop without editing.
 
 1. Locate the component implementation, related modules, public exports, Story, English and Chinese documentation, focused tests, and all call sites with `rg`.
 2. Inspect the corresponding local shadcn sources and examples. Translate their intent into GPUI concepts; do not copy React, Tailwind, Radix, Base UI, or React Aria implementation code.
@@ -48,21 +48,26 @@ Perform this phase when the user requests comparison, optimization, alignment, o
 6. Classify each finding as exact alignment, GPUI semantic equivalent, intentional desktop divergence, defect, missing capability, or deferred platform limitation.
 7. Resolve source conflicts using the priority order in `docs/shadcn/README.md`. Preserve accessibility and native desktop behavior ahead of pixel parity.
 
-Return:
+Produce and communicate:
 
 - the inspected source paths and revision status;
 - a concise difference table with current behavior, shadcn behavior, impact, and recommended decision;
 - motion evidence naming the source class or token, affected property, timing, lifecycle, and GPUI equivalent for each animated state;
 - a decision-complete implementation plan covering API changes, component behavior, Style Metrics, Story/docs/tests, acceptance criteria, and intentional deviations.
 
-Do not edit files in Phase 1. Stop after the plan and wait for an explicit implementation instruction such as `Implement the plan.`
+Do not edit files until the comparison and plan are complete. Share the decision-complete plan as a concise commentary update, record it with the available planning mechanism when appropriate, and immediately continue into Phase 2. Pause only when:
 
-## Phase 2: implement the approved plan
+- the user explicitly says to plan, compare, inspect, or diagnose without modifying files;
+- a missing user decision would materially change the result;
+- implementation requires new authority, an external write, or a meaningful scope expansion;
+- the working tree contains overlapping changes that cannot be preserved safely.
 
-Enter this phase only when the user explicitly requests implementation and an approved plan is present in the conversation or repository. If no approved plan exists, run Phase 1 and stop.
+## Phase 2: implement the plan
 
-1. Re-read the approved plan and inspect `git status` before editing. Preserve unrelated user changes.
-2. Implement only the approved scope. Do not infer permission for breaking API changes unless the user explicitly allowed them.
+Enter this phase immediately after Phase 1, or directly when a current decision-complete plan already exists in the conversation or repository. Do not require a separate `Implement the plan.` or `开始实施` instruction. When the user requested planning only, do not enter this phase until they later authorize implementation.
+
+1. Re-read the current plan and inspect `git status` before editing. Preserve unrelated user changes.
+2. Implement only the planned scope. Do not infer permission for breaking API changes unless the user explicitly allowed them.
 3. Keep components direct and GPUI-native:
    - read colors from the Color Theme;
    - read geometry, density, radius, elevation, focus treatment, overlays, and motion from semantic Style Metrics;
