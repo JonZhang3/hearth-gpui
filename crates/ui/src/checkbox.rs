@@ -577,7 +577,7 @@ impl RenderOnce for Checkbox {
                     Self::handle_click(&on_click, checked, indeterminate, window, cx);
                 })
             })
-            .map(|this| self.tooltip.apply(this));
+            .map(|this| self.tooltip.apply(&self.id, this));
 
         crate::accessibility::accessibility_state(element, self.invalid, false, self.disabled)
     }

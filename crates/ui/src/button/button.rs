@@ -4,7 +4,7 @@ use crate::{
     ActiveTheme, Disableable, FocusableExt as _, Selectable, Sizable, Size, StyleSized, StyledExt,
     button::ButtonIcon,
     h_flex,
-    tooltip::{ManagedTooltipExt as _, Tooltip},
+    tooltip::{Tooltip, TooltipTrigger},
 };
 use gpui::{
     AnyElement, App, Background, ClickEvent, Corners, Div, Edges, ElementId, FocusHandle, Hsla,
@@ -402,6 +402,7 @@ impl InteractiveElement for Button {
 
 impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let button_id = self.id.clone();
         let style: ButtonVariant = self.variant;
         let clickable = self.clickable();
         let is_disabled = self.disabled;
@@ -417,6 +418,7 @@ impl RenderOnce for Button {
             .clone()
             .or_else(|| self.label.clone())
             .or_else(|| self.tooltip.as_ref().map(|(text, _)| text.clone()));
+        let accessibility_description = self.tooltip.as_ref().map(|(text, _)| text.clone());
 
         let focus_handle = self.focus_handle.clone().unwrap_or_else(|| {
             window
@@ -444,6 +446,9 @@ impl RenderOnce for Button {
                 })
             })
             .when_some(accessibility_label, |this, label| this.aria_label(label))
+            .when_some(accessibility_description, |this, description| {
+                this.aria_description(description)
+            })
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -587,25 +592,37 @@ impl RenderOnce for Button {
                         this.child(icon.with_size(icon_size))
                     })
             })
-            .map(|this| {
-                if let Some(builder) = self.tooltip_builder {
-                    this.managed_tooltip(move |window, cx| builder(window, cx))
-                } else if let Some((tooltip, action)) = self.tooltip {
-                    this.managed_tooltip(move |window, cx| {
-                        Tooltip::new(tooltip.clone())
-                            .when_some(action.clone(), |this, (action, context)| {
-                                this.action(
-                                    action.boxed_clone().as_ref(),
-                                    context.as_ref().map(|c| c.as_ref()),
-                                )
-                            })
-                            .build(window, cx)
-                    })
-                } else {
-                    this
-                }
-            })
             .focus_ring(focus_visible, px(0.), window, cx);
+
+        let element = if let Some(builder) = self.tooltip_builder {
+            TooltipTrigger::new(ElementId::NamedChild(
+                std::sync::Arc::new(button_id),
+                "tooltip-trigger".into(),
+            ))
+            .trigger(element)
+            .content(move |window, cx| builder(window, cx))
+            .into_any_element()
+        } else if let Some((tooltip, action)) = self.tooltip {
+            TooltipTrigger::new(ElementId::NamedChild(
+                std::sync::Arc::new(button_id),
+                "tooltip-trigger".into(),
+            ))
+            .trigger(element)
+            .text(tooltip.clone())
+            .content(move |window, cx| {
+                Tooltip::new(tooltip.clone())
+                    .when_some(action.clone(), |this, (action, context)| {
+                        this.action(
+                            action.boxed_clone().as_ref(),
+                            context.as_ref().map(|c| c.as_ref()),
+                        )
+                    })
+                    .build(window, cx)
+            })
+            .into_any_element()
+        } else {
+            element.into_any_element()
+        };
 
         crate::accessibility::accessibility_state(element, false, false, self.disabled)
     }

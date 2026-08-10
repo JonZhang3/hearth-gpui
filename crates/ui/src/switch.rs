@@ -546,7 +546,7 @@ impl RenderOnce for Switch {
                     }
                 })
             })
-            .map(|this| self.tooltip.apply(this));
+            .map(|this| self.tooltip.apply(&self.id, this));
 
         crate::accessibility::accessibility_state(element, self.invalid, false, disabled)
     }

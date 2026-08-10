@@ -129,7 +129,7 @@ impl RenderOnce for DropdownButton {
         let rounded = self.variant.is_ghost() && !self.selected;
 
         div()
-            .id(self.id)
+            .id(self.id.clone())
             .h_flex()
             .refine_style(&self.style)
             .when_some(self.button, |this, button| {
@@ -178,7 +178,7 @@ impl RenderOnce for DropdownButton {
                     )
                 })
             })
-            .map(|this| self.tooltip.apply(this))
+            .map(|this| self.tooltip.apply(&self.id, this))
     }
 }
 

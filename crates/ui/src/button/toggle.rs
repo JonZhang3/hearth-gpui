@@ -619,7 +619,7 @@ impl RenderOnce for Toggle {
                 this.on_key_down(move |event, window, cx| on_key_down(event, window, cx))
             });
 
-        let control = self.tooltip.apply(control);
+        let control = self.tooltip.apply(&self.id, control);
         crate::accessibility::accessibility_state(control, invalid, false, disabled)
     }
 }

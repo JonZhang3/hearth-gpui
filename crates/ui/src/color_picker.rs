@@ -15,7 +15,7 @@ use crate::{
     separator::Separator,
     slider::{Slider, SliderEvent, SliderState},
     tab::{Tab, TabBar},
-    tooltip::{ManagedTooltipExt as _, Tooltip},
+    tooltip::TooltipTrigger,
     v_flex,
 };
 
@@ -829,6 +829,10 @@ impl Sizable for ColorPickerButton {
 impl RenderOnce for ColorPickerButton {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_icon = self.icon.is_some();
+        let tooltip_trigger_id = ElementId::NamedChild(
+            std::sync::Arc::new(self.id.clone()),
+            "tooltip-trigger".into(),
+        );
         h_flex()
             .id(self.id)
             .gap_2()
@@ -848,10 +852,15 @@ impl RenderOnce for ColorPickerButton {
                                 .border_color(value.darken(0.3))
                                 .when(self.selected, |this| this.border_2())
                         })
-                        .when_some(self.tooltip, |this, tooltip| {
-                            this.managed_tooltip(move |window, cx| {
-                                Tooltip::new(tooltip.clone()).build(window, cx)
-                            })
+                        .map(|this| {
+                            if let Some(tooltip) = self.tooltip {
+                                TooltipTrigger::new(tooltip_trigger_id)
+                                    .trigger(this)
+                                    .text(tooltip)
+                                    .into_any_element()
+                            } else {
+                                this.into_any_element()
+                            }
                         }),
                 )
             })

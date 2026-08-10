@@ -2,6 +2,25 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## Tooltip scale and isolated-opacity parity
+
+**Status:** Renderer support deferred; side-aware translation and opacity implemented
+
+The pinned shadcn Tooltip combines `fade-in/out`, `zoom-in/out-95`, and an 8 px side-aware
+translation. Tooltip currently implements the opacity and directional translation using semantic
+Motion Metrics, but GPUI cannot apply a layout-independent scale to an arbitrary element subtree.
+Changing layout dimensions would reflow text and move the resolved anchor, so it is not an
+acceptable substitute for `zoom-in-95` / `zoom-out-95`.
+
+GPUI also applies element opacity to individual primitives instead of compositing the completed
+Tooltip subtree as one isolated layer. The existing fade is the closest semantic equivalent, but
+overlapping Arrow and Surface pixels can differ from CSS opacity during intermediate frames.
+
+Reuse the shared compositing work described for HoverCard rather than adding a Tooltip-only
+renderer path. Acceptance requires interruption-safe scale and opacity, stable text layout,
+placement-aware transformed hit testing, rounded clipping, reduced-motion final states, and Metal,
+WGPU, Direct3D, Web, and headless parity.
+
 ## Input Group custom controls and logical RTL
 
 **Status:** Typed Input integration implemented; shared direction and generic-control contracts deferred

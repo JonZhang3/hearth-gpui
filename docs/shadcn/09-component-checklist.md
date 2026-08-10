@@ -27,7 +27,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [ ] OtpInput
 - [ ] Select
 - [ ] Combobox
-- [ ] Tooltip
+- [x] Tooltip
 - [x] Dialog (`9381cbde`)
 - [x] AlertDialog (`4ad50d07`)
 

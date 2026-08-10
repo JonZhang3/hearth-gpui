@@ -228,7 +228,13 @@ impl RenderOnce for Radio {
                         true => this.bg(cx.theme().tokens.primary),
                     })
                     .child(checkbox_check_icon(
-                        self.id, self.size, checked, false, disabled, window, cx,
+                        self.id.clone(),
+                        self.size,
+                        checked,
+                        false,
+                        disabled,
+                        window,
+                        cx,
                     )),
             )
             .when(!self.children.is_empty() || self.label.is_some(), |this| {
@@ -264,7 +270,7 @@ impl RenderOnce for Radio {
                     }
                 })
             })
-            .map(|this| self.tooltip.apply(this));
+            .map(|this| self.tooltip.apply(&self.id, this));
 
         crate::accessibility::accessibility_state(element, self.invalid, false, self.disabled)
     }

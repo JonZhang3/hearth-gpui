@@ -1,11 +1,10 @@
 use gpui::{
-    App, AppContext, Context, Entity, Focusable, InteractiveElement, KeyBinding, ParentElement,
-    Render, StatefulInteractiveElement as _, Styled, Window, actions, div,
-    prelude::FluentBuilder as _,
+    App, AppContext, Context, Entity, Focusable, KeyBinding, ParentElement, Render, Styled, Window,
+    actions, div, prelude::FluentBuilder as _,
 };
 
 use gpui_component::{
-    IconName,
+    ActiveTheme as _, Disableable as _, IconName, StyledExt as _,
     button::{Button, ButtonVariant, ButtonVariants, Toggle},
     checkbox::Checkbox,
     clipboard::Clipboard,
@@ -13,7 +12,7 @@ use gpui_component::{
     h_flex,
     radio::Radio,
     switch::Switch,
-    tooltip::Tooltip,
+    tooltip::{Tooltip, TooltipAlign, TooltipSide, TooltipTrigger},
     v_flex,
 };
 
@@ -138,13 +137,115 @@ impl Render for TooltipStory {
                 ),
             )
             .child(
-                section("Default Tooltip").child(div().child("Hover me").id("tooltip-2").tooltip(
-                    |window, cx| {
-                        Tooltip::new("This is a default tooltip style by GPUI.")
-                            .action(&Info, Some("Tooltip"))
-                            .build(window, cx)
-                    },
-                )),
+                section("Placement")
+                    .child(
+                        TooltipTrigger::new("tooltip-top")
+                            .trigger(Button::new("tooltip-top-button").label("Top"))
+                            .text("Tooltip above the trigger")
+                            .side(TooltipSide::Top),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-right")
+                            .trigger(Button::new("tooltip-right-button").label("Right"))
+                            .text("Tooltip to the right")
+                            .side(TooltipSide::Right),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-bottom")
+                            .trigger(Button::new("tooltip-bottom-button").label("Bottom"))
+                            .text("Tooltip below the trigger")
+                            .side(TooltipSide::Bottom),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-left")
+                            .trigger(Button::new("tooltip-left-button").label("Left"))
+                            .text("Tooltip to the left")
+                            .side(TooltipSide::Left),
+                    ),
+            )
+            .child(
+                section("Alignment")
+                    .child(
+                        TooltipTrigger::new("tooltip-align-start")
+                            .trigger(Button::new("tooltip-align-start-button").label("Start"))
+                            .text("Start aligned")
+                            .align(TooltipAlign::Start),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-align-center")
+                            .trigger(Button::new("tooltip-align-center-button").label("Center"))
+                            .text("Center aligned")
+                            .align(TooltipAlign::Center),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-align-end")
+                            .trigger(Button::new("tooltip-align-end-button").label("End"))
+                            .text("End aligned")
+                            .align(TooltipAlign::End),
+                    ),
+            )
+            .child(
+                section("Content")
+                    .child(
+                        TooltipTrigger::new("tooltip-icon")
+                            .trigger(
+                                Button::new("tooltip-icon-button")
+                                    .icon(IconName::Info)
+                                    .aria_label("Information"),
+                            )
+                            .text("Information"),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-long")
+                            .trigger(Button::new("tooltip-long-button").label("Long content"))
+                            .text("Tooltips wrap long supplementary text within the shadcn maximum width instead of expanding without a limit."),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-kbd")
+                            .trigger(Button::new("tooltip-kbd-button").label("With shortcut"))
+                            .content(|window, cx| {
+                                Tooltip::new("Delete item")
+                                    .action(&Info, Some("Tooltip"))
+                                    .build(window, cx)
+                            }),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-formatted")
+                            .trigger(Button::new("tooltip-formatted-button").label("Formatted"))
+                            .content(|window, cx| {
+                                Tooltip::element(|_, cx| {
+                                    v_flex()
+                                        .gap_1()
+                                        .child(div().font_medium().child("Project status"))
+                                        .child(
+                                            div()
+                                                .text_color(cx.theme().background.opacity(0.8))
+                                                .child("All checks passed"),
+                                        )
+                                })
+                                .build(window, cx)
+                            }),
+                    ),
+            )
+            .child(
+                section("States")
+                    .child(
+                        TooltipTrigger::new("tooltip-disabled")
+                            .trigger(Button::new("tooltip-disabled-button").label("Disabled").disabled(true))
+                            .text("Disabled controls remain available to pointer hover."),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-no-delay")
+                            .trigger(Button::new("tooltip-no-delay-button").label("No delay"))
+                            .text("Opens without pointer delay")
+                            .show_delay(std::time::Duration::ZERO),
+                    )
+                    .child(
+                        TooltipTrigger::new("tooltip-no-arrow")
+                            .trigger(Button::new("tooltip-no-arrow-button").label("No arrow"))
+                            .text("Arrow disabled")
+                            .show_arrow(false),
+                    ),
             )
             .child(
                 section("Tooltip trigger removed on click").child(
