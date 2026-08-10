@@ -108,6 +108,7 @@ The complete contract is defined in [Style Preset architecture](./05-style-prese
 | [Implementation status](./06-implementation-status.md) | Implemented scope, verification evidence, and remaining release checks |
 | [Release evidence](./07-release-evidence.md) | Fixed visual matrix, intentional differences, platform review, and performance evidence |
 | [Motion runtime](./08-motion-runtime.md) | Renderer-independent timing, GPUI adapter, interruption, completion, and adoption contract |
+| [Component checklist](./09-component-checklist.md) | Checked component-level alignment and GPUI-native optimization batches, with remaining targets |
 | [Deferred TODO](./TODO.md) | Explicitly deferred visual parity and GPUI renderer work |
 
 ## Decision rules
