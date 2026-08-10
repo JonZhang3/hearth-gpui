@@ -1,13 +1,14 @@
 use gpui::{
-    App, AppContext as _, Context, Entity, Focusable, InteractiveElement, IntoElement,
-    ParentElement as _, Render, SharedString, Styled, Subscription, Window,
-    prelude::FluentBuilder as _, px,
+    App, AppContext as _, Context, Entity, Focusable, InteractiveElement as _, IntoElement,
+    ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, px,
 };
 use gpui_component::{
-    Disableable as _, Sizable, StyledExt,
+    Disableable as _, Sizable as _, StyledExt as _,
     checkbox::Checkbox,
     h_flex,
-    input::{InputEvent, OtpInput, OtpState},
+    input::{
+        InputEvent, OtpEvent, OtpInput, OtpInputGroup, OtpInputSeparator, OtpInputSlot, OtpState,
+    },
     v_flex,
 };
 
@@ -18,12 +19,14 @@ pub fn init(_: &mut App) {}
 pub struct OtpInputStory {
     otp_masked: bool,
     otp_state: Entity<OtpState>,
-    otp_value: Option<SharedString>,
-    otp_state_small: Entity<OtpState>,
-    otp_state_large: Entity<OtpState>,
-    otp_state_sized: Entity<OtpState>,
-    otp_state_disabled: Entity<OtpState>,
-
+    otp_value: SharedString,
+    otp_complete: bool,
+    alphanumeric_state: Entity<OtpState>,
+    four_digit_state: Entity<OtpState>,
+    separator_state: Entity<OtpState>,
+    invalid_state: Entity<OtpState>,
+    disabled_state: Entity<OtpState>,
+    custom_size_state: Entity<OtpState>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -33,7 +36,7 @@ impl super::Story for OtpInputStory {
     }
 
     fn description() -> &'static str {
-        "OTP Input uses to one-time password (OTP) input field or number password input field."
+        "A composable one-time-code input with native editing, selection, paste, and accessibility behavior."
     }
 
     fn closable() -> bool {
@@ -52,68 +55,78 @@ impl OtpInputStory {
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let otp_state = cx.new(|cx| OtpState::new(6, window, cx).masked(true));
-
         let _subscriptions = vec![
-            cx.subscribe(&otp_state, |this, state, ev: &InputEvent, cx| match ev {
-                InputEvent::Change => {
-                    let text = state.read(cx).value();
-                    this.otp_value = Some(text.clone());
+            cx.subscribe(&otp_state, |this, state, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.otp_value = state.read(cx).value().clone();
+                    this.otp_complete = false;
                     cx.notify();
                 }
-                _ => {}
+            }),
+            cx.subscribe(&otp_state, |this, _, event: &OtpEvent, cx| {
+                if matches!(event, OtpEvent::Complete) {
+                    this.otp_complete = true;
+                    cx.notify();
+                }
             }),
         ];
 
         Self {
             otp_masked: true,
             otp_state,
-            otp_value: None,
-            otp_state_small: cx.new(|cx| {
+            otp_value: SharedString::default(),
+            otp_complete: false,
+            alphanumeric_state: cx.new(|cx| {
                 OtpState::new(6, window, cx)
-                    .default_value("123456")
-                    .masked(true)
+                    .pattern("######")
+                    .default_value("A1B2")
             }),
-            otp_state_large: cx.new(|cx| {
-                OtpState::new(6, window, cx)
-                    .default_value("012345")
-                    .masked(true)
-            }),
-            otp_state_sized: cx.new(|cx| {
-                OtpState::new(4, window, cx)
-                    .masked(true)
-                    .default_value("654321")
-            }),
-            otp_state_disabled: cx.new(|cx| {
-                OtpState::new(6, window, cx)
-                    .masked(true)
-                    .default_value("123456")
-            }),
+            four_digit_state: cx.new(|cx| OtpState::new(4, window, cx)),
+            separator_state: cx.new(|cx| OtpState::new(6, window, cx)),
+            invalid_state: cx.new(|cx| OtpState::new(6, window, cx).default_value("000000")),
+            disabled_state: cx.new(|cx| OtpState::new(6, window, cx).default_value("123456")),
+            custom_size_state: cx.new(|cx| OtpState::new(6, window, cx)),
             _subscriptions,
         }
     }
 
-    fn toggle_opt_masked(&mut self, _: &bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn toggle_otp_masked(&mut self, _: &bool, window: &mut Window, cx: &mut Context<Self>) {
         self.otp_masked = !self.otp_masked;
         self.otp_state.update(cx, |state, cx| {
-            state.set_masked(self.otp_masked, window, cx)
+            state.set_masked(self.otp_masked, window, cx);
         });
-        self.otp_state_small.update(cx, |state, cx| {
-            state.set_masked(self.otp_masked, window, cx)
-        });
-        self.otp_state_large.update(cx, |state, cx| {
-            state.set_masked(self.otp_masked, window, cx)
-        });
-        self.otp_state_sized.update(cx, |state, cx| {
-            state.set_masked(self.otp_masked, window, cx)
-        });
-        self.otp_state_disabled.update(cx, |state, cx| {
-            state.set_masked(self.otp_masked, window, cx)
-        });
+        cx.notify();
+    }
+
+    fn group(indices: impl IntoIterator<Item = usize>) -> OtpInputGroup {
+        indices
+            .into_iter()
+            .fold(OtpInputGroup::new(), |group, index| {
+                group.child(OtpInputSlot::new(index))
+            })
+    }
+
+    fn six_slots(state: &Entity<OtpState>) -> OtpInput {
+        OtpInput::new(state)
+            .child(Self::group(0..3))
+            .child(OtpInputSeparator::new())
+            .child(Self::group(3..6))
+            .aria_label("One-time code")
+    }
+
+    fn separated_pairs(state: &Entity<OtpState>) -> OtpInput {
+        OtpInput::new(state)
+            .child(Self::group(0..2))
+            .child(OtpInputSeparator::new())
+            .child(Self::group(2..4))
+            .child(OtpInputSeparator::new())
+            .child(Self::group(4..6))
+            .aria_label("Grouped one-time code")
     }
 }
 
 impl Focusable for OtpInputStory {
-    fn focus_handle(&self, cx: &gpui::App) -> gpui::FocusHandle {
+    fn focus_handle(&self, cx: &App) -> gpui::FocusHandle {
         self.otp_state.focus_handle(cx)
     }
 }
@@ -129,28 +142,47 @@ impl Render for OtpInputStory {
                     Checkbox::new("otp-mask")
                         .label("Masked")
                         .checked(self.otp_masked)
-                        .on_click(cx.listener(Self::toggle_opt_masked)),
+                        .on_click(cx.listener(Self::toggle_otp_masked)),
                 ),
             )
             .child(
-                section("Normal")
+                section("Default")
                     .v_flex()
-                    .child(OtpInput::new(&self.otp_state))
-                    .when_some(self.otp_value.clone(), |this, otp| {
-                        this.child(format!("Your OTP: {}", otp))
+                    .gap_3()
+                    .child(Self::six_slots(&self.otp_state))
+                    .child(if self.otp_value.is_empty() {
+                        "Enter your one-time code.".to_string()
+                    } else if self.otp_complete {
+                        format!("Complete code: {}", self.otp_value)
+                    } else {
+                        format!("Current value: {}", self.otp_value)
                     }),
             )
-            .child(section("Small").child(OtpInput::new(&self.otp_state_small).groups(1).small()))
-            .child(section("Large").child(OtpInput::new(&self.otp_state_large).groups(3).large()))
+            .child(section("Separator").child(Self::separated_pairs(&self.separator_state)))
             .child(
-                section("With Size").child(
-                    OtpInput::new(&self.otp_state_sized)
-                        .groups(1)
-                        .with_size(px(55.)),
+                section("Alphanumeric").child(
+                    Self::six_slots(&self.alphanumeric_state)
+                        .aria_description("Accepts ASCII letters and digits."),
                 ),
             )
             .child(
-                section("Disabled").child(OtpInput::new(&self.otp_state_disabled).disabled(true)),
+                section("Four Digits").child(
+                    OtpInput::new(&self.four_digit_state)
+                        .child(Self::group(0..4))
+                        .aria_label("Four-digit PIN"),
+                ),
+            )
+            .child(
+                section("Invalid").child(
+                    Self::six_slots(&self.invalid_state)
+                        .invalid(true)
+                        .aria_description("Invalid code. Please try again."),
+                ),
+            )
+            .child(section("Disabled").child(Self::six_slots(&self.disabled_state).disabled(true)))
+            .child(
+                section("Custom Size")
+                    .child(Self::six_slots(&self.custom_size_state).with_size(px(44.))),
             )
     }
 }

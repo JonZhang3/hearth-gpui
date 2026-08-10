@@ -621,8 +621,9 @@ impl Input {
         let Some(gpui::accesskit::ActionData::Value(value)) = data else {
             return;
         };
+        let value = state.read(cx).transform_external_text(value);
         state.update(cx, |state, cx| {
-            state.replace_all(value.to_string(), window, cx);
+            state.replace_all(value, window, cx);
         });
     }
 

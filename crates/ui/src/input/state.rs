@@ -418,6 +418,10 @@ pub struct InputState {
     /// If set, this overrides the built-in context menu (and ignores [`Self::enable_context_menu`]).
     pub(super) context_menu_builder:
         Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
+    /// Optional clipboard preprocessing used by typed input-family composites.
+    pub(crate) paste_transformer: Option<Rc<dyn Fn(&str) -> String>>,
+    /// Optional character limit applied to clipboard insertion.
+    pub(crate) max_paste_characters: Option<usize>,
     pending_context_menu: Option<(Point<Pixels>, usize)>,
 
     /// Whether the context menu that shows on right-click is enabled.
@@ -541,6 +545,8 @@ impl InputState {
             diagnostic_popover: None,
             context_menu_content: None,
             context_menu_builder: None,
+            paste_transformer: None,
+            max_paste_characters: None,
             pending_context_menu: None,
             enable_context_menu: true,
             completion_inserting: false,
@@ -2075,10 +2081,40 @@ impl InputState {
 
     pub(super) fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(clipboard) = cx.read_from_clipboard() {
-            let new_text = clipboard.text().unwrap_or_default();
+            let clipboard_text = clipboard.text().unwrap_or_default();
+            let new_text = self
+                .paste_transformer
+                .as_ref()
+                .map(|transformer| transformer(&clipboard_text))
+                .unwrap_or(clipboard_text);
+            let new_text = if let Some(max_characters) = self.max_paste_characters {
+                let selected_characters = self.text.slice(self.selected_range).chars().count();
+                let available = max_characters.saturating_sub(
+                    self.text
+                        .chars()
+                        .count()
+                        .saturating_sub(selected_characters),
+                );
+                new_text.chars().take(available).collect::<String>()
+            } else {
+                new_text
+            };
             self.replace_text_in_range_silent(None, &new_text, window, cx);
             self.scroll_to(self.cursor(), None, cx);
         }
+    }
+
+    /// Applies composite-specific normalization to text supplied through an
+    /// external editing channel such as AccessKit.
+    pub(crate) fn transform_external_text(&self, text: &str) -> String {
+        let text = self
+            .paste_transformer
+            .as_ref()
+            .map(|transformer| transformer(text))
+            .unwrap_or_else(|| text.to_string());
+        self.max_paste_characters
+            .map(|limit| text.chars().take(limit).collect())
+            .unwrap_or(text)
     }
 
     fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {

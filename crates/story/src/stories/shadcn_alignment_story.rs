@@ -23,7 +23,10 @@ use gpui_component::{
     group_box::GroupBox,
     h_flex,
     hover_card::HoverCard,
-    input::{Input, InputState, NumberInput, OtpInput, OtpState},
+    input::{
+        Input, InputState, NumberInput, OtpInput, OtpInputGroup, OtpInputSeparator, OtpInputSlot,
+        OtpState,
+    },
     menu::{DropdownMenu as _, PopupMenuItem},
     popover::Popover,
     progress::Progress,
@@ -39,6 +42,18 @@ use gpui_component::{
 };
 
 use crate::section;
+
+fn alignment_otp(state: &Entity<OtpState>) -> OtpInput {
+    OtpInput::new(state)
+        .child((0..3).fold(OtpInputGroup::new(), |group, index| {
+            group.child(OtpInputSlot::new(index))
+        }))
+        .child(OtpInputSeparator::new())
+        .child((3..6).fold(OtpInputGroup::new(), |group, index| {
+            group.child(OtpInputSlot::new(index))
+        }))
+        .aria_label("One-time code")
+}
 
 /// Deterministic state matrix for Color Theme and Style Preset verification.
 pub struct ShadcnAlignmentStory {
@@ -348,8 +363,8 @@ impl Render for ShadcnAlignmentStory {
                     .child(Input::new(&self.read_only_input).read_only(true))
                     .child(Input::new(&self.text_area).h(px(96.)))
                     .child(NumberInput::new(&self.number_input))
-                    .child(OtpInput::new(&self.otp))
-                    .child(OtpInput::new(&self.invalid_otp).invalid(true))
+                    .child(alignment_otp(&self.otp))
+                    .child(alignment_otp(&self.invalid_otp).invalid(true))
                     .child(
                         v_flex()
                             .w_full()

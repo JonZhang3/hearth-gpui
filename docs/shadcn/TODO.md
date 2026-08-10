@@ -2,6 +2,18 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## OtpInput separator accessibility role
+
+**Status:** Deferred GPUI accessibility capability; separator remains decorative
+
+The pinned shadcn `InputOTPSeparator` exposes `role="separator"`. The AccessKit role set currently
+available through GPUI has no separator role, so `OtpInputSeparator` is rendered as non-focusable,
+decorative content while the single underlying editor owns the code's accessible name, value,
+selection, invalid state, and disabled state.
+
+Revisit this when GPUI exposes a semantic separator role. Do not substitute `Splitter`, because an
+OTP separator is not adjustable and must not announce interactive splitter behavior.
+
 ## Tooltip scale and isolated-opacity parity
 
 **Status:** Renderer support deferred; side-aware translation and opacity implemented
