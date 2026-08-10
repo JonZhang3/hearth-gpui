@@ -17,7 +17,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] ButtonIcon (`f23bd94d`)
 - [x] ButtonGroup (`f23bd94d`)
 - [ ] DropdownButton
-- [ ] Toggle and ToggleGroup
+- [x] Toggle and ToggleGroup
 - [x] Checkbox (`d1adc7fd`)
 - [ ] Radio and RadioGroup
 - [x] Switch (`ea447322`)
