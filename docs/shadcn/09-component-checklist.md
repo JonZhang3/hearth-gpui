@@ -26,7 +26,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] NumberInput — GPUI-native optimization and Style Preset integration
 - [x] OtpInput
 - [x] Select
-- [ ] Combobox
+- [x] Combobox
 - [x] Tooltip
 - [x] Dialog (`9381cbde`)
 - [x] AlertDialog (`4ad50d07`)

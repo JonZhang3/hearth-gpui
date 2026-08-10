@@ -276,10 +276,14 @@ impl SearchableListDelegate for FeaturedDelegate {
 pub struct ComboboxStory {
     // 01 basic single-select
     basic: Entity<ComboboxState<SearchableVec<&'static str>>>,
+    disabled: Entity<ComboboxState<SearchableVec<&'static str>>>,
+    invalid: Entity<ComboboxState<SearchableVec<&'static str>>>,
+    long_item: Entity<ComboboxState<SearchableVec<&'static str>>>,
     // 02 basic multi-select
     basic_multi: Entity<ComboboxState<SearchableVec<&'static str>>>,
     // 03 grouped single-select
     grouped: Entity<ComboboxState<SearchableVec<SearchableGroup<FoodItem>>>>,
+    grouped_separators: Entity<ComboboxState<SearchableVec<SearchableGroup<FoodItem>>>>,
     // 03 disabled items (single)
     disabled_items: Entity<ComboboxState<SearchableVec<FoodItem>>>,
     // 04 item icon (single)
@@ -367,6 +371,30 @@ impl ComboboxStory {
                 .searchable(true)
         });
 
+        let disabled = cx.new(|cx| {
+            ComboboxState::new(SearchableVec::new(FRAMEWORKS.to_vec()), vec![], window, cx)
+                .searchable(true)
+        });
+
+        let invalid = cx.new(|cx| {
+            ComboboxState::new(SearchableVec::new(FRAMEWORKS.to_vec()), vec![], window, cx)
+                .searchable(true)
+        });
+
+        let long_item = cx.new(|cx| {
+            ComboboxState::new(
+                SearchableVec::new(vec![
+                    "Short option",
+                    "A very long combobox option that must truncate before the trailing checker icon",
+                    "Another option",
+                ]),
+                vec![IndexPath::new(1)],
+                window,
+                cx,
+            )
+            .searchable(true)
+        });
+
         let basic_multi = cx.new(|cx| {
             ComboboxState::new(SearchableVec::new(FRAMEWORKS.to_vec()), vec![], window, cx)
                 .multiple(true)
@@ -377,6 +405,9 @@ impl ComboboxStory {
             ComboboxState::new(food_groups(), vec![IndexPath::default()], window, cx)
                 .searchable(true)
         });
+
+        let grouped_separators =
+            cx.new(|cx| ComboboxState::new(food_groups(), vec![], window, cx).searchable(true));
 
         let disabled_items = cx.new(|cx| {
             let items = SearchableVec::new(vec![
@@ -487,8 +518,12 @@ impl ComboboxStory {
 
         cx.new(|_| Self {
             basic,
+            disabled,
+            invalid,
+            long_item,
             basic_multi,
             grouped,
+            grouped_separators,
             disabled_items,
             with_icon,
             custom_check,
@@ -520,6 +555,34 @@ impl Render for ComboboxStory {
                     Combobox::new(&self.basic)
                         .placeholder("Select framework...")
                         .search_placeholder("Search framework...")
+                        .cleanable(true)
+                        .w_full(),
+                ),
+            )
+            .child(
+                section("Disabled").max_w_md().child(
+                    Combobox::new(&self.disabled)
+                        .placeholder("Select framework...")
+                        .disabled(true)
+                        .w_full(),
+                ),
+            )
+            .child(
+                section("Invalid").max_w_md().child(
+                    Combobox::new(&self.invalid)
+                        .aria_label("Framework")
+                        .aria_description("Choose a valid framework")
+                        .placeholder("Select framework...")
+                        .search_placeholder("Search framework...")
+                        .invalid(true)
+                        .w_full(),
+                ),
+            )
+            .child(
+                section("Long Item and Checker").max_w_md().child(
+                    Combobox::new(&self.long_item)
+                        .placeholder("Select option...")
+                        .search_placeholder("Search options...")
                         .w_full(),
                 ),
             )
@@ -536,6 +599,15 @@ impl Render for ComboboxStory {
                     Combobox::new(&self.grouped)
                         .placeholder("Select item...")
                         .search_placeholder("Search item...")
+                        .w_full(),
+                ),
+            )
+            .child(
+                section("Grouped Items with Separators").max_w_md().child(
+                    Combobox::new(&self.grouped_separators)
+                        .placeholder("Select item...")
+                        .search_placeholder("Search item...")
+                        .group_separators(true)
                         .w_full(),
                 ),
             )

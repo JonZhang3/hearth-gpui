@@ -1,7 +1,9 @@
+use std::time::Instant;
+
 use gpui::{
-    AnyElement, App, Bounds, ClickEvent, Context, DismissEvent, Edges, ElementId, Entity,
-    EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement, KeyBinding,
-    Length, MouseDownEvent, ParentElement, Pixels, Render, RenderOnce, Role, SharedString,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, Edges,
+    ElementId, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce, Role, SharedString,
     StatefulInteractiveElement, StyleRefinement, Styled, Window, anchored, deferred, div,
     prelude::FluentBuilder, px, rems,
 };
@@ -11,22 +13,104 @@ use rust_i18n::t;
 pub use crate::select::Caret;
 
 use crate::{
-    ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Sizable, Size,
-    StyleSized, StyledExt,
+    ActiveTheme, Density, Disableable, ElementExt as _, Icon, IndexPath, Sizable, Size,
+    StylePreset, StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
-    animation::{OverlayLifecycle, OverlayPhase, Transition, effective_motion_duration},
+    animation::{
+        Lerp, OverlayLifecycle, OverlayPhase, OverlayTransition, Transition,
+        effective_motion_duration,
+    },
     global_state::GlobalState,
     h_flex,
-    input::{clear_button, input_style},
-    list::{List, ListState},
-    searchable_list::{
-        SearchableListAdapter, SearchableListChange, SearchableListDelegate, SearchableListItem,
-        SearchableListState,
+    input::{
+        Input, InputMotionKind, InputMotionState, InputPaintState, clear_button, input_child_id,
+        input_metrics, input_motion_timing, input_uses_semantic_color_motion,
     },
+    list::List,
+    searchable_list::{
+        SearchableListChange, SearchableListDelegate, SearchableListItem, SearchableListState,
+    },
+    select::SelectShadow,
     v_flex,
 };
 
 const CONTEXT: &str = "Combobox";
+
+/// Combobox geometry derived from semantic Style Preset values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ComboboxMetrics {
+    trigger_radius: Pixels,
+    trigger_padding_left: Pixels,
+    trigger_padding_right: Pixels,
+    trigger_gap: Pixels,
+    content_radius: Pixels,
+    content_ring_opacity: f32,
+    content_shadow: SelectShadow,
+}
+
+impl ComboboxMetrics {
+    /// Resolves Vega, Nova, and Maia geometry without branching on preset identifiers.
+    fn resolve(size: Size, style: &StylePreset) -> Self {
+        let control = style.controls.for_size(size);
+        match style.density {
+            Density::Standard => Self {
+                trigger_radius: style.radii.md,
+                trigger_padding_left: if matches!(size, Size::Small | Size::Medium) {
+                    px(10.)
+                } else {
+                    control.padding_x
+                },
+                trigger_padding_right: if matches!(size, Size::Small | Size::Medium) {
+                    px(8.)
+                } else {
+                    control.padding_x
+                },
+                trigger_gap: px(6.),
+                content_radius: style.radii.md,
+                content_ring_opacity: 0.1,
+                content_shadow: SelectShadow::Medium,
+            },
+            Density::Compact => Self {
+                trigger_radius: if matches!(size, Size::XSmall | Size::Small) {
+                    style.radii.md
+                } else {
+                    style.radii.lg
+                },
+                trigger_padding_left: if matches!(size, Size::Small | Size::Medium) {
+                    px(10.)
+                } else {
+                    control.padding_x
+                },
+                trigger_padding_right: if matches!(size, Size::Small | Size::Medium) {
+                    px(8.)
+                } else {
+                    control.padding_x
+                },
+                trigger_gap: px(6.),
+                content_radius: style.radii.lg,
+                content_ring_opacity: 0.1,
+                content_shadow: SelectShadow::Medium,
+            },
+            Density::Comfortable => Self {
+                trigger_radius: style.radii.xl,
+                trigger_padding_left: if matches!(size, Size::Small | Size::Medium) {
+                    px(12.)
+                } else {
+                    control.padding_x
+                },
+                trigger_padding_right: if matches!(size, Size::Small | Size::Medium) {
+                    px(12.)
+                } else {
+                    control.padding_x
+                },
+                trigger_gap: px(6.),
+                content_radius: style.radii.lg,
+                content_ring_opacity: 0.05,
+                content_shadow: SelectShadow::ExtraLarge,
+            },
+        }
+    }
+}
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -65,11 +149,14 @@ struct ComboboxOptions {
     size: Size,
     cleanable: bool,
     aria_label: Option<SharedString>,
+    aria_description: Option<SharedString>,
     placeholder: Option<SharedString>,
     search_placeholder: Option<SharedString>,
     menu_width: Length,
     menu_max_h: Length,
     disabled: bool,
+    invalid: bool,
+    group_separators: bool,
     appearance: bool,
     trigger_icon: Option<Icon>,
     check_icon: Option<Icon>,
@@ -82,11 +169,14 @@ impl Default for ComboboxOptions {
             size: Size::default(),
             cleanable: false,
             aria_label: None,
+            aria_description: None,
             placeholder: None,
             search_placeholder: None,
             menu_width: Length::Auto,
-            menu_max_h: rems(20.).into(),
+            menu_max_h: rems(18.).into(),
             disabled: false,
+            invalid: false,
+            group_separators: false,
             appearance: true,
             trigger_icon: None,
             check_icon: None,
@@ -112,6 +202,9 @@ where
         Option<Box<dyn Fn(&ComboboxTriggerCtx<D>, &mut Window, &mut App) -> AnyElement + 'static>>,
     footer: Option<Box<dyn Fn(&mut Window, &mut App) -> AnyElement + 'static>>,
     lifecycle: OverlayLifecycle,
+    invalid: bool,
+    group_separators: bool,
+    restore_focus_after_close: bool,
 }
 
 /// Events emitted by [`ComboboxState`].
@@ -238,10 +331,12 @@ where
                     empty
                 } else {
                     h_flex()
+                        .w_full()
                         .justify_center()
-                        .py_6()
-                        .text_color(cx.theme().muted_foreground.opacity(0.6))
-                        .child(Icon::new(IconName::Inbox).size(px(28.)))
+                        .py_2()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(t!("ComboBox.empty"))
                         .into_any_element()
                 }
             },
@@ -259,6 +354,9 @@ where
             render_trigger: None,
             footer: None,
             lifecycle: OverlayLifecycle::default(),
+            invalid: false,
+            group_separators: false,
+            restore_focus_after_close: false,
         }
     }
 
@@ -455,10 +553,16 @@ where
         }
     }
 
+    /// Defers blur reconciliation until the currently updating child ListState is released.
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.state.list.read(cx).is_focused(window, cx)
-            || self.state.focus_handle.is_focused(window)
-        {
+        cx.defer_in(window, |this, window, cx| {
+            this.reconcile_blur(window, cx);
+        });
+    }
+
+    /// Closes the popup after focus leaves the trigger and both list-owned focus targets.
+    fn reconcile_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.list_is_focused(window) || self.state.focus_handle.is_focused(window) {
             return;
         }
 
@@ -471,7 +575,9 @@ where
             self.set_open(true, window, cx);
         }
 
-        self.state.list.focus_handle(cx).focus(window, cx);
+        self.state
+            .active_list_focus_handle(self.searchable)
+            .focus(window, cx);
         cx.propagate();
     }
 
@@ -480,7 +586,9 @@ where
             self.set_open(true, window, cx);
         }
 
-        self.state.list.focus_handle(cx).focus(window, cx);
+        self.state
+            .active_list_focus_handle(self.searchable)
+            .focus(window, cx);
         cx.propagate();
     }
 
@@ -492,7 +600,9 @@ where
             cx.notify();
         }
 
-        self.state.list.focus_handle(cx).focus(window, cx);
+        self.state
+            .active_list_focus_handle(self.searchable)
+            .focus(window, cx);
     }
 
     fn toggle_menu(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -501,7 +611,9 @@ where
         self.set_open(!self.state.open, window, cx);
 
         if self.state.open {
-            self.state.list.focus_handle(cx).focus(window, cx);
+            self.state
+                .active_list_focus_handle(self.searchable)
+                .focus(window, cx);
         }
 
         cx.notify();
@@ -533,34 +645,66 @@ where
         self.state.open = open;
         if open {
             GlobalState::global_mut(cx).register_deferred_popover(&self.state.focus_handle);
+        } else {
+            self.restore_focus_after_close = self.state.list_is_focused(window);
+            self.schedule_close_completion(transition, window, cx);
         }
         cx.notify();
+    }
 
-        let restore_focus = self.state.list.read(cx).is_focused(window, cx);
-        let focus_handle = self.state.focus_handle.clone();
+    /// Completes closing independently of popup rendering so conditional unmounting cannot leave
+    /// the deferred-popover registration active.
+    fn schedule_close_completion(
+        &self,
+        transition: OverlayTransition,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let duration = effective_motion_duration(cx.theme().style.motion.fast(), cx);
-        cx.spawn_in(window, async move |state, cx| {
-            cx.background_executor().timer(duration).await;
-            let _ = state.update_in(cx, |state, window, cx| {
-                let completed = if open {
-                    state.lifecycle.complete_open(transition)
-                } else {
-                    state.lifecycle.complete_close(transition)
-                };
-                if !completed {
-                    return;
-                }
-                if !open {
-                    GlobalState::global_mut(cx)
-                        .unregister_deferred_popover(&state.state.focus_handle);
-                    if restore_focus {
-                        focus_handle.focus(window, cx);
+        let state = cx.entity().downgrade();
+        let focus_handle = self.state.focus_handle.clone();
+
+        window
+            .spawn(cx, async move |cx| {
+                cx.background_executor().timer(duration).await;
+                let _ = cx.update(|window, cx| {
+                    if let Some(state) = state.upgrade() {
+                        state.update(cx, |state, cx| {
+                            state.complete_motion(false, transition, window, cx);
+                        });
+                    } else {
+                        GlobalState::global_mut(cx).unregister_deferred_popover(&focus_handle);
                     }
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+                });
+            })
+            .detach();
+    }
+
+    /// Completes the active overlay transition and performs close-only ownership work.
+    fn complete_motion(
+        &mut self,
+        opening: bool,
+        transition: OverlayTransition,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let completed = if opening {
+            self.lifecycle.complete_open(transition)
+        } else {
+            self.lifecycle.complete_close(transition)
+        };
+        if !completed {
+            return;
+        }
+
+        if !opening {
+            GlobalState::global_mut(cx).unregister_deferred_popover(&self.state.focus_handle);
+            if self.restore_focus_after_close {
+                self.state.focus_handle.focus(window, cx);
+            }
+            self.restore_focus_after_close = false;
+        }
+        cx.notify();
     }
 
     fn clean(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
@@ -573,7 +717,7 @@ where
             .state
             .placeholder
             .clone()
-            .unwrap_or_else(|| t!("Combobox.placeholder").into());
+            .unwrap_or_else(|| t!("ComboBox.placeholder").into());
 
         if self.state.selection.is_empty() {
             return div()
@@ -624,21 +768,62 @@ where
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let searchable = self.searchable;
         let is_focused = self.state.focus_handle.is_focused(window);
+        let focus_visible = is_focused && !self.state.disabled && window.last_input_was_keyboard();
         let show_clean = self.state.cleanable && !self.state.selection.is_empty();
         let bounds = self.state.bounds;
         let phase = self.lifecycle.phase();
-        let animation_key = self.lifecycle.animation_key();
+        let active_transition = self.lifecycle.active_transition();
         let mounted = self.lifecycle.is_mounted();
+        let closing = phase == OverlayPhase::Closing;
+        let opening = phase == OverlayPhase::Opening;
         let allow_open = !(self.state.open || self.state.disabled);
-        let outline_visible = self.state.open || (is_focused && !self.state.disabled);
         let disabled = self.state.disabled;
-
-        let (bg, fg) = input_style(disabled, cx);
+        let metrics = ComboboxMetrics::resolve(self.state.size, &cx.theme().style);
+        let input_metrics = input_metrics(&cx.theme().style);
+        let control_metrics = cx.theme().style.controls.for_size(self.state.size);
+        let invalid_border =
+            cx.theme()
+                .danger
+                .opacity(if cx.theme().is_dark() { 0.5 } else { 1.0 });
+        let border = if self.invalid {
+            invalid_border
+        } else if focus_visible {
+            cx.theme().ring
+        } else {
+            cx.theme().input
+        };
+        let ring_visible = self.state.appearance && (self.invalid || focus_visible);
+        let ring_color = if self.invalid {
+            cx.theme()
+                .danger
+                .opacity(if cx.theme().is_dark() { 0.4 } else { 0.2 })
+        } else {
+            cx.theme().ring.opacity(0.5)
+        };
+        let ring_color = if disabled {
+            ring_color.opacity(0.5)
+        } else {
+            ring_color
+        };
+        let paint = InputPaintState {
+            background: Input::surface_background(input_metrics, false, cx),
+            border,
+            ring: if ring_visible {
+                ring_color
+            } else {
+                ring_color.opacity(0.)
+            },
+        };
+        let uses_semantic_color_motion = input_uses_semantic_color_motion(&self.state.style);
+        let root_id: ElementId = ("combobox-trigger", cx.entity().entity_id()).into();
 
         self.state.list.update(cx, |list, cx| {
             list.set_searchable(searchable, cx);
-            list.delegate_mut().size = self.state.size;
-            list.delegate_mut().check_icon = self.check_icon.clone();
+            let delegate = list.delegate_mut();
+            delegate.size = Size::Medium;
+            delegate.check_icon = self.check_icon.clone();
+            delegate.select_style = true;
+            delegate.section_separators = self.group_separators;
         });
 
         let selection = &self.state.selection;
@@ -683,56 +868,247 @@ where
                 .into_any_element()
         };
 
-        let toggle_handler: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>> =
-            if allow_open {
-                Some(Box::new(cx.listener(Self::toggle_menu)))
-            } else {
-                None
-            };
-
-        let prepaint_handler: Box<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static> = {
-            let state = cx.entity();
-            Box::new(move |bounds, _, cx| state.update(cx, |r, _| r.state.bounds = bounds))
+        let trigger_content = if has_custom_trigger {
+            trigger_body
+        } else {
+            h_flex()
+                .id("inner")
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .justify_between()
+                .gap(metrics.trigger_gap)
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .truncate()
+                        .child(trigger_body),
+                )
+                .child(trailing)
+                .into_any_element()
         };
 
         let footer_el = self.footer.as_ref().map(|f| f(window, cx));
 
-        let dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static> =
-            Box::new(cx.listener(|this, _, window, cx| this.escape(&Cancel, window, cx)));
+        let mut trigger = div()
+            .id("input")
+            .relative()
+            .flex()
+            .items_center()
+            .justify_between()
+            .h(control_metrics.height)
+            .pl(metrics.trigger_padding_left)
+            .pr(metrics.trigger_padding_right)
+            .border_1()
+            .border_color(cx.theme().transparent)
+            .when(disabled, |this| this.opacity(0.5))
+            .when(self.state.appearance, |this| {
+                this.bg(paint.background)
+                    .text_color(cx.theme().foreground)
+                    .border_color(paint.border)
+                    .rounded(metrics.trigger_radius)
+                    .when(input_metrics.shadow, |this| this.shadow_xs())
+            })
+            .when(
+                self.state.appearance
+                    && uses_semantic_color_motion
+                    && !disabled
+                    && cx.theme().is_dark(),
+                |this| this.hover(|this| this.bg(cx.theme().input.opacity(0.5))),
+            )
+            .overflow_hidden()
+            .input_text_size(self.state.size)
+            .refine_style(&self.state.style)
+            .when(allow_open, |this| {
+                this.on_click(cx.listener(Self::toggle_menu))
+            })
+            .child(trigger_content)
+            .on_prepaint({
+                let state = cx.entity();
+                move |bounds, _, cx| state.update(cx, |state, _| state.state.bounds = bounds)
+            });
+
+        let motion_state =
+            window.use_keyed_state(input_child_id(&root_id, "motion-state"), cx, |_, _| {
+                InputMotionState::new(paint)
+            });
+        let (motion_duration, motion_easing) = input_motion_timing(ring_visible, cx);
+        let transition = motion_state.update(cx, |state, _| {
+            state.transition_to(
+                paint,
+                Instant::now(),
+                motion_duration,
+                motion_easing,
+                input_metrics.motion_kind,
+            )
+        });
+        let ring_transition =
+            transition.filter(|transition| transition.from.ring != transition.to.ring);
+        let ring_geometry = (self.state.appearance && (ring_visible || ring_transition.is_some()))
+            .then(|| {
+                let ring_width = cx.theme().style.focus.ring_width;
+                let ring_outset = ring_width + cx.theme().style.focus.ring_offset;
+                (
+                    ring_width,
+                    ring_outset,
+                    Input::outer_ring_geometry(trigger.style(), ring_outset, window),
+                )
+            });
+
+        let trigger = if self.state.appearance
+            && uses_semantic_color_motion
+            && let Some(transition) = transition.filter(|transition| {
+                transition.from.background != transition.to.background
+                    || transition.from.border != transition.to.border
+            }) {
+            let from = transition.from;
+            let to = transition.to;
+            let motion_kind = input_metrics.motion_kind;
+            trigger
+                .with_animation(
+                    input_child_id(&root_id, format!("surface-{}", transition.epoch)),
+                    Animation::new(transition.duration)
+                        .with_easing(move |delta| motion_easing.sample(delta)),
+                    move |this, delta| match motion_kind {
+                        InputMotionKind::Colors | InputMotionKind::ColorsAndShadow => this
+                            .bg(Lerp::lerp(&from.background, &to.background, delta))
+                            .border_color(Lerp::lerp(&from.border, &to.border, delta)),
+                        InputMotionKind::Shadow => this.bg(to.background).border_color(to.border),
+                    },
+                )
+                .into_any_element()
+        } else {
+            trigger.into_any_element()
+        };
+
+        let ring = ring_geometry.map(|(ring_width, ring_outset, ring_style)| {
+            let ring = div()
+                .absolute()
+                .top(-ring_outset)
+                .right(-ring_outset)
+                .bottom(-ring_outset)
+                .left(-ring_outset)
+                .border(ring_width)
+                .border_color(paint.ring)
+                .refine_style(&ring_style);
+            if let Some(transition) = ring_transition {
+                let from = transition.from;
+                let to = transition.to;
+                ring.with_animation(
+                    input_child_id(&root_id, format!("ring-{}", transition.epoch)),
+                    Animation::new(transition.duration)
+                        .with_easing(move |delta| motion_easing.sample(delta)),
+                    move |this, delta| this.border_color(Lerp::lerp(&from.ring, &to.ring, delta)),
+                )
+                .into_any_element()
+            } else {
+                ring.into_any_element()
+            }
+        });
 
         div()
             .size_full()
             .relative()
-            .child(render_trigger_container(
-                disabled,
-                self.state.appearance,
-                self.state.size,
-                &self.state.style,
-                bg,
-                fg,
-                outline_visible,
-                allow_open,
-                trigger_body,
-                trailing,
-                toggle_handler,
-                prepaint_handler,
-                cx,
-            ))
+            .children(ring)
+            .child(trigger)
             .when(mounted, |this| {
                 this.child(
-                    deferred(render_popup_shell(
-                        &self.state.list,
-                        self.state.menu_width,
-                        self.state.search_placeholder.clone(),
-                        self.state.size,
-                        self.state.menu_max_h,
-                        bounds,
-                        footer_el,
-                        dismiss_handler,
-                        phase,
-                        animation_key,
-                        cx,
-                    ))
+                    deferred(
+                        anchored().snap_to_window_with_margin(px(8.)).child(
+                            div()
+                                .occlude()
+                                .map(|this| match self.state.menu_width {
+                                    Length::Auto => {
+                                        this.w((bounds.size.width + px(28.)).max(px(144.)))
+                                    }
+                                    Length::Definite(width) => this.w(width),
+                                })
+                                .child({
+                                    let motion = cx.theme().style.motion;
+                                    let has_footer = footer_el.is_some();
+                                    let popup = v_flex()
+                                        .relative()
+                                        .occlude()
+                                        .mt_1p5()
+                                        .bg(cx.theme().tokens.popover)
+                                        .border_1()
+                                        .border_color(
+                                            cx.theme()
+                                                .foreground
+                                                .opacity(metrics.content_ring_opacity),
+                                        )
+                                        .rounded(metrics.content_radius)
+                                        .when(cx.theme().style.elevation.enabled, |this| {
+                                            match metrics.content_shadow {
+                                                SelectShadow::Medium => this.shadow_md(),
+                                                SelectShadow::ExtraLarge => this.shadow_2xl(),
+                                            }
+                                        })
+                                        .child(
+                                            List::new(&self.state.list)
+                                                .when_some(
+                                                    self.state.search_placeholder.clone(),
+                                                    |this, placeholder| {
+                                                        this.search_placeholder(placeholder)
+                                                    },
+                                                )
+                                                .with_size(Size::Medium)
+                                                .max_h(self.state.menu_max_h)
+                                                .paddings(Edges::all(px(4.))),
+                                        )
+                                        .when(has_footer, |this| {
+                                            this.child(
+                                                div()
+                                                    .border_t_1()
+                                                    .border_color(cx.theme().border)
+                                                    .p_1()
+                                                    .when_some(footer_el, |this, footer| {
+                                                        this.child(footer)
+                                                    }),
+                                            )
+                                        })
+                                        .when(closing, |this| {
+                                            this.child(
+                                                div()
+                                                    .absolute()
+                                                    .top_0()
+                                                    .left_0()
+                                                    .size_full()
+                                                    .occlude(),
+                                            )
+                                        });
+                                    let state = cx.entity();
+                                    Transition::new(motion.fast())
+                                        .ease_token(if closing {
+                                            motion.exit_easing
+                                        } else {
+                                            motion.enter_easing
+                                        })
+                                        .slide_y(
+                                            if closing { px(0.) } else { px(-8.) },
+                                            if closing { px(-8.) } else { px(0.) },
+                                        )
+                                        .when_some(active_transition, |this, transition| {
+                                            this.on_complete(move |window, cx| {
+                                                state.update(cx, |state, cx| {
+                                                    state.complete_motion(
+                                                        opening, transition, window, cx,
+                                                    );
+                                                });
+                                            })
+                                        })
+                                        .apply(popup, "combobox-motion")
+                                })
+                                .when(!closing, |this| {
+                                    this.on_mouse_down_out(cx.listener(|this, _, window, cx| {
+                                        this.escape(&Cancel, window, cx);
+                                    }))
+                                }),
+                        ),
+                    )
                     .with_priority(1),
                 )
             })
@@ -757,9 +1133,9 @@ where
     D: SearchableListDelegate + 'static,
     <D::Item as SearchableListItem>::Value: PartialEq + Clone,
 {
-    fn focus_handle(&self, cx: &App) -> FocusHandle {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
         if self.state.open {
-            self.state.list.focus_handle(cx)
+            self.state.active_list_focus_handle(self.searchable)
         } else {
             self.state.focus_handle.clone()
         }
@@ -770,8 +1146,8 @@ where
 
 /// A combo box with support for single and multi-select.
 ///
-/// Clicking an item toggles it in the selection; the dropdown stays open until the user
-/// presses Escape or clicks outside.
+/// Single-select mode closes after committing an item. Multi-select mode keeps the popup open
+/// while items are toggled and closes on Escape or an outside click.
 #[derive(IntoElement)]
 pub struct Combobox<D: SearchableListDelegate + 'static>
 where
@@ -826,6 +1202,12 @@ where
         self
     }
 
+    /// Set the accessible description for the Combobox trigger.
+    pub fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
+        self.options.aria_description = Some(description.into());
+        self
+    }
+
     /// Override the trigger chevron icon.
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.options.trigger_icon = Some(icon.into());
@@ -853,6 +1235,18 @@ where
     /// Set the disabled state.
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.options.disabled = disabled;
+        self
+    }
+
+    /// Set the invalid state and destructive feedback treatment.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.options.invalid = invalid;
+        self
+    }
+
+    /// Show separators before non-first visible groups.
+    pub fn group_separators(mut self, separators: bool) -> Self {
+        self.options.group_separators = separators;
         self
     }
 
@@ -922,7 +1316,9 @@ where
 {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.options.disabled;
+        let invalid = self.options.invalid;
         let aria_label = self.options.aria_label.clone();
+        let aria_description = self.options.aria_description.clone();
         let selected_value = {
             let state = self.state.read(cx);
             let labels = state
@@ -949,6 +1345,8 @@ where
             this.state.menu_max_h = opts.menu_max_h;
             this.state.disabled = opts.disabled;
             this.state.appearance = opts.appearance;
+            this.invalid = opts.invalid;
+            this.group_separators = opts.group_separators;
             this.trigger_icon = opts.trigger_icon;
             this.check_icon = opts.check_icon;
             this.render_trigger = render_trigger;
@@ -966,6 +1364,9 @@ where
             .role(Role::ComboBox)
             .aria_expanded(is_open)
             .when_some(aria_label, |this, label| this.aria_label(label))
+            .when_some(aria_description, |this, description| {
+                this.aria_description(description)
+            })
             .when_some(selected_value, |this, value| this.aria_value(value))
             .key_context(CONTEXT)
             .when(!disabled, |this| {
@@ -978,154 +1379,15 @@ where
             .size_full()
             .child(self.state);
 
-        crate::accessibility::accessibility_state(element, false, false, disabled)
+        crate::accessibility::accessibility_state(element, invalid, false, disabled)
     }
-}
-
-// MARK: Rendering helpers
-
-/// Renders the styled trigger container.
-#[allow(clippy::too_many_arguments)]
-fn render_trigger_container(
-    disabled: bool,
-    appearance: bool,
-    size: Size,
-    style: &StyleRefinement,
-    bg: Hsla,
-    fg: Hsla,
-    outline_visible: bool,
-    allow_open: bool,
-    trigger_body: AnyElement,
-    trailing: AnyElement,
-    toggle_handler: Option<Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
-    prepaint_handler: Box<dyn Fn(Bounds<Pixels>, &mut Window, &mut App) + 'static>,
-    cx: &mut App,
-) -> impl IntoElement {
-    div()
-        .id("input")
-        .relative()
-        .flex()
-        .items_center()
-        .justify_between()
-        .border_1()
-        .border_color(cx.theme().transparent)
-        .when(appearance, |this| {
-            this.bg(bg)
-                .text_color(fg)
-                .when(disabled, |this| this.opacity(0.5))
-                .border_color(cx.theme().input)
-                .rounded(cx.theme().style.radii.md)
-        })
-        .overflow_hidden()
-        .input_size(size, cx)
-        .input_text_size(size)
-        .refine_style(style)
-        .when(outline_visible, |this| this.focused_border(cx))
-        .when(allow_open, |this| {
-            this.when_some(toggle_handler, |this, handler| this.on_click(handler))
-        })
-        .child(
-            h_flex()
-                .id("inner")
-                .w_full()
-                .items_center()
-                .justify_between()
-                .gap_1()
-                .child(trigger_body)
-                .child(trailing),
-        )
-        .on_prepaint(prepaint_handler)
-}
-
-/// Renders the deferred anchored popup shell containing the searchable list and optional footer.
-#[allow(clippy::too_many_arguments)]
-fn render_popup_shell<D: SearchableListDelegate + 'static>(
-    list: &Entity<ListState<SearchableListAdapter<D>>>,
-    menu_width: Length,
-    search_placeholder: Option<SharedString>,
-    size: Size,
-    menu_max_h: Length,
-    bounds: Bounds<Pixels>,
-    footer_el: Option<AnyElement>,
-    dismiss_handler: Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>,
-    phase: OverlayPhase,
-    animation_key: u64,
-    cx: &mut App,
-) -> AnyElement {
-    let has_footer = footer_el.is_some();
-    let popup_radius = cx.theme().style.radii.md.min(px(8.));
-    let closing = phase == OverlayPhase::Closing;
-    let motion = cx.theme().style.motion;
-    let offset = cx.theme().style.overlays.side_offset;
-    let popup = v_flex()
-        .relative()
-        .occlude()
-        .mt_1p5()
-        .bg(cx.theme().tokens.popover)
-        .border_1()
-        .border_color(cx.theme().border)
-        .rounded(popup_radius)
-        .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
-        .child(
-            List::new(list)
-                .when_some(search_placeholder, |this, placeholder| {
-                    this.search_placeholder(placeholder)
-                })
-                .with_size(size)
-                .max_h(menu_max_h)
-                .paddings(Edges::all(px(4.))),
-        )
-        .when(has_footer, |this| {
-            this.child(
-                div()
-                    .border_t_1()
-                    .border_color(cx.theme().border)
-                    .p_1()
-                    .when_some(footer_el, |this, el| this.child(el)),
-            )
-        })
-        .when(closing, |this| {
-            this.child(div().absolute().top_0().left_0().size_full().occlude())
-        });
-    let popup = Transition::new(motion.fast())
-        .ease_token(if closing {
-            motion.exit_easing
-        } else {
-            motion.enter_easing
-        })
-        .slide_y(
-            if closing { px(0.) } else { -offset },
-            if closing { -offset } else { px(0.) },
-        )
-        .fade(
-            if closing { 1.0 } else { 0.0 },
-            if closing { 0.0 } else { 1.0 },
-        )
-        .apply(
-            popup,
-            ElementId::NamedInteger("combobox-motion".into(), animation_key),
-        );
-
-    anchored()
-        .snap_to_window_with_margin(px(8.))
-        .child(
-            div()
-                .occlude()
-                .map(|this| match menu_width {
-                    Length::Auto => this.w(bounds.size.width + px(2.)),
-                    Length::Definite(w) => this.w(w),
-                })
-                .child(popup)
-                .when(!closing, |this| this.on_mouse_down_out(dismiss_handler)),
-        )
-        .into_any_element()
 }
 
 // MARK: Tests
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, rc::Rc, time::Duration};
+    use std::{cell::Cell, rc::Rc};
 
     use gpui::{
         AppContext as _, Context, Element as _, Entity, IntoElement as _, RenderOnce as _, Role,
@@ -1133,18 +1395,35 @@ mod tests {
     };
 
     use crate::{
-        IndexPath,
+        IndexPath, Size,
         animation::OverlayPhase,
-        combobox::{Combobox, ComboboxEvent, ComboboxState},
+        combobox::{Combobox, ComboboxEvent, ComboboxMetrics, ComboboxState},
+        global_state::GlobalState,
         searchable_list::{
             SearchableListChange, SearchableListDelegate, SearchableListItem, SearchableListState,
             SearchableVec,
         },
+        select::SelectShadow,
+        theme::StylePreset,
     };
 
     struct TestComboboxEventCollector {
         event_count: Rc<Cell<usize>>,
         _subscription: Subscription,
+    }
+
+    #[test]
+    fn combobox_metrics_match_builtin_shadcn_presets() {
+        let vega = ComboboxMetrics::resolve(Size::Medium, &StylePreset::vega());
+        let nova = ComboboxMetrics::resolve(Size::Medium, &StylePreset::nova());
+        let maia = ComboboxMetrics::resolve(Size::Medium, &StylePreset::maia());
+
+        assert_eq!(vega.content_shadow, SelectShadow::Medium);
+        assert_eq!(nova.content_shadow, SelectShadow::Medium);
+        assert_eq!(maia.content_shadow, SelectShadow::ExtraLarge);
+        assert_eq!(vega.content_radius, StylePreset::vega().radii.md);
+        assert_eq!(nova.content_radius, StylePreset::nova().radii.lg);
+        assert_eq!(maia.content_radius, StylePreset::maia().radii.lg);
     }
 
     impl TestComboboxEventCollector {
@@ -1178,15 +1457,24 @@ mod tests {
 
             let cb = Combobox::new(&state)
                 .aria_label("Language")
+                .aria_description("Choose a language")
                 .placeholder("Select language")
                 .search_placeholder("Search...")
                 .menu_width(gpui::px(300.))
                 .menu_max_h(gpui::rems(15.))
                 .cleanable(true)
                 .disabled(false)
+                .invalid(true)
+                .group_separators(true)
                 .appearance(true);
 
             assert_eq!(cb.options.aria_label, Some("Language".into()));
+            assert_eq!(
+                cb.options.aria_description,
+                Some("Choose a language".into())
+            );
+            assert!(cb.options.invalid);
+            assert!(cb.options.group_separators);
         });
     }
 
@@ -1201,14 +1489,18 @@ mod tests {
 
             Combobox::new(&state)
                 .aria_label("Language")
+                .aria_description("Choose a language")
+                .invalid(true)
                 .disabled(true)
                 .render(window, cx)
                 .into_element()
                 .write_a11y_info(&mut node);
 
             assert_eq!(node.label(), Some("Language"));
+            assert_eq!(node.description(), Some("Choose a language"));
             assert_eq!(node.value(), Some("Rust"));
             assert_eq!(node.is_expanded(), Some(false));
+            assert_eq!(node.invalid(), Some(gpui::accesskit::Invalid::True));
             assert!(node.is_disabled());
         });
     }
@@ -1222,31 +1514,114 @@ mod tests {
             cx.new(|cx| ComboboxState::new(items, vec![], window, cx))
         });
 
-        cx.update(|window, cx| {
-            state.update(cx, |state, cx| state.set_open(true, window, cx));
+        let opening = cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_open(true, window, cx);
+                state.lifecycle.active_transition().unwrap()
+            })
         });
-        cx.background_executor
-            .advance_clock(Duration::from_millis(150));
-        cx.run_until_parked();
 
         cx.update(|window, cx| {
             state.update(cx, |state, cx| {
+                state.complete_motion(true, opening, window, cx);
                 assert_eq!(state.lifecycle.phase(), OverlayPhase::Open);
-                state.set_open(false, window, cx);
-                assert_eq!(state.lifecycle.phase(), OverlayPhase::Closing);
-                state.set_open(true, window, cx);
-                assert_eq!(state.lifecycle.phase(), OverlayPhase::Opening);
             });
         });
-        cx.background_executor
-            .advance_clock(Duration::from_millis(150));
+
+        let (closing, reopening) = cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_open(false, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Closing);
+                let closing = state.lifecycle.active_transition().unwrap();
+                state.set_open(true, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Opening);
+                let reopening = state.lifecycle.active_transition().unwrap();
+                (closing, reopening)
+            })
+        });
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.complete_motion(false, closing, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Opening);
+                state.complete_motion(true, reopening, window, cx);
+                assert_eq!(state.lifecycle.phase(), OverlayPhase::Open);
+                assert!(state.state.open);
+            });
+        });
+    }
+
+    #[gpui::test]
+    fn combo_box_close_cleanup_survives_state_unmount(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let cx = cx.add_empty_window();
+        let state = cx.update(|window, cx| {
+            cx.new(|cx| {
+                ComboboxState::new(SearchableVec::new(vec!["Rust", "Go"]), vec![], window, cx)
+            })
+        });
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                state.set_open(true, window, cx);
+                state.set_open(false, window, cx);
+            });
+            assert!(GlobalState::global(cx).is_in_deferred_context());
+        });
+
+        drop(state);
         cx.run_until_parked();
 
-        cx.update(|_, cx| {
-            let state = state.read(cx);
-            assert_eq!(state.lifecycle.phase(), OverlayPhase::Open);
-            assert!(state.state.open);
+        assert!(!cx.update(|_, cx| GlobalState::global(cx).is_in_deferred_context()));
+    }
+
+    #[gpui::test]
+    fn combo_box_blur_reconciliation_does_not_reenter_list_state(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let state = cx.update(|window, cx| {
+            cx.new(|cx| {
+                ComboboxState::new(SearchableVec::new(vec!["Rust", "Go"]), vec![], window, cx)
+                    .searchable(true)
+            })
         });
+        let list = cx.update(|_, cx| state.read(cx).state.list.clone());
+
+        cx.update(|window, cx| {
+            list.update(cx, |_, cx| {
+                state.update(cx, |state, cx| state.on_blur(window, cx));
+            });
+        });
+        cx.run_until_parked();
+
+        assert!(!cx.update(|_, cx| state.read(cx).state.open));
+    }
+
+    #[gpui::test]
+    fn combo_box_close_request_does_not_read_updating_list_state(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let state = cx.update(|window, cx| {
+            cx.new(|cx| {
+                ComboboxState::new(SearchableVec::new(vec!["Rust", "Go"]), vec![], window, cx)
+            })
+        });
+        let list = cx.update(|_, cx| state.read(cx).state.list.clone());
+
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| state.set_open(true, window, cx));
+            list.update(cx, |_, cx| {
+                state.update(cx, |state, cx| state.set_open(false, window, cx));
+            });
+        });
+
+        assert_eq!(
+            cx.update(|_, cx| state.read(cx).lifecycle.phase()),
+            OverlayPhase::Closing
+        );
     }
 
     #[gpui::test]

@@ -62,6 +62,23 @@ Reuse the shared compositing work described for Tooltip and HoverCard. Acceptanc
 virtual-list geometry, transformed hit testing and clipping, placement-aware transform origins,
 interruption-safe fade and scale, and equivalent Metal, WGPU, Direct3D, Web, and headless output.
 
+## Combobox scale and isolated-opacity parity
+
+**Status:** Renderer support deferred; interruptible bottom translation implemented
+
+The pinned Vega Combobox content uses a 100 ms fade, `0.95 -> 1` enter scale, `1 -> 0.95` exit
+scale, and an 8 px placement-aware translation. Combobox implements the bottom-placement
+translation, exit retention, rapid reversal, and reduced-motion final states. Opacity remains stable
+during the transition to avoid GPUI's per-primitive alpha artifact. The component intentionally
+keeps the documented GPUI popup-search composition rather than introducing DOM-style slots.
+
+GPUI cannot scale the complete Combobox popup independently of virtual-list measurement and anchor
+placement. Its opacity is also applied to individual primitives instead of one isolated composited
+popup layer. Reuse the shared compositing work described for Tooltip and HoverCard; do not emulate
+scale by changing popup dimensions. Acceptance requires stable virtual-list geometry, transformed
+hit testing and clipping, placement-aware transform origins, interruption-safe fade and scale, and
+equivalent Metal, WGPU, Direct3D, Web, and headless output.
+
 ## Element-level backdrop filters for Dialog overlays
 
 **Status:** Renderer support deferred; semantic overlay fallback implemented

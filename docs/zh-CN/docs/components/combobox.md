@@ -7,6 +7,8 @@ description: 带有可搜索下拉列表的自动补全输入组件。
 
 支持从可搜索列表中选择一个或多个值的下拉选择组件。
 
+GPUI 组件采用 shadcn 的 Popup 风格 Combobox 组合：Trigger 显示已提交的选中值，可选搜索框位于弹出层内部。该组件不会模拟 DOM Slot API，也不会把 Trigger 作为可提交任意文本的自由输入框。
+
 ## Select 与 Combobox 的区别
 
 | 功能 | Select | Combobox |
@@ -102,6 +104,8 @@ let state = cx.new(|cx| {
 
 Combobox::new(&state)
 ```
+
+使用 `.group_separators(true)` 可以在非首个可见分组前显示分隔线。空分组不会产生开头或结尾留白。
 
 ### 实现 `SearchableListItem`
 
@@ -216,6 +220,21 @@ Combobox::new(&state).cleanable(true) // 有选中值时显示清除按钮
 ```rust
 Combobox::new(&state).disabled(true)
 ```
+
+### 无效状态
+
+无效 Combobox 与 Input、InputGroup 使用相同的 destructive 边框和焦点环，并向辅助技术暴露 invalid 状态。
+
+```rust
+Combobox::new(&state)
+    .aria_label("框架")
+    .aria_description("请选择有效的框架")
+    .invalid(true)
+```
+
+## 动效
+
+弹出层使用当前 Style Preset 的 fast 时长执行互为反向的 8 px 垂直位移。动画期间弹出层保持完全不透明，退出完成前继续挂载；快速反向操作会从当前进度继续，启用 reduced motion 后直接进入最终状态。透明度变化和 shadcn 的 `0.95` 缩放暂不应用，直到 GPUI 能够在不改变布局的情况下合成并变换完整弹出层子树。
 
 ### 事件监听
 
