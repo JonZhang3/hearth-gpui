@@ -33,7 +33,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 ## P1: overlays and navigation
 
-- [ ] Popover
+- [x] Popover
 - [x] HoverCard (`5dc85ea2`)
 - [ ] Menu and DropdownMenu
 - [ ] ContextMenu

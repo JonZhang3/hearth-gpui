@@ -218,6 +218,22 @@ The preferred GPUI contract should:
 - Work across rerenders without stale AccessKit relationships.
 - Support macOS, Windows, Linux, and headless accessibility verification.
 
+## Popover transform-scale motion parity
+
+**Status:** Deferred GPUI renderer capability
+
+The aligned Popover implements a 100 ms placement-aware 8 px translation for both enter and exit.
+The pinned source also declares opacity transitions plus `zoom-in-95` and `zoom-out-95`. Popover
+intentionally omits opacity animation so GPUI's primitive-level opacity handling cannot make the
+surface background appear to change color during the transition. The current GPUI element API also
+has no subtree transform-scale primitive with matching layout-independent painting, hit testing,
+clipping, and accessibility behavior.
+
+Do not approximate this with width or height animation because that changes layout and anchored
+placement. Revisit exact scale parity after GPUI exposes a paint-only transform for element
+subtrees. The implementation must preserve stable transform origins, interruption-safe reversal,
+rounded clipping, pointer hit testing, and reduced-motion final-state behavior.
+
 ## Toggle cross-preset control-surface geometry
 
 **Status:** Deferred shared Style Metric

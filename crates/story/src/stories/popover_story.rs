@@ -1,16 +1,18 @@
 use gpui::{
-    Action, Anchor, App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle,
-    Focusable, Half, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _,
-    Render, Styled as _, WeakEntity, Window, actions, div, px,
+    Action, App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    Half, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _, Render,
+    Styled as _, WeakEntity, Window, actions, px,
 };
 use gpui_component::{
-    ActiveTheme, StyledExt, WindowExt,
+    ActiveTheme, WindowExt,
     button::Button,
     h_flex,
     input::{Input, InputState},
     list::{List, ListDelegate, ListItem, ListState},
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
-    popover::Popover,
+    popover::{
+        Popover, PopoverAlign, PopoverDescription, PopoverHeader, PopoverSide, PopoverTitle,
+    },
     separator::Separator,
     v_flex,
 };
@@ -241,16 +243,16 @@ impl Render for PopoverStory {
             .child(
                 section("Basic Popover").child(
                     Popover::new("popover-0")
-                        .max_w(px(600.))
                         .trigger(Button::new("btn").outline().label("Popover"))
-                        .gap_2()
-                        .text_sm()
-                        .w(px(400.))
-                        .child("Hello, this is a Popover.")
-                        .child(Separator::horizontal())
+                        .aria_label("Popover overview")
                         .child(
-                            "You can put any content here, including text,\
-                            buttons, forms, and more.",
+                            PopoverHeader::new()
+                                .child(PopoverTitle::new().child("About Popover"))
+                                .child(
+                                    PopoverDescription::new().child(
+                                        "Display rich content next to an interactive trigger.",
+                                    ),
+                                ),
                         ),
                 ),
             )
@@ -379,61 +381,37 @@ impl Render for PopoverStory {
                     .child(self.message.clone()),
             )
             .child(
-                section("Popover Anchor")
-                    .min_h(px(360.))
-                    .v_flex()
-                    .child(
-                        div().absolute().top_0().left_0().w_full().h_10().child(
-                            h_flex()
-                                .items_center()
-                                .justify_between()
-                                .child(
-                                    Popover::new("anchor-top-left")
-                                        .max_w(px(600.))
-                                        .anchor(Anchor::TopLeft)
-                                        .trigger(Button::new("btn").outline().label("TopLeft"))
-                                        .child("Anchored to the trigger's top-left."),
-                                )
-                                .child(
-                                    Popover::new("anchor-top-center")
-                                        .max_w(px(600.))
-                                        .anchor(Anchor::TopCenter)
-                                        .trigger(Button::new("btn").outline().label("TopCenter"))
-                                        .child("Anchored to the trigger's top-center."),
-                                )
-                                .child(
-                                    Popover::new("anchor-top-right")
-                                        .anchor(Anchor::TopRight)
-                                        .trigger(Button::new("btn").outline().label("TopRight"))
-                                        .child("Anchored to the trigger's top-right."),
-                                ),
+                section("Popover Placement").child(
+                    h_flex()
+                        .gap_3()
+                        .child(
+                            Popover::new("side-top")
+                                .side(PopoverSide::Top)
+                                .align(PopoverAlign::Start)
+                                .trigger(Button::new("top").outline().label("Top / Start"))
+                                .child("Placed above and start-aligned."),
+                        )
+                        .child(
+                            Popover::new("side-right")
+                                .side(PopoverSide::Right)
+                                .trigger(Button::new("right").outline().label("Right"))
+                                .child("Placed on the right."),
+                        )
+                        .child(
+                            Popover::new("side-bottom")
+                                .side(PopoverSide::Bottom)
+                                .align(PopoverAlign::End)
+                                .trigger(Button::new("bottom").outline().label("Bottom / End"))
+                                .child("Placed below and end-aligned."),
+                        )
+                        .child(
+                            Popover::new("side-left")
+                                .side(PopoverSide::Left)
+                                .side_offset(px(8.))
+                                .trigger(Button::new("left").outline().label("Left + offset"))
+                                .child("Placed on the left with an 8px offset."),
                         ),
-                    )
-                    .child(
-                        div().absolute().bottom_0().left_0().w_full().h_10().child(
-                            h_flex()
-                                .items_center()
-                                .justify_between()
-                                .child(
-                                    Popover::new("anchor-bottom-left")
-                                        .trigger(Button::new("btn").outline().label("BottomLeft"))
-                                        .anchor(Anchor::BottomLeft)
-                                        .child("Anchored to the trigger's bottom-left."),
-                                )
-                                .child(
-                                    Popover::new("anchor-bottom-center")
-                                        .trigger(Button::new("btn").outline().label("BottomCenter"))
-                                        .anchor(Anchor::BottomCenter)
-                                        .child("Anchored to the trigger's bottom-center."),
-                                )
-                                .child(
-                                    Popover::new("anchor-bottom-right")
-                                        .anchor(Anchor::BottomRight)
-                                        .trigger(Button::new("btn").outline().label("BottomRight"))
-                                        .child("Anchored to the trigger's bottom-right."),
-                                ),
-                        ),
-                    ),
+                ),
             )
     }
 }

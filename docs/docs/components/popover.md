@@ -1,240 +1,107 @@
 ---
 title: Popover
-description: A floating overlay that displays rich content relative to a trigger element.
+description: A floating dialog surface positioned relative to a trigger.
 ---
 
 # Popover
 
-Popover component for displaying floating content that appears when interacting with a trigger element. Supports multiple positioning options, custom content, different trigger methods, and automatic dismissal behaviors. Perfect for tooltips, menus, forms, and other contextual information.
+Popover displays rich interactive content next to a trigger. The default surface follows the active Color Theme and Style Preset; Vega is the default visual baseline.
 
 ## Import
 
 ```rust
-use gpui_component::popover::{Popover};
+use gpui_component::popover::{
+    Popover, PopoverAlign, PopoverDescription, PopoverHeader, PopoverSide, PopoverTitle,
+    PopoverTrigger,
+};
 ```
 
-## Usage
+## Basic usage
 
-### Basic Popover
-
-:::info
-Any element that implements [Selectable] can be used as a trigger, for example, a [Button].
-
-Any element that implements [RenderOnce] or [Render] can be used as popover content, use `.child(...)` to add children directly.
-:::
+The trigger must implement `PopoverTrigger`, which lets Popover place `aria-expanded` on the trigger's own accessibility node. `Button` and the built-in ColorPicker trigger provide this capability. Content can be added with normal `ParentElement` composition or the dynamic `content` callback.
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::{button::Button, popover::Popover};
+use gpui_component::{
+    button::Button,
+    popover::{Popover, PopoverDescription, PopoverHeader, PopoverTitle},
+};
 
-Popover::new("basic-popover")
-    .trigger(Button::new("trigger").label("Click me").outline())
-    .child("Hello, this is a popover!")
-    .child("It appears when you click the button.")
+Popover::new("profile-popover")
+    .trigger(Button::new("profile-trigger").outline().label("Open profile"))
+    .aria_label("Profile information")
+    .child(
+        PopoverHeader::new()
+            .child(PopoverTitle::new().child("Profile"))
+            .child(PopoverDescription::new().child(
+                "Review the account details associated with this profile.",
+            )),
+    )
 ```
 
-### Popover with Custom Positioning
+The standard surface is 288 px wide and includes preset-owned padding, gap, radius, ring, shadow, and typography. Caller `Styled` refinements are applied after these defaults.
 
-The `anchor` method controls how the popover attaches to the trigger, using the [`Anchor`] type.
+## Placement
 
-Imagine the popover has a pointer tip (like a speech bubble's tail). The anchor is where that tip sits relative to the trigger — `Anchor::TopLeft` places it at the trigger's top-left corner, `Anchor::BottomRight` at the bottom-right, and so on. The popover then hangs off that point.
-
-For example, `Anchor::TopLeft` places the popover just below the trigger, left-aligned to it:
-
-```text
-[ Trigger ]
-┌──────────────┐
-│   Popover    │
-└──────────────┘
-```
+`side` selects the physical side of the trigger. `align` controls the cross-axis alignment. The default is `Bottom` plus `Center`, with a 4 px side offset.
 
 ```rust
-use gpui_component::Anchor;
-
-// Anchored to the trigger's top corners
-Popover::new("top-left")
-    .anchor(Anchor::TopLeft)
-    .trigger(Button::new("btn").label("Top Left").outline())
-    .child("Anchored to the trigger's top-left")
-
-Popover::new("top-center")
-    .anchor(Anchor::TopCenter)
-    .trigger(Button::new("btn").label("Top Center").outline())
-    .child("Anchored to the trigger's top-center")
-
-Popover::new("top-right")
-    .anchor(Anchor::TopRight)
-    .trigger(Button::new("btn").label("Top Right").outline())
-    .child("Anchored to the trigger's top-right")
-
-// Anchored to the trigger's bottom corners
-Popover::new("bottom-left")
-    .anchor(Anchor::BottomLeft)
-    .trigger(Button::new("btn").label("Bottom Left").outline())
-    .child("Anchored to the trigger's bottom-left")
-
-Popover::new("bottom-center")
-    .anchor(Anchor::BottomCenter)
-    .trigger(Button::new("btn").label("Bottom Center").outline())
-    .child("Anchored to the trigger's bottom-center")
-
-Popover::new("bottom-right")
-    .anchor(Anchor::BottomRight)
-    .trigger(Button::new("btn").label("Bottom Right").outline())
-    .child("Anchored to the trigger's bottom-right")
+Popover::new("placement-popover")
+    .side(PopoverSide::Top)
+    .align(PopoverAlign::End)
+    .side_offset(px(8.))
+    .align_offset(px(4.))
+    .trigger(Button::new("placement-trigger").outline().label("Placement"))
+    .child("Top, end-aligned content")
 ```
 
-### View in Popover
+The legacy `.anchor(Anchor)` builder remains available and maps to the equivalent side/alignment pair. GPUI shifts content to remain inside the window, but does not automatically flip it to the opposite side.
 
-You can add any `Entity<T>` that implemented [Render] as the popover content.
+## Dynamic content and manual dismissal
 
-```rust
-let view = cx.new(|_| MyView::new());
-
-Popover::new("form-popover")
-    .anchor(Anchor::BottomLeft)
-    .trigger(Button::new("show-form").label("Open Form").outline())
-    .child(view.clone())
-```
-
-### Add content by `content` method
-
-The `content` method allows you to create more complex popover content using a closure. This is useful when
-you need to build dynamic content or need access to the popover's context.
-
-This method will let us to have `&mut PopoverState`, `&mut Window` and `&mut Context<PopoverState>` parameters in the
-closure is to allow you to interact with the popover's state and the overall application context if needed.
-
-:::warning
-This `content` callback will called every time on render the popover.
-So, you should avoid creating new elements or entities in the content closure
-or other heavy operations that may impact performance.
-:::
-
-And `content` will works with `child`, `children` methods together.
+`content` receives `PopoverState`, `Window`, and `Context<PopoverState>`. Emit `DismissEvent` to close from inside the content.
 
 ```rust
-use gpui::ParentElement as _;
-use gpui_component::popover::Popover;
-
-Popover::new("complex-popover")
-    .anchor(Anchor::BottomLeft)
-    .trigger(Button::new("complex").label("Complex Content").outline())
-    .content(|_, _, _| {
-        div()
-            .child("This popover has complex content.")
-            .child(
-                Button::new("action-btn")
-                    .label("Perform Action")
-                    .outline()
-            )
+Popover::new("dynamic-popover")
+    .trigger(Button::new("dynamic-trigger").outline().label("Open"))
+    .content(|_, _, cx| {
+        Button::new("close-popover")
+            .label("Close")
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(DismissEvent)))
     })
 ```
 
-### Right-Click Popover
+Avoid creating entities or performing expensive work inside `content`, because it can run on every Popover render.
 
-Sometimes you may want to show a popover on right-click, for example, to create a special your ownen context menu. The `mouse_button` method allows you to specify which mouse button triggers the popover.
-
-```rust
-use gpui::MouseButton;
-
-Popover::new("context-menu")
-    .anchor(Anchor::BottomRight)
-    .mouse_button(MouseButton::Right)
-    .trigger(Button::new("right-click").label("Right Click Me").outline())
-    .child("Context Menu")
-    .child(Separator::horizontal())
-    .child("This is a custom context menu.")
-```
-
-### Dismiss Popover manually
-
-If you want to dismiss the popover programmatically from within the content, you can emit a `DismissEvent`. In this case, you should use `content` method to create the popover content so you have access to the `cx: &mut Context<PopoverState>`.
+## Controlled state
 
 ```rust
-use gpui_component::{DismissEvent, popover::Popover};
-
-Popover::new("dismiss-popover")
-    .trigger(Button::new("dismiss").label("Dismiss Popover").outline())
-    .content(|_, cx| {
-        div()
-            .child("Click the button below to dismiss this popover.")
-            .child(
-                Button::new("close-btn")
-                    .label("Close Popover")
-                    .on_click(cx.listener(|_, _, _, cx| {
-                        // NOTE: Here `cx` is `&mut Context<PopoverState>` type, so we can emit DismissEvent.
-                        cx.emit(DismissEvent);
-                    }))
-            )
-    })
-```
-
-### Styling Popover
-
-Like the others components in GPUI Component, the `appearance(false)` method can be used to disable the default styling of the popover, allowing you to fully customize its appearance.
-
-And the `Popover` has implemented the [Styled] trait, so you can use all the styling methods provided by GPUI to style the popover content as you like.
-
-```rust
-// For custom styled popovers or when you want full control
-Popover::new("custom-popover")
-    .appearance(false)
-    .trigger(Button::new("custom").label("Custom Style"))
-    .bg(cx.theme().accent)
-    .text_color(cx.theme().accent_foreground)
-    .p_6()
-    .rounded_xl()
-    .shadow_2xl()
-    .child("Fully custom styled popover")
-```
-
-### Control Open State
-
-There have `open` and `on_open_change` methods to control the open state of the popover programmatically.
-
-This is useful when you want to synchronize the popover's open state with other UI elements or application state.
-
-:::tip
-When you use `open` to control the popover's open state, that means you have take full control of it,
-so you need to update the state in `on_open_change` callback to keep the popover working correctly.
-:::
-
-```rust
-use gpui_component::popover::Popover;
-
-struct MyView {
-    popover_open: bool,
-}
-
 Popover::new("controlled-popover")
-    .open(self.open)
+    .open(self.popover_open)
     .on_open_change(cx.listener(|this, open: &bool, _, cx| {
         this.popover_open = *open;
         cx.notify();
     }))
-    .trigger(Button::new("control-btn").label("Control Popover").outline())
-    .child("This popover's open state is controlled programmatically.")
+    .trigger(Button::new("controlled-trigger").outline().label("Controlled"))
+    .child("Controlled content")
 ```
 
-### Default Open
+Use `default_open(true)` only for the initial uncontrolled state. Opening registers the overlay lifecycle and moves focus into the Popover; Escape, focus leaving the content, or an outside pointer press dismisses it and restores the previous focus. Set `overlay_closable(false)` when an owning component manages dismissal itself.
 
-The `default_open` method allows you to set the initial open state of the popover when it is first rendered.
+## Custom appearance and trigger methods
 
-Please note that if you use the `open` method to control the popover's open state, the `default_open` setting will be ignored.
+`appearance(false)` disables only the standard surface styling. Positioning, lifecycle, focus, and dismissal APIs remain available. `mouse_button(MouseButton::Right)` can be used for a custom right-click surface.
 
 ```rust
-use gpui_component::popover::Popover;
-
-Popover::new("default-open-popover")
-    .default_open(true)
-    .trigger(Button::new("default-open-btn").label("Default Open").outline())
-    .child("This popover is open by default when first rendered.")
+Popover::new("custom-popover")
+    .appearance(false)
+    .mouse_button(MouseButton::Right)
+    .trigger(Button::new("custom-trigger").label("Right click"))
+    .bg(cx.theme().accent)
+    .text_color(cx.theme().accent_foreground)
+    .p_3()
+    .rounded_lg()
+    .child("Custom content")
 ```
 
-[Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
-[Selectable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Selectable.html
-[Render]: https://docs.rs/gpui/latest/gpui/trait.Render.html
-[RenderOnce]: https://docs.rs/gpui/latest/gpui/trait.RenderOnce.html
-[Styled]: https://docs.rs/gpui/latest/gpui/trait.Styled.html
-[`Anchor`]: https://docs.rs/gpui-component/latest/gpui_component/enum.Anchor.html
+The enter and exit transitions use the active semantic motion duration and easing with an 8 px placement-aware slide. Opacity animation is intentionally omitted so the complete Popover surface remains visually stable. GPUI currently has no element transform primitive for exact `zoom-in-95` / `zoom-out-95` parity.

@@ -1,8 +1,9 @@
 use gpui::{
     Anchor, App, AppContext, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
     Hsla, InteractiveElement as _, IntoElement, KeyBinding, ParentElement, Render, RenderOnce,
-    SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription,
-    TextAlign, Window, div, hsla, linear_color_stop, linear_gradient, prelude::FluentBuilder as _,
+    Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Subscription, TextAlign, Window, div, hsla, linear_color_stop, linear_gradient,
+    prelude::FluentBuilder as _,
 };
 use rust_i18n::t;
 
@@ -11,7 +12,7 @@ use crate::{
     actions::Confirm,
     h_flex,
     input::{Input, InputEvent, InputState},
-    popover::Popover,
+    popover::{Popover, PopoverTrigger},
     separator::Separator,
     slider::{Slider, SliderEvent, SliderState},
     tab::{Tab, TabBar},
@@ -791,6 +792,7 @@ impl RenderOnce for ColorPicker {
                         },
                         icon: self.icon.clone(),
                         selected: false,
+                        expanded: false,
                     })
                     .child(self.render_colors(window, cx)),
             )
@@ -801,6 +803,7 @@ impl RenderOnce for ColorPicker {
 struct ColorPickerButton {
     id: ElementId,
     selected: bool,
+    expanded: bool,
     icon: Option<Icon>,
     value: Option<Hsla>,
     size: Size,
@@ -816,6 +819,13 @@ impl Selectable for ColorPickerButton {
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+}
+
+impl PopoverTrigger for ColorPickerButton {
+    fn popover_expanded(mut self, expanded: bool) -> Self {
+        self.expanded = expanded;
+        self
     }
 }
 
@@ -835,6 +845,8 @@ impl RenderOnce for ColorPickerButton {
         );
         h_flex()
             .id(self.id)
+            .role(Role::Button)
+            .aria_expanded(self.expanded)
             .gap_2()
             .children(self.icon)
             .when(!has_icon, |this| {

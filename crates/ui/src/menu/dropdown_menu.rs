@@ -98,7 +98,7 @@ where
         Popover::new(SharedString::from(format!("popover:{}", self.id)))
             .appearance(false)
             .overlay_closable(false)
-            .trigger(self.trigger)
+            .trigger_without_expanded_state(self.trigger)
             .trigger_style(self.style)
             .anchor(self.anchor)
             .when_some(self.side_offset, |this, offset| this.side_offset(offset))

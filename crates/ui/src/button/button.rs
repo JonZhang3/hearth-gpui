@@ -94,6 +94,7 @@ pub struct Button {
     trailing_icon: Option<ButtonIcon>,
     label: Option<SharedString>,
     aria_label: Option<SharedString>,
+    expanded: Option<bool>,
     children: Vec<AnyElement>,
     disabled: bool,
     pub(crate) active: bool,
@@ -139,6 +140,7 @@ impl Button {
             trailing_icon: None,
             label: None,
             aria_label: None,
+            expanded: None,
             disabled: false,
             active: false,
             pressed: None,
@@ -226,6 +228,12 @@ impl Button {
     /// name of its own.
     pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Exposes whether this button's controlled popup is expanded.
+    pub fn aria_expanded(mut self, expanded: bool) -> Self {
+        self.expanded = Some(expanded);
         self
     }
 
@@ -450,6 +458,7 @@ impl RenderOnce for Button {
         let element = self
             .base
             .role(Role::Button)
+            .when_some(self.expanded, |this, expanded| this.aria_expanded(expanded))
             .when_some(self.pressed, |this, pressed| {
                 this.aria_toggled(if pressed {
                     Toggled::True
@@ -845,6 +854,9 @@ mod tests {
 
         let compound_button = Button::new("compound").pressed_offset(false);
         assert!(!compound_button.pressed_offset);
+
+        let popup_trigger = Button::new("popup-trigger").aria_expanded(true);
+        assert_eq!(popup_trigger.expanded, Some(true));
     }
 
     #[gpui::test]
