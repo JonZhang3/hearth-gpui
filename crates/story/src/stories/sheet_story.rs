@@ -273,9 +273,9 @@ impl SheetStory {
     fn open_sheet_at(&mut self, placement: Placement, window: &mut Window, cx: &mut Context<Self>) {
         let list = self.list.clone();
 
-        let drawer_h = match placement {
-            Placement::Left | Placement::Right => px(400.),
-            Placement::Top | Placement::Bottom => px(540.),
+        let drawer_size = match placement {
+            Placement::Left | Placement::Right => None,
+            Placement::Top | Placement::Bottom => Some(px(540.)),
         };
 
         let overlay = self.overlay;
@@ -285,8 +285,10 @@ impl SheetStory {
         window.open_sheet_at(placement, cx, move |this, _, cx| {
             this.overlay(overlay)
                 .overlay_closable(overlay_closable)
-                .size(drawer_h)
                 .title("Sheet Title")
+                .description("Edit the form and review the scrollable content.")
+                .initial_focus(input1.read(cx).focus_handle(cx))
+                .when_some(drawer_size, |this, size| this.size(size))
                 .child(
                     v_flex()
                         .size_full()
@@ -345,19 +347,18 @@ impl SheetStory {
                         ),
                 )
                 .footer(
-                    h_flex()
-                        .gap_6()
-                        .items_center()
-                        .child(
-                            Button::new("confirm")
-                                .label("Confirm")
-                                .on_click(|_, window, cx| {
-                                    window.close_sheet(cx);
-                                }),
-                        )
+                    v_flex()
+                        .gap_2()
+                        .child(Button::new("confirm").label("Confirm").w_full().on_click(
+                            |_, window, cx| {
+                                window.close_sheet(cx);
+                            },
+                        ))
                         .child(
                             Button::new("cancel")
                                 .label("Cancel")
+                                .outline()
+                                .w_full()
                                 .on_click(|_, window, cx| {
                                     window.close_sheet(cx);
                                 }),
@@ -471,6 +472,26 @@ impl Render for SheetStory {
                                         },
                                     );
                                 })),
+                        ),
+                    )
+                    .child(
+                        section("Without Close Button").max_w_md().child(
+                            Button::new("show-sheet-without-close")
+                                .outline()
+                                .label("Open without close button...")
+                                .on_click(|_, window, cx| {
+                                    window.open_sheet(cx, |sheet, _, _| {
+                                        sheet
+                                            .title("No Close Button")
+                                            .description(
+                                                "Use Escape or click the backdrop to dismiss.",
+                                            )
+                                            .show_close_button(false)
+                                            .child(
+                                                "The header no longer reserves an empty close row.",
+                                            )
+                                    });
+                                }),
                         ),
                     )
                     .child(

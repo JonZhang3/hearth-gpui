@@ -38,7 +38,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 | Popover | `popover` | Shared anchored-surface style and enter or exit lifecycle | Side-aware motion, outside click, nested overlay behavior |
 | HoverCard | `hover-card` | Surface, timing, safe hover corridor, side-aware motion | Open and close delays; trigger-to-card movement |
 | Menu, ContextMenu, AppMenuBar | `dropdown-menu`, `context-menu`, `menubar` | Item density, checked rows, submenu indicator, destructive state, overlay motion | Keyboard traversal, submenus, async content, native menu boundaries |
-| Sheet | `sheet` | Overlay, side-specific transition, spacing, close affordance | Four placements, resizing, focus trap, exit before unmount |
+| Sheet | `sheet` | Overlay, side-specific transition, spacing, close affordance | Four placements, responsive/custom sizing, focus trap, exit before unmount |
 | Notification | `sonner` | Surface hierarchy, action placement, stacking, enter or exit motion | Queue replacement, autohide, manual close, action close, no overlap |
 | Accordion | `accordion` | Trigger typography, focus, indicator, measured content reveal | No clipped content; repeated toggles; keyboard control |
 | Collapsible | `collapsible` | Use the same disclosure lifecycle with a simpler API | Dynamic content height and reduced motion |

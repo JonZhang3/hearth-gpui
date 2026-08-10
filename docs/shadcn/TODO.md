@@ -79,13 +79,13 @@ scale by changing popup dimensions. Acceptance requires stable virtual-list geom
 hit testing and clipping, placement-aware transform origins, interruption-safe fade and scale, and
 equivalent Metal, WGPU, Direct3D, Web, and headless output.
 
-## Element-level backdrop filters for Dialog overlays
+## Element-level backdrop filters for modal overlays
 
 **Status:** Renderer support deferred; semantic overlay fallback implemented
 
-The pinned shadcn Dialog overlay uses a translucent black surface and conditionally applies `backdrop-blur-xs`. Dialog now resolves the Vega, Nova, and Maia overlay opacity from semantic Modal Metrics, but GPUI cannot blur only the content behind one element subtree.
+The pinned shadcn Dialog and Sheet overlays use a translucent black surface and conditionally apply `backdrop-blur-xs`. Dialog and Sheet resolve the Vega, Nova, and Maia overlay opacity from semantic Modal Metrics, but GPUI cannot blur only the content behind one element subtree.
 
-Do not add a Dialog-only framebuffer path. Revisit this with the shared compositing-layer work described under element-level blend modes. The renderer contract must define offscreen backdrop capture, rounded and nested clipping, scale-factor behavior, animation invalidation, hit testing, and equivalent Metal, WGPU, Direct3D, Web, and headless output.
+Do not add a Dialog- or Sheet-only framebuffer path. Revisit this with the shared compositing-layer work described under element-level blend modes. The renderer contract must define offscreen backdrop capture, rounded and nested clipping, scale-factor behavior, animation invalidation, hit testing, and equivalent Metal, WGPU, Direct3D, Web, and headless output.
 
 Acceptance requires Vega and Nova blur parity without changing Maia's stronger overlay, no blur leakage outside the overlay bounds, correct nested modal composition, and no material regression to overlay frame time or batching.
 
@@ -233,6 +233,21 @@ Do not approximate this with width or height animation because that changes layo
 placement. Revisit exact scale parity after GPUI exposes a paint-only transform for element
 subtrees. The implementation must preserve stable transform origins, interruption-safe reversal,
 rounded clipping, pointer hit testing, and reduced-motion final-state behavior.
+
+## Sheet content opacity motion parity
+
+**Status:** Deferred GPUI renderer capability; directional motion implemented
+
+The pinned Sheet content animates opacity together with a 40 px side-aware translation. Content and
+backdrop opacity animation are intentionally omitted because GPUI currently applies opacity to
+surface primitives and descendants independently instead of compositing the Sheet subtree as one
+isolated layer. Without that opacity mask, a 40 px translation leaves most of the surface visible at
+mount and immediately before unmount. The aligned Sheet therefore uses a deliberate desktop
+equivalent: a 200 ms, interruption-safe, full-surface off-canvas translation based on its resolved or
+measured axis size.
+
+Revisit content fade after GPUI provides isolated subtree opacity with stable clipping, hit testing,
+accessibility bounds, and equivalent Metal, WGPU, Direct3D, Web, and headless behavior.
 
 ## Toggle cross-preset control-surface geometry
 

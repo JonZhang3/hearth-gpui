@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme, ElementExt, Placement, StyledExt,
+    ActiveTheme, Placement, StyledExt,
     animation::{OverlayLifecycle, effective_motion_duration},
     dialog::{Dialog, DialogPresentation},
     focus_trap::FocusTrapManager,
@@ -12,10 +12,10 @@ use crate::{
     window_border,
 };
 use gpui::{
-    Anchor, AnyView, App, AppContext, Bounds, ClipboardItem, Context, DefiniteLength, ElementId,
-    Entity, EntityId, FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement as _, Pixels, Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle,
-    Window, actions, div, prelude::FluentBuilder as _,
+    Anchor, AnyView, App, AppContext, Bounds, ClipboardItem, Context, ElementId, Entity, EntityId,
+    FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding, ParentElement as _, Pixels,
+    Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle, Window, actions, div,
+    prelude::FluentBuilder as _,
 };
 use std::{any::TypeId, collections::HashMap, rc::Rc};
 
@@ -45,7 +45,7 @@ pub struct Root {
     pub notification: Entity<NotificationList>,
     pub(crate) tooltip_overlay: Entity<TooltipOverlay>,
     pub(crate) native_menu_overlay: Entity<FallbackMenuOverlay>,
-    sheet_size: Option<DefiniteLength>,
+    sheet_size: Option<Pixels>,
     window_shadow_size: Pixels,
     /// Render the Linux CSD `window_border` wrapper.
     bordered: bool,
@@ -228,16 +228,20 @@ impl Root {
             sheet = (active_sheet.builder)(sheet, window, cx);
             sheet.focus_handle = active_sheet.focus_handle.clone();
             sheet.placement = active_sheet.placement;
+            sheet.instance_id = active_sheet.id;
             sheet.lifecycle_phase = active_sheet.lifecycle.phase();
+            sheet.measured_size = root.read(cx).sheet_size;
+            let root_for_size = root.clone();
+            sheet.observe_size = Some(Rc::new(move |size, cx| {
+                root_for_size.update(cx, |root, cx| {
+                    if root.sheet_size != Some(size) {
+                        root.sheet_size = Some(size);
+                        cx.notify();
+                    }
+                });
+            }));
 
-            let size = sheet.size;
-
-            return Some(
-                div()
-                    .relative()
-                    .child(sheet)
-                    .on_prepaint(move |_, _, cx| root.update(cx, |r, _| r.sheet_size = Some(size))),
-            );
+            return Some(div().relative().child(sheet));
         }
 
         None
@@ -503,6 +507,7 @@ impl Root {
             builder: Rc::new(build),
             lifecycle: OverlayLifecycle::opened(),
         });
+        self.sheet_size = None;
         // Opening a modal confines selection to it; drop any background
         // selection so it cannot linger (or be copied) under the modal.
         self.clear_text_selection(cx);
@@ -536,6 +541,7 @@ impl Root {
                 }
 
                 this.active_sheet = None;
+                this.sheet_size = None;
                 if let Some(handle) = previous_handle {
                     window.focus(&handle, cx);
                 }
@@ -867,6 +873,26 @@ mod tests {
         cx.background_executor
             .advance_clock(Duration::from_millis(250));
         cx.run_until_parked();
+        assert!(root.read_with(cx, |root, _| root.active_sheet.is_none()));
+    }
+
+    #[gpui::test]
+    fn reduced_motion_sheet_close_unmounts_without_delay(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| TestView);
+            Root::new(view, window, cx)
+        });
+
+        root.update_in(cx, |root, window, cx| {
+            root.open_sheet_at(Placement::Right, |sheet, _, _| sheet, window, cx);
+            root.close_sheet(window, cx);
+        });
+        cx.run_until_parked();
+
         assert!(root.read_with(cx, |root, _| root.active_sheet.is_none()));
     }
 

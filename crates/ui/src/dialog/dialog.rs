@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
-    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
-    Pixels, Point, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, WindowControlArea, actions, anchored, div, hsla, point,
-    prelude::FluentBuilder, px,
+    FocusHandle, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement, Pixels,
+    Point, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Window, WindowControlArea, actions, anchored, div, hsla, point, prelude::FluentBuilder,
+    px,
 };
 use rust_i18n::t;
 
@@ -176,15 +176,6 @@ pub struct Dialog {
     pub(crate) layer_ix: usize,
     pub(crate) lifecycle_phase: OverlayPhase,
     initial_focus: Option<FocusHandle>,
-}
-
-/// Resolves the legacy Sheet backdrop color while Dialog uses modal opacity metrics.
-pub(crate) fn overlay_color(overlay: bool, cx: &App) -> Hsla {
-    if overlay {
-        cx.theme().overlay
-    } else {
-        hsla(0., 0., 0., 0.)
-    }
 }
 
 impl Dialog {

@@ -30,6 +30,10 @@ and styled effects remains in `ui::animation`, avoiding an orphan-rule-driven pu
 HoverCard is the first lifecycle consumer. Its mirrored directional enter and exit translations
 complete from sampled motion state, including rapid reversal from the current offset. Opacity motion
 is intentionally disabled because GPUI cannot yet composite subtree opacity as one isolated layer.
+Sheet uses the same sampled transition adapter to move the surface fully outside its window edge
+for enter and exit motion. Auto-sized vertical sheets complete an offscreen measurement frame before
+starting the visible transition. Its backdrop remains visually stable for the full lifecycle and is
+removed with the Sheet after the exit motion completes.
 Select also uses stable sampled motion state for its 100 ms enter/exit fade and translation while
 retaining content through exit. The next adoption group is Popover, Tooltip, Combobox, and
 ContextMenu, followed by modal surfaces and disclosure/layout motion.
