@@ -9,7 +9,7 @@ use gpui_component::{
     checkbox::Checkbox,
     group_box::{GroupBox, GroupBoxVariants as _},
     h_flex,
-    radio::{Radio, RadioGroup},
+    radio::{RadioGroup, RadioGroupItem},
     switch::Switch,
     text::markdown,
     v_flex,
@@ -99,9 +99,10 @@ impl Render for GroupBoxStory {
                         .title("Appearance")
                         .child(
                             RadioGroup::vertical("theme")
-                                .child(Radio::new("light").label("Light"))
-                                .child(Radio::new("dark").label("Dark"))
-                                .child(Radio::new("system").label("System")),
+                                .aria_label("Theme")
+                                .child(RadioGroupItem::new("light").label("Light"))
+                                .child(RadioGroupItem::new("dark").label("Dark"))
+                                .child(RadioGroupItem::new("system").label("System")),
                         ),
                 ),
             )

@@ -1,378 +1,168 @@
 ---
-title: Radio
-description: A set of checkable buttons—known as radio buttons—where no more than one of the buttons can be checked at a time.
+title: Radio Group
+description: A set of mutually exclusive options aligned with shadcn Radio Group.
 ---
 
-# Radio
+# Radio Group
 
-Radio buttons allow users to select a single option from a set of mutually exclusive choices. Use radio buttons when you want to give users a choice between multiple options and only one selection is allowed.
+`RadioGroup` owns a controlled value and coordinates selection, focus, keyboard navigation,
+disabled state, and accessibility for typed `RadioGroupItem` children. `Radio` remains available
+for standalone controlled rendering, but mutually exclusive choices should use `RadioGroup`.
 
 ## Import
 
 ```rust
-use gpui_component::radio::{Radio, RadioGroup};
+use gpui_component::radio::{Radio, RadioGroup, RadioGroupItem};
 ```
 
-## Usage
-
-### Basic Radio Button
+## Basic usage
 
 ```rust
-Radio::new("radio-option-1")
-    .label("Option 1")
-    .checked(false)
-    .on_click(|checked, _, _| {
-        println!("Radio is now: {}", checked);
-    })
-```
-
-### Controlled Radio Button
-
-```rust
-struct MyView {
-    radio_checked: bool,
+struct SettingsView {
+    density: Option<SharedString>,
 }
 
-impl Render for MyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        Radio::new("radio")
-            .label("Select this option")
-            .checked(self.radio_checked)
-            .on_click(cx.listener(|view, checked, _, cx| {
-                view.radio_checked = *checked;
-                cx.notify();
-            }))
-    }
-}
-```
-
-### Radio Group (Recommended)
-
-```rust
-struct MyView {
-    selected_option: Option<usize>,
-}
-
-impl Render for MyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        RadioGroup::horizontal("options")
-            .children(["Option 1", "Option 2", "Option 3"])
-            .selected_index(self.selected_option)
-            .on_change(cx.listener(|view, selected_index: &usize, _, cx| {
-                view.selected_option = Some(*selected_index);
-                cx.notify();
-            }))
-    }
-}
-```
-
-### Different Sizes
-
-```rust
-Radio::new("small").label("Small").xsmall()
-Radio::new("medium").label("Medium") // default
-Radio::new("large").label("Large").large()
-```
-
-### Disabled State
-
-```rust
-Radio::new("disabled")
-    .label("Disabled option")
-    .disabled(true)
-    .checked(false)
-
-Radio::new("disabled-checked")
-    .label("Disabled and checked")
-    .checked(true)
-    .disabled(true)
-```
-
-### Multi-line Label with Custom Content
-
-```rust
-Radio::new("custom")
-    .label("Primary option")
-    .child(
-        div()
-            .text_color(cx.theme().muted_foreground)
-            .child("This is additional descriptive text that provides more context.")
-    )
-    .w(px(300.))
-```
-
-### Custom Tab Order
-
-```rust
-Radio::new("radio")
-    .label("Custom tab order")
-    .tab_index(2)
-    .tab_stop(true)
-```
-
-## Radio Group Usage
-
-### Horizontal Layout
-
-```rust
-RadioGroup::horizontal("horizontal-group")
-    .children(["First", "Second", "Third"])
-    .selected_index(Some(0))
-    .on_change(cx.listener(|view, index, _, cx| {
-        println!("Selected index: {}", index);
+RadioGroup::new("density")
+    .aria_label("Density")
+    .value(self.density.clone())
+    .child(RadioGroupItem::new("default").label("Default"))
+    .child(RadioGroupItem::new("comfortable").label("Comfortable"))
+    .child(RadioGroupItem::new("compact").label("Compact"))
+    .on_change(cx.listener(|this, value: &SharedString, _, cx| {
+        this.density = Some(value.clone());
         cx.notify();
     }))
 ```
 
-### Vertical Layout
+The value is stable across item reordering. Selecting the current item again does not clear it.
+
+## Orientation
 
 ```rust
-RadioGroup::vertical("vertical-group")
-    .child(Radio::new("option1").label("United States"))
-    .child(Radio::new("option2").label("Canada"))
-    .child(Radio::new("option3").label("Mexico"))
-    .selected_index(Some(1))
-    .disabled(false)
+RadioGroup::horizontal("language")
+    .aria_label("Language")
+    .value(Some("rust"))
+    .children([
+        RadioGroupItem::new("rust").label("Rust"),
+        RadioGroupItem::new("go").label("Go"),
+        RadioGroupItem::new("swift").label("Swift"),
+    ])
 ```
 
-### Styled Radio Group
+`RadioGroup::new` and `RadioGroup::vertical` use vertical orientation. Orientation controls both
+layout and arrow-key behavior.
+
+## Labels and descriptions
 
 ```rust
-RadioGroup::vertical("styled-group")
-    .w(px(220.))
-    .p_2()
-    .border_1()
-    .border_color(cx.theme().border)
-    .rounded(cx.theme().radius)
-    .child(Radio::new("option1").label("Option 1"))
-    .child(Radio::new("option2").label("Option 2"))
-    .child(Radio::new("option3").label("Option 3"))
-    .selected_index(Some(0))
+RadioGroup::vertical("plan")
+    .aria_label("Plan")
+    .value(Some("pro"))
+    .child(
+        RadioGroupItem::new("plus")
+            .label("Plus")
+            .aria_description("For individuals and small teams")
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("For individuals and small teams"),
+            ),
+    )
+    .child(
+        RadioGroupItem::new("pro")
+            .label("Pro")
+            .aria_description("For growing businesses")
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("For growing businesses"),
+            ),
+    )
 ```
 
-### Disabled Radio Group
+The integrated label is the item's accessible name. Supplemental content should also provide an
+explicit `aria_description` when it conveys information required to choose an option.
+
+## Disabled and invalid states
 
 ```rust
-RadioGroup::vertical("disabled-group")
-    .children(["Option A", "Option B", "Option C"])
-    .selected_index(Some(1))
-    .disabled(true) // Disables all radio buttons in the group
+RadioGroup::vertical("notifications")
+    .aria_label("Notifications")
+    .value(Some("email"))
+    .child(RadioGroupItem::new("email").label("Email"))
+    .child(RadioGroupItem::new("sms").label("SMS").disabled(true))
+    .child(
+        RadioGroupItem::new("push")
+            .label("Push")
+            .invalid(true),
+    )
 ```
 
-## API Reference
+Group-level `disabled(true)` is combined with each item's own disabled state and does not mutate
+the item permanently.
 
-### Radio
+## Standalone Radio
 
-| Method             | Description                                                 |
-| ------------------ | ----------------------------------------------------------- |
-| `new(id)`          | Create a new radio button with the given ID                 |
-| `label(text)`      | Set label text                                              |
-| `checked(bool)`    | Set checked state                                           |
-| `disabled(bool)`   | Set disabled state                                          |
-| `on_click(fn)`     | Callback when clicked, receives `&bool` (new checked state) |
-| `tab_stop(bool)`   | Enable/disable tab navigation (default: true)               |
-| `tab_index(isize)` | Set tab order index (default: 0)                            |
+```rust
+Radio::new("standalone-radio")
+    .label("Standalone option")
+    .checked(self.checked)
+    .on_click(cx.listener(|this, checked: &bool, _, cx| {
+        this.checked = *checked;
+        cx.notify();
+    }))
+```
+
+Radio activation only requests `true`; activating an already selected Radio does not unselect it.
+
+## Keyboard behavior
+
+| Key | Behavior |
+|---|---|
+| `Tab` / `Shift+Tab` | Enters or leaves the group through its selected item, or the first enabled item |
+| `ArrowLeft` / `ArrowRight` | Moves and selects within a horizontal group, wrapping at the ends |
+| `ArrowUp` / `ArrowDown` | Moves and selects within a vertical group, wrapping at the ends |
+| `Home` / `End` | Selects the first or last enabled item |
+| `Space` | Selects the focused item |
+
+Disabled items are skipped. Pointer focus does not display the keyboard-only focus ring.
+
+## Visual and motion behavior
+
+- Default geometry follows Vega: a 16 px circular control and an 8 px selected indicator.
+- Vega and Maia groups use a 12 px gap; compact Nova groups use an 8 px gap.
+- Light-mode unchecked controls are transparent; dark mode uses the semantic input surface.
+- Checked, unchecked, invalid, and focus paint changes are immediate. The pinned shadcn source
+  does not define an indicator or color transition for Radio Group.
+- `Sizable` remains a GPUI Component extension for exceptional compact or large compositions;
+  default size is the shadcn acceptance baseline.
+
+## API
 
 ### RadioGroup
 
-| Method                          | Description                                                         |
-| ------------------------------- | ------------------------------------------------------------------- |
-| `horizontal(id)`                | Create a new horizontal radio group                                 |
-| `vertical(id)`                  | Create a new vertical radio group                                   |
-| `layout(Axis)`                  | Set layout direction (Vertical or Horizontal)                       |
-| `child(Radio)`                  | Add a single radio button to the group                              |
-| `children(items)`               | Add multiple radio buttons from an iterator                         |
-| `selected_index(Option<usize>)` | Set the selected option by index                                    |
-| `disabled(bool)`                | Disable all radio buttons in the group                              |
-| `on_change(fn)`                 | Callback when selection changes, receives `&usize` (selected index) |
+| Method | Description |
+|---|---|
+| `new(id)` | Creates a vertical controlled group |
+| `horizontal(id)` / `vertical(id)` | Creates a group with explicit orientation |
+| `orientation(Axis)` | Changes layout and arrow-key navigation axis |
+| `value(Option<T>)` | Sets the controlled selected value |
+| `aria_label(text)` | Sets the accessible group name |
+| `child(item)` / `children(items)` | Adds typed value-bearing items |
+| `disabled(bool)` | Disables all items at render time |
+| `on_change(fn)` | Reports a newly selected stable value |
 
-### Styling
+### RadioGroupItem
 
-Both Radio and RadioGroup implement `Styled` trait for custom styling:
+| Method | Description |
+|---|---|
+| `new(value)` | Creates an item with a stable selection value and default ID |
+| `label(text)` | Sets visible label and accessible name |
+| `aria_label(text)` | Sets an accessible name without visible text |
+| `aria_description(text)` | Sets supplemental accessible description |
+| `disabled(bool)` | Disables this item |
+| `invalid(bool)` | Applies invalid semantics and visual state |
+| `tooltip(text)` | Adds a tooltip |
 
-Radio also implements `Sizable` trait:
-
-- `xsmall()` - Extra small size
-- `small()` - Small size
-- `medium()` - Medium size (default)
-- `large()` - Large size
-
-## Examples
-
-### Settings Panel
-
-```rust
-struct SettingsView {
-    theme: Option<usize>, // 0: Light, 1: Dark, 2: Auto
-    language: Option<usize>, // 0: English, 1: Spanish, 2: French
-}
-
-impl Render for SettingsView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_6()
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().font_semibold().child("Theme"))
-                    .child(
-                        RadioGroup::vertical("theme")
-                            .child(Radio::new("light").label("Light"))
-                            .child(Radio::new("dark").label("Dark"))
-                            .child(Radio::new("auto").label("Auto"))
-                            .selected_index(self.theme)
-                            .on_change(cx.listener(|view, index, _, cx| {
-                                view.theme = Some(*index);
-                                cx.notify();
-                            }))
-                    )
-            )
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().font_semibold().child("Language"))
-                    .child(
-                        RadioGroup::horizontal("language")
-                            .children(["English", "Español", "Français"])
-                            .selected_index(self.language)
-                            .on_change(cx.listener(|view, index, _, cx| {
-                                view.language = Some(*index);
-                                cx.notify();
-                            }))
-                    )
-            )
-    }
-}
-```
-
-### Survey Form
-
-```rust
-struct SurveyView {
-    satisfaction: Option<usize>,
-    recommendation: Option<usize>,
-}
-
-impl Render for SurveyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_8()
-            .child(
-                v_flex()
-                    .gap_3()
-                    .child(
-                        div()
-                            .text_base()
-                            .font_medium()
-                            .child("How satisfied are you with our service?")
-                    )
-                    .child(
-                        RadioGroup::vertical("satisfaction")
-                            .child(Radio::new("very-satisfied").label("Very satisfied"))
-                            .child(Radio::new("satisfied").label("Satisfied"))
-                            .child(Radio::new("neutral").label("Neutral"))
-                            .child(Radio::new("dissatisfied").label("Dissatisfied"))
-                            .child(Radio::new("very-dissatisfied").label("Very dissatisfied"))
-                            .selected_index(self.satisfaction)
-                            .on_change(cx.listener(|view, index, _, cx| {
-                                view.satisfaction = Some(*index);
-                                cx.notify();
-                            }))
-                    )
-            )
-            .child(
-                v_flex()
-                    .gap_3()
-                    .child(
-                        div()
-                            .text_base()
-                            .font_medium()
-                            .child("How likely are you to recommend us?")
-                    )
-                    .child(
-                        RadioGroup::horizontal("recommendation")
-                            .children((0..=10).map(|i| i.to_string()))
-                            .selected_index(self.recommendation)
-                            .on_change(cx.listener(|view, index, _, cx| {
-                                view.recommendation = Some(*index);
-                                cx.notify();
-                            }))
-                    )
-            )
-    }
-}
-```
-
-### Payment Method Selection
-
-```rust
-struct PaymentView {
-    payment_method: Option<usize>,
-}
-
-impl Render for PaymentView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_4()
-            .child(
-                div()
-                    .text_lg()
-                    .font_semibold()
-                    .child("Select Payment Method")
-            )
-            .child(
-                RadioGroup::vertical("payment")
-                    .child(
-                        Radio::new("credit-card")
-                            .label("Credit Card")
-                            .child(
-                                div()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Visa, MasterCard, American Express")
-                            )
-                    )
-                    .child(
-                        Radio::new("paypal")
-                            .label("PayPal")
-                            .child(
-                                div()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Pay with your PayPal account")
-                            )
-                    )
-                    .child(
-                        Radio::new("bank-transfer")
-                            .label("Bank Transfer")
-                            .child(
-                                div()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Direct bank account transfer")
-                            )
-                    )
-                    .selected_index(self.payment_method)
-                    .on_change(cx.listener(|view, index, _, cx| {
-                        view.payment_method = Some(*index);
-                        cx.notify();
-                    }))
-            )
-    }
-}
-```
-
-## Best Practices
-
-1. **Use RadioGroup**: Always prefer `RadioGroup` over individual `Radio` components for mutually exclusive choices
-2. **Clear Labels**: Provide descriptive labels that clearly indicate what each option represents
-3. **Default Selection**: Consider providing a sensible default selection, especially for required fields
-4. **Logical Order**: Arrange options in a logical order (alphabetical, frequency of use, or importance)
-5. **Limit Options**: Keep the number of radio options reasonable (typically 2-7 options)
-6. **Group Related Options**: Use visual grouping and clear headings for multiple radio groups
-7. **Responsive Design**: Consider using horizontal layout for fewer options and vertical for more options
-
-## Invalid state
-
-```rust
-Radio::new("invalid-option").label("Choose an option").invalid(true)
-```
-
-The invalid state uses the semantic danger border and focus ring and maps to AccessKit `Invalid::True`.
+`Radio`, `RadioGroupItem`, and `RadioGroup` implement `Styled`. `Radio` and `RadioGroupItem` also
+implement `Sizable`.

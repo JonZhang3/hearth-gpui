@@ -197,9 +197,10 @@ GroupBox::new()
                     .child(Label::new("Theme"))
                     .child(
                         RadioGroup::horizontal("theme")
-                            .child(Radio::new("light").label("Light"))
-                            .child(Radio::new("dark").label("Dark"))
-                            .child(Radio::new("auto").label("Auto"))
+                            .aria_label("Theme")
+                            .child(RadioGroupItem::new("light").label("Light"))
+                            .child(RadioGroupItem::new("dark").label("Dark"))
+                            .child(RadioGroupItem::new("auto").label("Auto"))
                     )
             )
             .child(

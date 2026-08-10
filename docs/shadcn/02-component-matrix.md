@@ -80,7 +80,7 @@ Equivalent concepts use different names. They do not require duplicate component
 | shadcn concept | GPUI Component equivalent |
 |---|---|
 | `input-otp` | `OtpInput` |
-| `radio-group` | `Radio` and `RadioGroup` |
+| `radio-group` | `Radio`, `RadioGroupItem`, and `RadioGroup` |
 | `scroll-area` | `Scrollable` and `Scrollbar` |
 | `dropdown-menu`, `context-menu`, `menubar` | `menu` module and `DropdownButton` |
 | `sonner` | `Notification` |

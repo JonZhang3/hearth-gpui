@@ -2,11 +2,7 @@ use std::{rc::Rc, sync::Arc};
 
 use crate::{
     ActiveTheme, Density, Disableable, IconName, Selectable, Sizable, Size, StylePreset,
-    StyledExt as _,
-    animation::{Lerp, effective_motion_duration},
-    icon::IconNamed,
-    text::Text,
-    tooltip::ComponentTooltip,
+    StyledExt as _, animation::Lerp, icon::IconNamed, text::Text, tooltip::ComponentTooltip,
     v_flex,
 };
 use gpui::{
@@ -271,76 +267,6 @@ fn checkbox_toggled(checked: bool, indeterminate: bool) -> Toggled {
     } else {
         checked.into()
     }
-}
-
-pub(crate) fn checkbox_check_icon(
-    id: ElementId,
-    size: Size,
-    checked: bool,
-    indeterminate: bool,
-    disabled: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> impl IntoElement {
-    let visual_state = if indeterminate { 2_u8 } else { checked as u8 };
-    let toggle_state = window.use_keyed_state(id, cx, |_, _| visual_state);
-    let color = if disabled {
-        cx.theme().primary_foreground.opacity(0.5)
-    } else {
-        cx.theme().primary_foreground
-    };
-
-    svg()
-        .absolute()
-        .top_px()
-        .left_px()
-        .map(|this| match size {
-            Size::XSmall => this.size_2(),
-            Size::Small => this.size_2p5(),
-            Size::Medium => this.size_3(),
-            Size::Large => this.size_3p5(),
-            _ => this.size_3(),
-        })
-        .text_color(color)
-        .map(|this| match visual_state {
-            1 => this.path(IconName::Check.path()),
-            2 => this.path(IconName::Minus.path()),
-            _ => this,
-        })
-        .map(|this| {
-            if !disabled && visual_state != *toggle_state.read(cx) {
-                let duration = cx.theme().style.motion.emphasis();
-                let timer_duration = effective_motion_duration(duration, cx);
-                let easing = if visual_state > 0 {
-                    cx.theme().style.motion.enter_easing
-                } else {
-                    cx.theme().style.motion.exit_easing
-                };
-                cx.spawn({
-                    let toggle_state = toggle_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(timer_duration).await;
-                        _ = toggle_state.update(cx, |this, _| *this = visual_state);
-                    }
-                })
-                .detach();
-
-                this.with_animation(
-                    ElementId::NamedInteger("toggle".into(), visual_state as u64),
-                    Animation::new(duration).with_easing(move |delta| easing.sample(delta)),
-                    move |this, delta| {
-                        this.opacity(if visual_state > 0 {
-                            1.0 * delta
-                        } else {
-                            1.0 - delta
-                        })
-                    },
-                )
-                .into_any_element()
-            } else {
-                this.into_any_element()
-            }
-        })
 }
 
 /// Renders the static shadcn Checkbox indicator with an explicit semantic foreground color.
