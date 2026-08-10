@@ -150,3 +150,24 @@ The preferred GPUI contract should:
 - Preserve pointer label activation and disabled behavior.
 - Work across rerenders without stale AccessKit relationships.
 - Support macOS, Windows, Linux, and headless accessibility verification.
+
+## Toggle cross-preset control-surface geometry
+
+**Status:** Deferred shared Style Metric
+
+The aligned Toggle consumes semantic control height, padding, gap, icon size, focus, elevation, and
+motion metrics without branching on Style Preset IDs. Vega therefore matches the pinned default
+geometry. The existing shared radius and elevation contracts cannot independently express all
+remaining pinned differences:
+
+- Nova uses `rounded-lg`, including a smaller radius for its Small Toggle.
+- Maia uses a pill-shaped `rounded-4xl` Toggle.
+
+The Vega `shadow-xs` on Outline Toggle and zero-spacing Outline ToggleGroup is intentionally omitted.
+This project decision keeps selected and unselected backgrounds visually distinguishable and also
+matches Nova and Maia's non-elevated Toggle treatment.
+
+Do not add a Toggle-only global metric or infer a preset from its ID or density. Revisit this when
+Button, Input-family controls, and Toggle can migrate together to a shared control-surface radius
+and elevation contract with at least three real consumers. Caller-provided `Styled` radius and
+shadow overrides remain available in the meantime.

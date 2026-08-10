@@ -1,206 +1,146 @@
 ---
 title: Toggle
-description: 以按钮形态表示开关或选中状态的切换组件。
+description: 双状态按钮，以及可组合的单选或多选按钮组。
 ---
 
 # Toggle
 
-Toggle 是一种按钮式的二元切换组件，用于表示选中 / 未选中、开启 / 关闭等状态。与传统 Switch 不同，Toggle 更像可按下或弹起的按钮，适合工具栏、筛选器和多选项场景。
+`Toggle` 是受控的双状态按钮，通过 `aria-pressed` 暴露状态。组件支持 shadcn Default、
+Outline、语义尺寸、Invalid、Disabled、键盘焦点，以及可中断的颜色与焦点环过渡。
 
-## 导入
-
-```rust
-use gpui_component::button::{Toggle, ToggleGroup};
-```
-
-## 用法
-
-### 基础 Toggle
+## 基础用法
 
 ```rust
-Toggle::new("toggle1")
-    .label("Toggle me")
-    .checked(false)
-    .on_click(|checked, _, _| {
-        println!("Toggle is now: {}", checked);
-    })
-```
-
-`on_click` 回调接收的是切换后的新状态。
-
-### 图标 Toggle
-
-```rust
-use gpui_component::IconName;
-
-Toggle::new("toggle2")
-    .aria_label("显示内容")
-    .icon(IconName::Eye)
-    .checked(true)
-    .on_click(|checked, _, _| {
-        println!("Visibility: {}", if *checked { "shown" } else { "hidden" });
-    })
-```
-
-### 受控 Toggle
-
-```rust
-struct MyView {
-    is_active: bool,
-}
-
-impl Render for MyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        Toggle::new("active")
-            .label("Active")
-            .checked(self.is_active)
-            .on_click(cx.listener(|view, checked, _, cx| {
-                view.is_active = *checked;
-                cx.notify();
-            }))
-    }
-}
-```
-
-### 样式变体
-
-```rust
-Toggle::new("ghost-toggle")
-    .ghost()
-    .label("Ghost")
-
-Toggle::new("outline-toggle")
-    .outline()
-    .label("Outline")
-```
-
-### 不同尺寸
-
-```rust
-Toggle::new("xs-toggle")
-    .icon(IconName::Star)
-    .xsmall()
-
-Toggle::new("small-toggle")
-    .label("Small")
-    .small()
-
-Toggle::new("medium-toggle")
-    .label("Medium")
-
-Toggle::new("large-toggle")
-    .label("Large")
-    .large()
-```
-
-### 禁用状态
-
-```rust
-Toggle::new("disabled-toggle")
-    .label("Disabled")
-    .disabled(true)
-    .checked(false)
-
-Toggle::new("disabled-checked-toggle")
-    .label("Selected (Disabled)")
-    .disabled(true)
-    .checked(true)
-```
-
-## Toggle 与 Switch 的区别
-
-| 特性 | Toggle | Switch |
-| --- | --- | --- |
-| 外观 | 按钮式，可按下 / 弹起 | 传统滑块式开关 |
-| 场景 | 工具栏、筛选器、二元选择 | 设置项、偏好项、开关状态 |
-| 状态表达 | 背景和按压感变化 | 滑块位置变化 |
-| 分组能力 | 支持 `ToggleGroup` | 主要单独使用 |
-
-## 与 ToggleGroup 配合使用
-
-### 基础分组
-
-```rust
-ToggleGroup::new("filter-group")
-    .child(Toggle::new(0).icon(IconName::Bell))
-    .child(Toggle::new(1).icon(IconName::Bot))
-    .child(Toggle::new(2).icon(IconName::Inbox))
-    .child(Toggle::new(3).label("Other"))
-    .on_click(|checkeds, _, _| {
-        println!("Selected toggles: {:?}", checkeds);
-    })
-```
-
-### 受控分组
-
-```rust
-struct FilterView {
-    notifications: bool,
-    bots: bool,
-    inbox: bool,
-    other: bool,
-}
-
-impl Render for FilterView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        ToggleGroup::new("filters")
-            .child(Toggle::new(0).icon(IconName::Bell).checked(self.notifications))
-            .child(Toggle::new(1).icon(IconName::Bot).checked(self.bots))
-            .child(Toggle::new(2).icon(IconName::Inbox).checked(self.inbox))
-            .child(Toggle::new(3).label("Other").checked(self.other))
-            .on_click(cx.listener(|view, checkeds, _, cx| {
-                view.notifications = checkeds[0];
-                view.bots = checkeds[1];
-                view.inbox = checkeds[2];
-                view.other = checkeds[3];
-                cx.notify();
-            }))
-    }
-}
-```
-
-### 分段样式 ToggleGroup
-
-使用 `segmented()` 可以把一组 Toggle 渲染成贴合的分段控件。这个样式只影响外观，
-交互语义仍然是当前的多选模型：`on_click` 会收到每一项最新状态组成的 `Vec<bool>`。
-
-```rust
-ToggleGroup::new("formatting")
-    .segmented()
-    .outline()
-    .child(Toggle::new(0).label("Bold").checked(self.bold))
-    .child(Toggle::new(1).label("Italic").checked(self.italic))
-    .child(Toggle::new(2).label("Code").checked(self.code))
-    .on_click(cx.listener(|view, states, _, cx| {
-        view.bold = states[0];
-        view.italic = states[1];
-        view.code = states[2];
+Toggle::new("bold")
+    .icon(IconName::Check)
+    .label("Bold")
+    .checked(self.bold)
+    .on_click(cx.listener(|this, checked, _, cx| {
+        this.bold = *checked;
         cx.notify();
     }))
 ```
 
-分段样式默认使用 `0px` 间距，相邻项会共享一个连续边框。需要保留间距时可以传入
-非零 `gap`：
+纯图标 Toggle 必须设置 `.aria_label(...)`。Tooltip 也可以作为可访问名称的后备来源。
 
 ```rust
-use gpui::px;
-
-ToggleGroup::new("quick-actions")
-    .segmented()
-    .outline()
-    .gap(px(8.))
-    .small()
-    .child(Toggle::new(0).label("Star"))
-    .child(Toggle::new(1).label("Watch"))
-    .child(Toggle::new(2).label("Pin"))
+Toggle::new("preview")
+    .icon(IconName::Eye)
+    .aria_label("Toggle preview")
 ```
 
-如果业务需要互斥选择，请继续在视图状态中自行保证只有一项 `checked(true)`，
-直到后续提供专门的单选 API。
+## 变体与尺寸
 
-## 最佳实践
+```rust
+Toggle::new("default").label("Default");
+Toggle::new("outline").outline().label("Outline");
 
-1. 需要按钮式反馈时优先使用 Toggle，而不是 Switch。
-2. 一组相关选项应使用 `ToggleGroup` 统一管理。
-3. 仅图标 Toggle 应设置 `aria_label`；可见的 `label` 会自动作为 AccessKit 名称。
-4. Toggle 状态应与实际业务状态保持同步，避免视觉与数据不一致。
+Toggle::new("small").small().label("Small");
+Toggle::new("medium").label("Default");
+Toggle::new("large").large().label("Large");
+```
+
+`XSmall` 是 GPUI Component 扩展，不属于 shadcn Toggle API。
+
+## 状态
+
+```rust
+Toggle::new("selected").label("Selected").checked(true);
+Toggle::new("invalid").label("Invalid").invalid(true);
+Toggle::new("disabled").label("Disabled").disabled(true);
+Toggle::new("out-of-tab-order").label("Action").tab_stop(false);
+```
+
+Enter 与 Space 使用原生 Button 激活行为。鼠标获得焦点时不会绘制键盘焦点环。
+
+## 前置与后置图标
+
+```rust
+Toggle::new("options")
+    .icon(IconName::Star)
+    .label("Options")
+    .trailing_icon(IconName::ChevronDown)
+```
+
+明确的图标槽位让当前 Style Preset 可以解析图标大小与两侧 padding。
+
+## ToggleGroup
+
+`ToggleGroup` 管理受控选择值，并包含明确的 `ToggleGroupItem`。Item 使用稳定字符串 value，
+不再依赖位置型 `Vec<bool>`。
+
+### 单选
+
+```rust
+ToggleGroup::new("alignment")
+    .mode(ToggleGroupMode::Single)
+    .selection(ToggleGroupSelection::Single(self.alignment.clone()))
+    .aria_label("Text alignment")
+    .child(ToggleGroupItem::new("left").label("Left"))
+    .child(ToggleGroupItem::new("center").label("Center"))
+    .child(ToggleGroupItem::new("right").label("Right"))
+    .on_change(cx.listener(|this, selection, _, cx| {
+        if let ToggleGroupSelection::Single(value) = selection {
+            this.alignment = value.clone();
+            cx.notify();
+        }
+    }))
+```
+
+再次选择当前 Item 会清空单选值。
+
+### 多选与连接布局
+
+```rust
+ToggleGroup::new("formatting")
+    .mode(ToggleGroupMode::Multiple)
+    .selection(ToggleGroupSelection::Multiple(self.formats.clone()))
+    .outline()
+    .spacing(px(0.))
+    .aria_label("Text formatting")
+    .child(
+        ToggleGroupItem::new("bold")
+            .icon(IconName::Check)
+            .aria_label("Bold"),
+    )
+    .child(
+        ToggleGroupItem::new("preview")
+            .icon(IconName::Eye)
+            .aria_label("Preview"),
+    )
+    .on_change(cx.listener(|this, selection, _, cx| {
+        if let ToggleGroupSelection::Multiple(values) = selection {
+            this.formats = values.clone();
+            cx.notify();
+        }
+    }))
+```
+
+默认间距为 8px，对应 shadcn `spacing={2}`。`spacing(px(0.))` 会连接相邻边框，并按水平或
+垂直方向设置首尾圆角。
+
+### 垂直方向
+
+```rust
+ToggleGroup::new("vertical-tools")
+    .orientation(Axis::Vertical)
+    .spacing(px(0.))
+    .aria_label("Vertical tools")
+    .child(ToggleGroupItem::new("one").label("One"))
+    .child(ToggleGroupItem::new("two").label("Two"))
+```
+
+水平组支持 Left/Right，垂直组支持 Up/Down；两者都支持 Home/End、跳过 Disabled Item，
+并且整个 Group 只有一个 Tab 入口。
+
+## 从旧位置型 API 迁移
+
+将子项 `Toggle::checked(...)` 和 `on_click(&Vec<bool>)` 替换为稳定的
+`ToggleGroupItem::new(value)`、`ToggleGroupSelection` 和 `on_change(...)`；将
+`.segmented()` 替换为 `.spacing(px(0.))`。
+
+## 动效
+
+Toggle 只过渡边框以及 Focus/Invalid ring。Checked 和 Hover 背景会立即切换，不增加位移、
+缩放、透明度、图标或挂载动画。Focus 或 Invalid 状态快速反转时会从当前可见值继续；
+Reduced Motion 会立即到达最终状态。
