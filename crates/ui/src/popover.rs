@@ -2,7 +2,7 @@ use gpui::{
     Anchor, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
     ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
+    Subscription, Window, anchored, deferred, div, point, prelude::FluentBuilder as _, px,
 };
 use std::{cell::Cell, rc::Rc};
 
@@ -43,6 +43,7 @@ pub struct Popover {
     mouse_button: MouseButton,
     appearance: bool,
     overlay_closable: bool,
+    side_offset: Option<Pixels>,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
 }
 
@@ -61,6 +62,7 @@ impl Popover {
             mouse_button: MouseButton::Left,
             appearance: true,
             overlay_closable: true,
+            side_offset: None,
             default_open: false,
             open: None,
             on_open_change: None,
@@ -75,6 +77,12 @@ impl Popover {
     /// bottom-right, and so on. The popover then hangs off that point.
     pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
         self.anchor = anchor.into();
+        self
+    }
+
+    /// Set the distance between the popover surface and its trigger.
+    pub fn side_offset(mut self, offset: Pixels) -> Self {
+        self.side_offset = Some(offset);
         self
     }
 
@@ -376,6 +384,7 @@ impl Popover {
     pub(crate) fn render_popover<E>(
         anchor: Anchor,
         position: Rc<Cell<Point<Pixels>>>,
+        side_offset: Option<Pixels>,
         content: E,
         _: &mut Window,
         _: &mut App,
@@ -388,14 +397,30 @@ impl Popover {
                 .snap_to_window_with_margin(px(8.))
                 .anchor(anchor)
                 .position(position.get())
+                .when_some(side_offset, |this, offset| {
+                    this.offset(Self::resolved_side_offset(anchor, offset))
+                })
                 .child(div().relative().child(content)),
         )
         .with_priority(1)
     }
 
+    /// Resolves a side offset that moves the anchored surface away from its trigger.
+    fn resolved_side_offset(anchor: Anchor, offset: Pixels) -> Point<Pixels> {
+        match anchor {
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => point(px(0.), offset),
+            Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => {
+                point(px(0.), -offset)
+            }
+            Anchor::LeftCenter => point(offset, px(0.)),
+            Anchor::RightCenter => point(-offset, px(0.)),
+        }
+    }
+
     pub(crate) fn render_popover_content(
         anchor: Anchor,
         appearance: bool,
+        side_offset: Option<Pixels>,
         _: &mut Window,
         cx: &mut App,
     ) -> Stateful<Div> {
@@ -407,10 +432,15 @@ impl Popover {
             .when(appearance, |this| {
                 this.popover_style(cx).p(cx.theme().style.overlays.padding)
             })
-            .map(|this| match anchor {
-                Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => this.top_1(),
-                Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => this.bottom_1(),
-                Anchor::LeftCenter | Anchor::RightCenter => this.top_1(), // Fallback for centered
+            .map(|this| match (anchor, side_offset.is_some()) {
+                // Explicit offsets are applied by Anchored so they participate in placement.
+                (_, true) => this,
+                // Preserve the legacy Popover placement when no explicit offset is requested.
+                (Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight, false) => this.top_1(),
+                (Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight, false) => {
+                    this.bottom_1()
+                }
+                (Anchor::LeftCenter | Anchor::RightCenter, false) => this.top_1(),
             })
     }
 }
@@ -493,32 +523,37 @@ impl RenderOnce for Popover {
             return el;
         }
 
-        let popover_content =
-            Self::render_popover_content(self.anchor, self.appearance, window, cx)
-                .track_focus(&focus_handle)
-                .key_context(CONTEXT)
-                .when(!closing, |this| {
-                    this.on_action(window.listener_for(&state, PopoverState::on_action_cancel))
-                })
-                .when_some(self.content, |this, content| {
-                    this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
-                })
-                .children(self.children)
-                .when(self.overlay_closable && !closing, |this| {
-                    this.on_mouse_down_out({
-                        let state = state.clone();
-                        move |_, window, cx| {
-                            state.update(cx, |state, cx| {
-                                state.dismiss(window, cx);
-                            });
-                            cx.notify(parent_view_id);
-                        }
-                    })
-                })
-                .when(closing, |this| {
-                    this.child(div().absolute().top_0().left_0().size_full().occlude())
-                })
-                .refine_style(&self.style);
+        let popover_content = Self::render_popover_content(
+            self.anchor,
+            self.appearance,
+            self.side_offset,
+            window,
+            cx,
+        )
+        .track_focus(&focus_handle)
+        .key_context(CONTEXT)
+        .when(!closing, |this| {
+            this.on_action(window.listener_for(&state, PopoverState::on_action_cancel))
+        })
+        .when_some(self.content, |this, content| {
+            this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
+        })
+        .children(self.children)
+        .when(self.overlay_closable && !closing, |this| {
+            this.on_mouse_down_out({
+                let state = state.clone();
+                move |_, window, cx| {
+                    state.update(cx, |state, cx| {
+                        state.dismiss(window, cx);
+                    });
+                    cx.notify(parent_view_id);
+                }
+            })
+        })
+        .when(closing, |this| {
+            this.child(div().absolute().top_0().left_0().size_full().occlude())
+        })
+        .refine_style(&self.style);
 
         let placement = match self.anchor {
             Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => OverlayPlacement::Top,
@@ -556,6 +591,7 @@ impl RenderOnce for Popover {
         el.child(Self::render_popover(
             self.anchor,
             position,
+            self.side_offset,
             popover_content,
             window,
             cx,
@@ -576,13 +612,15 @@ mod tests {
             .mouse_button(MouseButton::Right)
             .default_open(true)
             .appearance(false)
-            .overlay_closable(false);
+            .overlay_closable(false)
+            .side_offset(px(2.));
 
         assert_eq!(popover.anchor, Anchor::BottomCenter);
         assert_eq!(popover.mouse_button, MouseButton::Right);
         assert!(popover.default_open);
         assert!(!popover.appearance);
         assert!(!popover.overlay_closable);
+        assert_eq!(popover.side_offset, Some(px(2.)));
     }
 
     #[test]
@@ -623,6 +661,28 @@ mod tests {
         let pos = Popover::resolved_corner(Anchor::BottomRight, bounds);
         assert_eq!(pos.x, px(300.));
         assert_eq!(pos.y, px(50.));
+    }
+
+    #[test]
+    fn explicit_side_offset_moves_away_from_the_trigger() {
+        let offset = px(4.);
+
+        assert_eq!(
+            Popover::resolved_side_offset(Anchor::TopRight, offset),
+            point(px(0.), px(4.))
+        );
+        assert_eq!(
+            Popover::resolved_side_offset(Anchor::BottomRight, offset),
+            point(px(0.), px(-4.))
+        );
+        assert_eq!(
+            Popover::resolved_side_offset(Anchor::LeftCenter, offset),
+            point(px(4.), px(0.))
+        );
+        assert_eq!(
+            Popover::resolved_side_offset(Anchor::RightCenter, offset),
+            point(px(-4.), px(0.))
+        );
     }
 
     #[gpui::test]

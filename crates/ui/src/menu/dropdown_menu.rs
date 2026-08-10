@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use gpui::{
     Anchor, Context, DismissEvent, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
-    RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
 };
 
 use crate::{Selectable, button::Button, menu::PopupMenu, popover::Popover};
@@ -37,6 +37,7 @@ pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
     id: ElementId,
     style: StyleRefinement,
     anchor: Anchor,
+    side_offset: Option<Pixels>,
     trigger: T,
     builder: Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>,
 }
@@ -55,6 +56,7 @@ where
             id: SharedString::from(format!("dropdown-menu:{:?}", id)).into(),
             style: StyleRefinement::default(),
             anchor: anchor.into(),
+            side_offset: None,
             trigger,
             builder: Rc::new(builder),
         }
@@ -63,6 +65,12 @@ where
     /// Set the anchor corner for the dropdown menu popover.
     pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
         self.anchor = anchor.into();
+        self
+    }
+
+    /// Set the distance between the dropdown menu and its trigger.
+    pub fn side_offset(mut self, offset: Pixels) -> Self {
+        self.side_offset = Some(offset);
         self
     }
 
@@ -93,6 +101,7 @@ where
             .trigger(self.trigger)
             .trigger_style(self.style)
             .anchor(self.anchor)
+            .when_some(self.side_offset, |this, offset| this.side_offset(offset))
             .content(move |_, window, cx| {
                 // Here is special logic to only create the PopupMenu once and reuse it.
                 // Because this `content` will called in every time render, so we need to store the menu

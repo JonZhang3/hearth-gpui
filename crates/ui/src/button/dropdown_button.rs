@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use gpui::Pixels;
 use gpui::{
     Anchor, App, Axis, Context, ElementId, InteractiveElement as _, IntoElement, ParentElement,
     RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
     Window, div, prelude::FluentBuilder,
 };
+use gpui::{Pixels, px};
 use rust_i18n::t;
 
 use crate::{
@@ -190,7 +190,8 @@ impl RenderOnce for DropdownButton {
                             .disabled(self.disabled)
                             .with_size(self.size)
                             .with_variant(self.variant)
-                            .dropdown_menu_with_anchor(self.anchor, menu),
+                            .dropdown_menu_with_anchor(self.anchor, menu)
+                            .side_offset(px(4.)),
                     )
                 })
             })
