@@ -60,7 +60,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Progress
 - [x] Spinner
 - [x] Skeleton
-- [ ] Rating
+- [x] Rating
 
 ### Identity and labels
 

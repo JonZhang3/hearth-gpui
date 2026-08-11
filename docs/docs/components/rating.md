@@ -1,11 +1,11 @@
 ---
 title: Rating
-description: A simple interactive star rating component.
+description: A theme-aware, accessible star rating component.
 ---
 
 # Rating
 
-A star rating component that allows users to select a rating value. Supports different sizes, custom colors, disabled state, and click handlers.
+A theme-aware star rating component that supports pointer and keyboard selection, custom colors, disabled and read-only states, and all semantic component sizes.
 
 ## Import
 
@@ -19,6 +19,7 @@ use gpui_component::rating::Rating;
 
 ```rust
 Rating::new("my-rating")
+    .aria_label("Product rating")
     .value(3)
     .max(5)
     .on_click(|value, _, _| {
@@ -77,6 +78,17 @@ Rating::new("rating")
     .disabled(true)
 ```
 
+### Read-only State
+
+Use `read_only(true)` to present a value without reducing its visual emphasis or allowing interaction.
+
+```rust
+Rating::new("rating")
+    .aria_label("Average customer rating")
+    .value(4)
+    .read_only(true)
+```
+
 ### Custom Maximum
 
 The default maximum is 5 stars, but you can set a different maximum value.
@@ -89,10 +101,11 @@ Rating::new("rating")
 
 ### Click Behavior
 
-The rating component has special click behavior:
+The rating component has the following pointer behavior:
 
-- Clicking on a star that's already filled will reduce the rating by 1
-- Clicking on an unfilled star will set the rating to that star's value
+- Clicking a different star selects that exact value.
+- Clicking the current final star reduces the value by one.
+- Hovering previews both higher and lower values without committing them.
 
 The `on_click` callback receives the new rating value as `&usize`.
 
@@ -105,6 +118,24 @@ Rating::new("rating")
     })
 ```
 
+### Keyboard and Accessibility
+
+Rating is exposed as a horizontal slider with a numeric range from `0` to `max`.
+
+- `Left` / `Down`: decrease by one
+- `Right` / `Up`: increase by one
+- `Home`: set to zero
+- `End`: set to the maximum
+
+Use `aria_label(...)` to describe the rated subject. Disabled and read-only states are exposed to assistive technology.
+
+## Theme and Style Presets
+
+- Active stars use the Color Theme's `yellow` color unless `color(...)` overrides it.
+- Inactive stars use `muted_foreground`.
+- Item padding, spacing, focus ring, and radius consume semantic Style Preset metrics.
+- Custom `Styled` refinements remain authoritative on the outer Rating element.
+
 ## API Reference
 
 - [Rating]
@@ -116,7 +147,9 @@ Rating::new("rating")
 - `value(value: usize)` - Set the initial rating value (0..=max)
 - `max(max: usize)` - Set the maximum number of stars (default: 5)
 - `color(color: impl Into<Hsla>)` - Set the active color (default: theme yellow)
+- `aria_label(label: impl Into<SharedString>)` - Set the accessible name
 - `disabled(disabled: bool)` - Disable interaction (implements [Disableable])
+- `read_only(read_only: bool)` - Present a non-interactive value without disabled styling
 - `on_click(handler: Fn(&usize, &mut Window, &mut App))` - Set click handler
 
 ## Examples
@@ -127,7 +160,7 @@ Rating::new("rating")
 Rating::new("rating")
     .value(4)
     .max(5)
-    .disabled(true)
+    .read_only(true)
 ```
 
 ### Interactive Rating with State

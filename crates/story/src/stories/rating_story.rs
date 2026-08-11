@@ -107,6 +107,7 @@ impl Render for RatingStory {
                         .items_center()
                         .child(
                             Rating::new("rating-1")
+                                .aria_label("Product rating")
                                 .with_size(self.size)
                                 .value(self.value)
                                 .max(5)
@@ -144,18 +145,35 @@ impl Render for RatingStory {
                 ),
             )
             .child(
-                section("Disabled").max_w_md().child(
-                    Rating::new("rating-2")
-                        .with_size(self.size)
-                        .value(2)
-                        .color(cx.theme().green)
-                        .max(5)
-                        .disabled(true),
+                section("States").max_w_md().child(
+                    v_flex()
+                        .gap_3()
+                        .child(
+                            Rating::new("rating-empty")
+                                .aria_label("Empty rating")
+                                .with_size(self.size),
+                        )
+                        .child(
+                            Rating::new("rating-read-only")
+                                .aria_label("Read-only rating")
+                                .with_size(self.size)
+                                .value(4)
+                                .read_only(true),
+                        )
+                        .child(
+                            Rating::new("rating-disabled")
+                                .aria_label("Disabled rating")
+                                .with_size(self.size)
+                                .value(2)
+                                .max(5)
+                                .disabled(true),
+                        ),
                 ),
             )
             .child(
                 section("Custom Color").max_w_md().child(
                     Rating::new("rating-3")
+                        .aria_label("Custom color rating")
                         .large()
                         .value(self.value)
                         .color(cx.theme().green)
