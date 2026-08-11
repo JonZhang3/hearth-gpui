@@ -258,6 +258,16 @@ impl Render for MenuStory {
                                         .menu("Cut", Box::new(Cut))
                                         .menu("Copy", Box::new(Copy))
                                         .menu("Paste", Box::new(Paste))
+                                        .menu_with_icon(
+                                            "Search",
+                                            IconName::Search,
+                                            Box::new(SearchAll),
+                                        )
+                                        .menu_with_disabled(
+                                            "Unavailable Action",
+                                            Box::new(Info(0)),
+                                            true,
+                                        )
                                         .separator()
                                         .label("This is a label")
                                         .menu_with_check(

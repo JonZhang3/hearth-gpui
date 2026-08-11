@@ -39,6 +39,18 @@ div()
     })
 ```
 
+Context Menu 会在进入动效开始前完成不绘制、且不暴露给辅助功能 API 的 intrinsic layout。可见菜单继续使用 PopupMenu 根据内容自然计算的宽度，不会施加外层固定宽度约束。退出动效期间会继续保留内容，并仅在对应的关闭世代完成后释放。连续右键会重新定位并重建已打开的菜单，不会产生中间的关闭/重新打开周期。空 builder 不会创建不可见的打开层。
+
+所有者需要获取有效生命周期状态时，可使用 `on_open_change`：
+
+```rust
+div()
+    .context_menu(|menu, _, _| menu.menu("复制", Box::new(Copy)))
+    .on_open_change(|open, _, _| {
+        println!("Context menu open: {open}");
+    })
+```
+
 ### DropdownMenu
 
 下拉菜单通常由按钮或其它可交互元素触发：

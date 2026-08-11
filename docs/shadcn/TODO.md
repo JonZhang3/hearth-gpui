@@ -234,6 +234,26 @@ placement. Revisit exact scale parity after GPUI exposes a paint-only transform 
 subtrees. The implementation must preserve stable transform origins, interruption-safe reversal,
 rounded clipping, pointer hit testing, and reduced-motion final-state behavior.
 
+## Context Menu transform-origin and snapped-side motion parity
+
+**Status:** Deferred GPUI renderer and anchored-placement capability
+
+The aligned ContextMenu completes an intrinsic layout pass without prepainting or painting before
+motion begins, preserves PopupMenu's natural content-driven width, retains content through exit,
+and uses the semantic 100 ms overlay duration with interruption-safe vertical translation. The
+pinned Vega source additionally declares opacity, `zoom-in-95`/`zoom-out-95`, and selects the slide
+axis from the final collision-resolved side.
+ContextMenu intentionally omits opacity animation because GPUI applies opacity to individual surface
+primitives instead of an isolated composited subtree, which makes the menu background visibly change
+color during the transition.
+
+GPUI currently has no paint-only subtree scale primitive, and `anchored().snap_to_window_with_margin`
+does not expose its final resolved side or transform origin to the child transition. Do not
+approximate scale with width or height because that changes menu measurement and cursor anchoring.
+Exact parity requires a layout-independent subtree transform plus collision-placement output that
+is available during motion setup, without changing hit testing, clipping, accessibility bounds, or
+the existing PopupMenu behavior used by DropdownMenu and other overlays.
+
 ## Sheet content opacity motion parity
 
 **Status:** Deferred GPUI renderer capability; directional motion implemented

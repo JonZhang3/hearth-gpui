@@ -41,6 +41,23 @@ div()
     })
 ```
 
+Context menus complete an intrinsic layout pass without painting or exposing content to
+accessibility APIs before the enter transition begins. The visible menu keeps PopupMenu's natural
+content-driven width instead of imposing an outer fixed-width constraint. It remains mounted through
+the exit transition and is released only after the matching close generation completes. Repeated
+right-clicks reposition and rebuild the open menu without producing an intermediate close/open cycle.
+Empty builders do not create an invisible open overlay.
+
+Use `on_open_change` when the owner needs the effective lifecycle state:
+
+```rust
+div()
+    .context_menu(|menu, _, _| menu.menu("Copy", Box::new(Copy)))
+    .on_open_change(|open, _, _| {
+        println!("Context menu open: {open}");
+    })
+```
+
 ### DropdownMenu
 
 Dropdown menus are triggered by buttons or other interactive elements:
