@@ -114,6 +114,7 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     titlebar: Some(TitleBar::title_bar_options()),
+                    app_owns_titlebar_drag: true,
                     ..Default::default()
                 },
                 |window, cx| {

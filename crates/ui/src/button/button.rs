@@ -94,6 +94,7 @@ pub struct Button {
     trailing_icon: Option<ButtonIcon>,
     label: Option<SharedString>,
     aria_label: Option<SharedString>,
+    accessibility_role: Role,
     expanded: Option<bool>,
     children: Vec<AnyElement>,
     disabled: bool,
@@ -140,6 +141,7 @@ impl Button {
             trailing_icon: None,
             label: None,
             aria_label: None,
+            accessibility_role: Role::Button,
             expanded: None,
             disabled: false,
             active: false,
@@ -234,6 +236,15 @@ impl Button {
     /// Exposes whether this button's controlled popup is expanded.
     pub fn aria_expanded(mut self, expanded: bool) -> Self {
         self.expanded = Some(expanded);
+        self
+    }
+
+    /// Overrides the accessibility role for an internal composite control.
+    ///
+    /// Visual button behavior remains unchanged while containers such as a
+    /// menu bar can expose the role required by their accessibility pattern.
+    pub(crate) fn accessibility_role(mut self, role: Role) -> Self {
+        self.accessibility_role = role;
         self
     }
 
@@ -457,7 +468,7 @@ impl RenderOnce for Button {
 
         let element = self
             .base
-            .role(Role::Button)
+            .role(self.accessibility_role)
             .when_some(self.expanded, |this, expanded| this.aria_expanded(expanded))
             .when_some(self.pressed, |this, pressed| {
                 this.aria_toggled(if pressed {
@@ -857,6 +868,9 @@ mod tests {
 
         let popup_trigger = Button::new("popup-trigger").aria_expanded(true);
         assert_eq!(popup_trigger.expanded, Some(true));
+
+        let menu_trigger = Button::new("menu-trigger").accessibility_role(Role::MenuItem);
+        assert_eq!(menu_trigger.accessibility_role, Role::MenuItem);
     }
 
     #[gpui::test]

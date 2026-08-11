@@ -55,7 +55,7 @@ TitleBar::new()
         div()
             .flex()
             .items_center()
-            .child(AppMenuBar::new(window, cx))
+            .child(AppMenuBar::new(cx))
     )
     .child(
         div()
@@ -99,9 +99,12 @@ use gpui::{WindowOptions, TitlebarOptions};
 
 WindowOptions {
     titlebar: Some(TitleBar::title_bar_options()),
+    app_owns_titlebar_drag: true,
     ..Default::default()
 }
 ```
+
+必须启用 `app_owns_titlebar_drag`，因为 `TitleBar` 已自行实现窗口拖动。在 macOS 上，如果未启用，AppKit 会把标题栏中的交互内容视为原生双击区域。
 
 ## 平台差异
 

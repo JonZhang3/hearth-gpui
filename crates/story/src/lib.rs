@@ -115,6 +115,9 @@ pub fn create_new_window_with_size<F, E>(
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
             titlebar: Some(TitleBar::title_bar_options()),
+            // TitleBar implements dragging itself; prevent AppKit from also
+            // treating interactive titlebar content as a native drag region.
+            app_owns_titlebar_drag: true,
             window_min_size: Some(gpui::Size {
                 width: px(480.),
                 height: px(320.),

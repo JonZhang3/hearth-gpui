@@ -618,6 +618,7 @@ fn main() {
 
         let window_options = WindowOptions {
             titlebar: Some(TitleBar::title_bar_options()),
+            app_owns_titlebar_drag: true,
             window_bounds: Some(WindowBounds::centered(size(px(680.), px(600.)), cx)),
             ..Default::default()
         };

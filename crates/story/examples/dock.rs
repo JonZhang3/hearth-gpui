@@ -385,6 +385,8 @@ impl StoryWorkspace {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
                 #[cfg(not(target_os = "linux"))]
                 titlebar: Some(gpui_component::TitleBar::title_bar_options()),
+                #[cfg(not(target_os = "linux"))]
+                app_owns_titlebar_drag: true,
                 window_min_size: Some(gpui::Size {
                     width: px(640.),
                     height: px(480.),

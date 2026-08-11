@@ -55,7 +55,7 @@ TitleBar::new()
         div()
             .flex()
             .items_center()
-            .child(AppMenuBar::new(window, cx))
+            .child(AppMenuBar::new(cx))
     )
     .child(
         div()
@@ -101,9 +101,12 @@ use gpui::{WindowOptions, TitlebarOptions};
 
 WindowOptions {
     titlebar: Some(TitleBar::title_bar_options()),
+    app_owns_titlebar_drag: true,
     ..Default::default()
 }
 ```
+
+`app_owns_titlebar_drag` is required because `TitleBar` implements window dragging itself. On macOS, leaving it disabled lets AppKit treat interactive title-bar content as a native double-click region.
 
 ## Platform Differences
 

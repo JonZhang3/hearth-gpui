@@ -44,6 +44,7 @@ fn main() {
             let window_options = WindowOptions {
                 // Setup GPUI to use custom title bar
                 titlebar: Some(TitleBar::title_bar_options()),
+                app_owns_titlebar_drag: true,
                 ..Default::default()
             };
 
