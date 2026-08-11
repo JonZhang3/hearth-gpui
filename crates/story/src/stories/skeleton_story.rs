@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, px,
 };
-use gpui_component::{ActiveTheme as _, skeleton::Skeleton, v_flex};
+use gpui_component::{skeleton::Skeleton, v_flex};
 
 use crate::section;
 
@@ -49,7 +49,7 @@ impl Focusable for SkeletonStory {
 }
 
 impl Render for SkeletonStory {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_3()
@@ -60,47 +60,27 @@ impl Render for SkeletonStory {
                     .child(
                         v_flex()
                             .gap_2()
-                            .child(
-                                Skeleton::new()
-                                    .w(px(250.))
-                                    .h_4()
-                                    .rounded(cx.theme().style.radii.md),
-                            )
-                            .child(
-                                Skeleton::new()
-                                    .w(px(200.))
-                                    .h_4()
-                                    .rounded(cx.theme().style.radii.md),
-                            ),
+                            .child(Skeleton::new().w(px(250.)).h_4())
+                            .child(Skeleton::new().w(px(200.)).h_4()),
                     ),
             )
             .child(
                 section("Card").max_w_md().child(
                     v_flex()
                         .gap_2()
-                        .child(
-                            Skeleton::new()
-                                .w(px(250.))
-                                .h(px(125.))
-                                .rounded(cx.theme().style.radii.md),
-                        )
+                        .child(Skeleton::new().w(px(250.)).h(px(125.)))
                         .child(
                             v_flex()
                                 .gap_2()
-                                .child(
-                                    Skeleton::new()
-                                        .w(px(250.))
-                                        .h_4()
-                                        .rounded(cx.theme().style.radii.md),
-                                )
-                                .child(
-                                    Skeleton::new()
-                                        .w(px(200.))
-                                        .h_4()
-                                        .rounded(cx.theme().style.radii.md),
-                                ),
+                                .child(Skeleton::new().w(px(250.)).h_4())
+                                .child(Skeleton::new().w(px(200.)).h_4()),
                         ),
                 ),
+            )
+            .child(
+                section("Secondary")
+                    .max_w_md()
+                    .child(Skeleton::new().secondary().w(px(250.)).h_4()),
             )
     }
 }

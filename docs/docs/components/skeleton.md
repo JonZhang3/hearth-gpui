@@ -7,6 +7,8 @@ description: Use to show a placeholder while content is loading.
 
 The Skeleton component displays animated placeholder content while actual content is loading. It provides visual feedback to users that content is being loaded and helps maintain layout structure during loading states.
 
+Skeleton uses the active Color Theme's semantic `muted` surface and the active Style Preset's radius. Vega and Nova use the preset `md` radius, while Maia uses its more rounded `xl` radius.
+
 ## Import
 
 ```rust
@@ -100,8 +102,8 @@ Skeleton::new()
 
 The Skeleton component includes a built-in pulse animation that:
 
-- Runs continuously with a 2-second duration
-- Uses a bounce easing function with ease-in-out
+- Runs continuously using the Style Preset's semantic loading duration
+- Uses the Style Preset's movement easing
 - Animates opacity from 100% to 50% and back
 - Automatically repeats to indicate loading state
 
@@ -243,12 +245,12 @@ if loading {
 
 ## Theming
 
-The Skeleton component uses the theme's `skeleton` color, which defaults to the `secondary` color if not specified. You can customize it in your theme:
+The Skeleton component uses the theme's semantic `muted` color, matching shadcn. Customize that token in the active Color Theme:
 
 ```json
 {
-  "skeleton.background": "#e2e8f0"
+  "muted.background": "#e2e8f0"
 }
 ```
 
-The `secondary(true)` variant applies 50% opacity to the skeleton color for more subtle loading indicators.
+The `secondary()` extension applies 50% opacity to the muted surface for more subtle loading indicators.

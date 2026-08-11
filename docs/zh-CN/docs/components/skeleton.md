@@ -7,6 +7,8 @@ description: 在内容加载时显示占位骨架。
 
 Skeleton 会在真实内容尚未加载完成时显示带动画的占位块，为用户提供加载反馈，并尽量保持界面布局稳定。
 
+Skeleton 使用当前 Color Theme 的语义 `muted` 表面色和当前 Style Preset 的圆角。Vega、Nova 使用预设的 `md` 圆角，Maia 使用更圆润的 `xl` 圆角。
+
 ## 导入
 
 ```rust
@@ -86,8 +88,8 @@ Skeleton::new()
 
 Skeleton 内置脉冲动画，行为如下：
 
-- 持续循环播放，周期为 2 秒
-- 使用 bounce easing，并带有 ease-in-out 变化
+- 按 Style Preset 的语义 loading 时长持续循环
+- 使用 Style Preset 的移动 easing
 - 透明度会在 100% 和 50% 之间往返变化
 - 自动重复，以持续表达“内容正在加载”
 
@@ -226,12 +228,12 @@ if loading {
 
 ## 主题
 
-Skeleton 默认使用主题中的 `skeleton` 颜色；如果未配置，则回退到 `secondary`。你可以在主题中这样覆盖：
+Skeleton 使用与 shadcn 一致的语义 `muted` 颜色。可以在当前 Color Theme 中覆盖该 token：
 
 ```json
 {
-  "skeleton.background": "#e2e8f0"
+  "muted.background": "#e2e8f0"
 }
 ```
 
-`secondary(true)` 变体会对骨架颜色应用 50% 透明度，让占位效果更柔和。
+`secondary()` 扩展会对 muted 表面色应用 50% 透明度，让占位效果更柔和。
