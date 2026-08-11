@@ -1,202 +1,125 @@
 ---
 title: Spinner
-description: 显示旋转加载动画，用于反馈任务或异步操作的进行中状态。
+description: 显示无法确定完成百分比的加载状态。
 ---
 
 # Spinner
 
-Spinner 用于显示旋转中的加载动画，适合异步请求、处理中状态和其他需要即时反馈的场景。它支持自定义图标、颜色、尺寸以及内置旋转动画。
+`Spinner` 用于表示任务正在进行，但无法提供完成百分比。默认外观与 pinned shadcn Spinner 对齐：16px 的圆弧 Loader，继承周围文字颜色并持续旋转。
 
 ## 导入
 
 ```rust
-use gpui_component::spinner::Spinner;
+use gpui_component::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
 ```
 
 ## 用法
 
-### 基础用法
-
 ```rust
 Spinner::new()
 ```
 
-### 自定义颜色
+默认辅助名称为 `Loading`。如果任务上下文有助于理解状态，可以提供更明确的名称：
 
 ```rust
-use gpui_component::ActiveTheme;
-
 Spinner::new()
-    .color(cx.theme().blue)
-
-Spinner::new()
-    .color(cx.theme().green)
-
-Spinner::new()
-    .color(cx.theme().cyan)
+    .aria_label("正在加载项目")
 ```
 
-### 不同尺寸
+## 尺寸
+
+默认尺寸为 16px。`Spinner` 实现了 `Sizable`，也支持精确自定义尺寸：
 
 ```rust
-Spinner::new().xsmall()
-Spinner::new().small()
-Spinner::new()
-Spinner::new().large()
-Spinner::new().with_size(px(64.))
+Spinner::new().with_size(px(12.))
+Spinner::new()                    // 16px
+Spinner::new().with_size(px(24.))
+Spinner::new().with_size(px(32.))
 ```
 
-### 自定义图标
+GPUI 特有的 `.xsmall()`、`.small()` 和 `.large()` 仍可用于和现有控件组合。
+
+## Variant 和动画
+
+两种内置 Variant 提供相互匹配的图标和动画默认值：
 
 ```rust
-use gpui_component::IconName;
+// LoaderCircle + 持续 linear 旋转（默认，与 shadcn 对齐）
+Spinner::new().variant(SpinnerVariant::Circular)
 
+// 原分段 Loader + 语义缓动旋转（GPUI 经典样式）
+Spinner::new().variant(SpinnerVariant::Classic)
+```
+
+图标和动画可以分别覆盖。无论 Builder 的调用顺序如何，显式覆盖始终优先：
+
+```rust
 Spinner::new()
     .icon(IconName::LoaderCircle)
+    .animation(SpinnerAnimation::SemanticSpin)
+    .variant(SpinnerVariant::Circular)
+```
 
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .large()
-    .color(cx.theme().cyan)
+## 颜色和图标
+
+Spinner 默认继承当前文字颜色。只有在周围语义颜色不适合时才需要覆盖：
+
+```rust
+Spinner::new().color(cx.theme().muted_foreground)
 
 Spinner::new()
     .icon(IconName::Loader)
-    .color(cx.theme().primary)
-```
-
-## 可用图标
-
-### 加载图标
-
-- `Loader`，默认的线形旋转图标
-- `LoaderCircle`，圆形加载图标
-
-### 其他兼容图标
-
-- 理论上可使用 `IconName` 中任意图标，但带旋转语义的图标效果最好
-
-## 动画
-
-Spinner 内置旋转动画：
-
-- 时长：`0.8` 秒
-- 缓动：ease-in-out
-- 循环：无限重复
-- 变换：360 度旋转
-
-## 尺寸参考
-
-| 尺寸 | 方法 | 近似像素 |
-| --- | --- | --- |
-| 超小 | `.xsmall()` | ~12px |
-| 小 | `.small()` | ~14px |
-| 中 | 默认 | ~16px |
-| 大 | `.large()` | ~24px |
-| 自定义 | `.with_size(px(n))` | `n` px |
-
-## 示例
-
-### 加载状态
-
-```rust
-Spinner::new()
-
-Spinner::new()
     .color(cx.theme().blue)
-
-Spinner::new()
-    .large()
-    .color(cx.theme().primary)
 ```
 
-### 不同加载图标
+默认图标为 `IconName::LoaderCircle`，对应 shadcn 的圆弧式 Loader2 外观。也可以通过 `.icon(...)` 使用任意兼容的 `Icon`。
+
+## 组合
 
 ```rust
-Spinner::new()
-    .color(cx.theme().muted_foreground)
+Button::new("submit")
+    .icon(Spinner::new())
+    .label("Submitting")
+    .disabled(true)
 
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().blue)
-
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .large()
-    .color(cx.theme().green)
+Badge::new()
+    .outline()
+    .leading(Spinner::new().xsmall())
+    .child("Generating")
 ```
 
-### 状态型 Spinner
+Spinner 也可以放入 `InputGroupAddon`、Empty 状态及其他元素插槽。
+
+## 动效
+
+- 旋转：完整一周。
+- 时长：使用当前 Style Preset 的语义 `motion.loading()` 时长；内置 Preset 均为 1 秒。
+- 缓动：Circular 使用 linear；Classic 使用当前 Style Preset 的 move easing。
+- 生命周期：挂载期间无限循环，不包含进入、退出、透明度或缩放过渡。
+- Reduced Motion：静态显示 Loader。
+
+`SpinnerAnimation::SemanticSpin` 使用当前 Style Preset 的 move easing 完成整周旋转，从而恢复原 Spinner 行为。`.ease(...)` 可以覆盖两种动画的默认 easing；`LinearSpin` 仍是与 shadcn 对齐的默认行为。
+
+## 稳定 ID
+
+`Spinner::new()` 默认从调用位置生成稳定 ID。如果迭代器在同一源码位置创建多个 Spinner，需要提供结构化 ID：
 
 ```rust
-Spinner::new()
-    .small()
-    .color(cx.theme().muted_foreground)
-
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().blue)
-
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().green)
-```
-
-### 在界面组件中使用
-
-```rust
-Button::new("submit-btn")
-    .loading(true)
-    .icon(
-        Spinner::new()
-            .small()
-            .color(cx.theme().primary_foreground)
-    )
-    .label("Loading...")
-
-// 在卡片头部
-div()
-    .flex()
-    .items_center()
-    .gap_2()
-    .child("Processing...")
-    .child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().muted_foreground)
-    )
-```
-
-## 性能说明
-
-- 动画基于 transform，性能开销较低
-- 多个 Spinner 可共享相同动画节奏
-- 组件本身较轻，适合频繁更新的界面
-- 大量同时显示时，优先使用更小尺寸
-
-## 常见模式
-
-### 条件加载
-
-```rust
-.when(is_loading, |this| {
-    this.child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().muted_foreground)
-    )
+items.into_iter().enumerate().map(|(index, _)| {
+    Spinner::new().id(ElementId::named_usize("row-spinner", index))
 })
 ```
 
-### 文字配合加载图标
+## API
 
-```rust
-h_flex()
-    .items_center()
-    .gap_2()
-    .child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().primary)
-    )
-    .child("Loading data...")
-```
+| 方法 | 用途 |
+| --- | --- |
+| `new()` | 创建 16px 圆弧式加载 Spinner |
+| `id(id)` | 覆盖稳定元素 ID |
+| `aria_label(text)` | 设置辅助技术播报的加载状态名称 |
+| `variant(variant)` | 选择图标与动画组合预设 |
+| `icon(icon)` | 替换圆弧 Loader 图标 |
+| `animation(animation)` | 独立选择 LinearSpin 或 SemanticSpin 旋转 |
+| `color(color)` | 覆盖继承的文字颜色 |
+| `with_size(size)` | 设置命名尺寸或精确尺寸 |
+| `ease(easing)` | 覆盖默认 linear 缓动 |

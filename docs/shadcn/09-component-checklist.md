@@ -58,7 +58,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Badge (`37bd7931`)
 - [x] OverlayBadge (`37bd7931`)
 - [x] Progress
-- [ ] Spinner
+- [x] Spinner
 - [ ] Skeleton
 - [ ] Rating
 
