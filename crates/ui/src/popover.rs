@@ -139,6 +139,7 @@ pub struct Popover {
     aria_label: Option<SharedString>,
     aria_description: Option<SharedString>,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
+    on_close_complete: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
 }
 
 impl Popover {
@@ -164,6 +165,7 @@ impl Popover {
             default_open: false,
             open: None,
             on_open_change: None,
+            on_close_complete: None,
         }
     }
 
@@ -230,16 +232,15 @@ impl Popover {
         self
     }
 
-    /// Sets an owning component's trigger when that component provides its own
-    /// accessibility semantics and lifecycle outside the standard Popover contract.
-    pub(crate) fn trigger_without_expanded_state<T>(mut self, trigger: T) -> Self
-    where
-        T: Selectable + IntoElement + 'static,
-    {
-        self.trigger = Some(Box::new(|is_open, _, _| {
-            let selected = trigger.is_selected();
-            trigger.selected(selected || is_open).into_any_element()
-        }));
+    /// Sets a component-owned trigger builder that receives the resolved open state.
+    ///
+    /// Composite controls use this path when their trigger semantics cannot be expressed by
+    /// [`PopoverTrigger`] alone, while retaining Popover's placement and lifecycle ownership.
+    pub(crate) fn trigger_builder(
+        mut self,
+        trigger: impl FnOnce(bool, &Window, &App) -> AnyElement + 'static,
+    ) -> Self {
+        self.trigger = Some(Box::new(trigger));
         self
     }
 
@@ -273,6 +274,18 @@ impl Popover {
         F: Fn(&bool, &mut Window, &mut App) + 'static,
     {
         self.on_open_change = Some(Rc::new(callback));
+        self
+    }
+
+    /// Registers an internal callback that runs after the final close transition unmounts.
+    ///
+    /// Overlay-owning components use this hook to retain their content throughout exit motion and
+    /// release cached entities only after the lifecycle accepts the matching close generation.
+    pub(crate) fn on_close_complete(
+        mut self,
+        callback: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_close_complete = Some(Rc::new(callback));
         self
     }
 
@@ -551,6 +564,7 @@ pub struct PopoverState {
     overlay_closable: bool,
     focus_observed: bool,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
+    on_close_complete: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
 
     _dismiss_subscription: Option<Subscription>,
 }
@@ -572,6 +586,7 @@ impl PopoverState {
             overlay_closable: true,
             focus_observed: false,
             on_open_change: None,
+            on_close_complete: None,
             _dismiss_subscription: None,
         }
     }
@@ -579,6 +594,11 @@ impl PopoverState {
     /// Check if the popover is open.
     pub fn is_open(&self) -> bool {
         self.lifecycle.accepts_input()
+    }
+
+    /// Returns the latest painted Trigger bounds for owner-managed dismissal policies.
+    pub(crate) fn trigger_bounds(&self) -> Bounds<Pixels> {
+        self.trigger_bounds
     }
 
     /// Dismiss the popover if it is open.
@@ -703,6 +723,9 @@ impl PopoverState {
                 {
                     previous.focus(window, cx);
                 }
+                if let Some(callback) = state.on_close_complete.clone() {
+                    callback(window, cx);
+                }
                 cx.notify();
             });
         })
@@ -808,6 +831,7 @@ impl RenderOnce for Popover {
                 state.tracked_focus_handle = Some(tracked_focus_handle);
             }
             state.on_open_change = self.on_open_change.clone();
+            state.on_close_complete = self.on_close_complete.clone();
             state.overlay_closable = self.overlay_closable;
             state.initialize(force_open.unwrap_or(default_open), window, cx);
             if !state.focus_observed {
@@ -969,7 +993,7 @@ impl RenderOnce for Popover {
 mod tests {
     use super::*;
     use gpui::{MouseButton, TestAppContext};
-    use std::time::Duration;
+    use std::{cell::Cell, rc::Rc, time::Duration};
 
     #[test]
     fn test_popover_builder_chaining() {
@@ -1070,5 +1094,37 @@ mod tests {
             state.read_with(cx, |state, _| state.lifecycle.phase()),
             OverlayPhase::Closed
         );
+    }
+
+    #[gpui::test]
+    fn close_complete_runs_only_for_the_final_close_generation(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let completions = Rc::new(Cell::new(0));
+        let (state, cx) = cx.add_window_view({
+            let completions = completions.clone();
+            move |_, cx| {
+                let mut state = PopoverState::new(false, cx);
+                state.on_close_complete = Some(Rc::new(move |_, _| {
+                    completions.set(completions.get() + 1);
+                }));
+                state
+            }
+        });
+
+        state.update_in(cx, |state, window, cx| {
+            state.show(window, cx);
+            state.dismiss(window, cx);
+            state.show(window, cx);
+        });
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        assert_eq!(completions.get(), 0);
+
+        state.update_in(cx, |state, window, cx| state.dismiss(window, cx));
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        assert_eq!(completions.get(), 1);
     }
 }

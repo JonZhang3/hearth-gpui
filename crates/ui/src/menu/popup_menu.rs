@@ -2,19 +2,67 @@ use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_flex};
+use crate::{ActiveTheme, Density, ElementExt, Icon, IconName, h_flex, v_flex};
 use crate::{Side, Size, StyledExt, kbd::Kbd};
 use gpui::{
     Action, Anchor, AnyElement, App, AppContext, Bounds, Context, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, Pixels, Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement,
-    Styled, WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px, rems,
+    Styled, WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
-use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
+use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 
 use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
+
+/// Popup-menu geometry resolved from semantic preset density.
+#[derive(Clone, Copy)]
+struct PopupMenuMetrics {
+    surface_radius: Pixels,
+    item_radius: Pixels,
+    item_height: Pixels,
+    item_padding_x: Pixels,
+    item_gap: Pixels,
+    min_width: Pixels,
+}
+
+impl PopupMenuMetrics {
+    /// Resolves Vega, Nova, and Maia menu geometry without inspecting preset identifiers.
+    fn resolve(cx: &App) -> Self {
+        Self::from_style(&cx.theme().style)
+    }
+
+    /// Resolves menu geometry from a semantic Style Preset.
+    fn from_style(style: &crate::StylePreset) -> Self {
+        match style.density {
+            Density::Standard => Self {
+                surface_radius: style.radii.md,
+                item_radius: style.radii.sm,
+                item_height: px(32.),
+                item_padding_x: px(8.),
+                item_gap: px(8.),
+                min_width: px(128.),
+            },
+            Density::Compact => Self {
+                surface_radius: style.radii.lg,
+                item_radius: style.radii.md,
+                item_height: px(28.),
+                item_padding_x: px(6.),
+                item_gap: px(6.),
+                min_width: px(128.),
+            },
+            Density::Comfortable => Self {
+                surface_radius: style.radii.xl,
+                item_radius: style.radii.lg,
+                item_height: px(36.),
+                item_padding_x: px(12.),
+                item_gap: px(10.),
+                min_width: px(192.),
+            },
+        }
+    }
+}
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
@@ -318,6 +366,8 @@ pub struct PopupMenu {
     priority: usize,
     /// Prevents duplicate dismissal callbacks before the owning overlay unmounts this menu.
     dismissed: bool,
+    /// Bounds that belong to the owning trigger and must not count as an outside click.
+    dismiss_exclusion_bounds: Option<Bounds<Pixels>>,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -343,6 +393,7 @@ impl PopupMenu {
             submenu_anchor: (Anchor::TopLeft, Pixels::ZERO),
             priority: 1,
             dismissed: false,
+            dismiss_exclusion_bounds: None,
             _subscriptions: vec![],
         }
     }
@@ -395,6 +446,38 @@ impl PopupMenu {
                 menu.update(cx, |menu, cx| {
                     menu.set_previous_focus(handle.clone(), cx);
                 });
+            }
+        }
+    }
+
+    /// Updates the owner-controlled area that must not trigger click-outside dismissal.
+    ///
+    /// The same exclusion is propagated to nested menus because GPUI dispatches the outside
+    /// mouse-down handler for every open menu layer during capture.
+    pub(crate) fn set_dismiss_exclusion_bounds(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        cx: &mut Context<Self>,
+    ) {
+        self.dismiss_exclusion_bounds = Some(bounds);
+
+        for item in &self.menu_items {
+            if let PopupMenuItem::Submenu { menu, .. } = item {
+                menu.update(cx, |menu, cx| {
+                    menu.set_dismiss_exclusion_bounds(bounds, cx);
+                });
+            }
+        }
+    }
+
+    /// Restores transient interaction state before a retained menu entity is shown again.
+    pub(crate) fn prepare_for_open(&mut self, cx: &mut Context<Self>) {
+        self.dismissed = false;
+        self.selected_index = None;
+
+        for item in &self.menu_items {
+            if let PopupMenuItem::Submenu { menu, .. } = item {
+                menu.update(cx, |menu, cx| menu.prepare_for_open(cx));
             }
         }
     }
@@ -911,7 +994,10 @@ impl PopupMenu {
     fn select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
         let Some(ix) = self.selected_index else {
-            self.set_selected_index(0, cx);
+            let first_ix = self.clickable_menu_items().next().map(|(index, _)| index);
+            if let Some(first_ix) = first_ix {
+                self.set_selected_index(first_ix, cx);
+            }
             return;
         };
 
@@ -974,7 +1060,10 @@ impl PopupMenu {
         if let Some(active_submenu) = self.active_submenu() {
             // Focus the submenu, so that can be handle the action.
             active_submenu.update(cx, |view, cx| {
-                view.set_selected_index(0, cx);
+                let first_ix = view.clickable_menu_items().next().map(|(index, _)| index);
+                if let Some(first_ix) = first_ix {
+                    view.set_selected_index(first_ix, cx);
+                }
                 view.focus_handle.focus(window, cx);
             });
             cx.notify();
@@ -1062,6 +1151,13 @@ impl PopupMenu {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self
+            .dismiss_exclusion_bounds
+            .is_some_and(|bounds| bounds.contains(position))
+        {
+            return;
+        }
+
         // Do not dismiss, if click inside the parent menu
         if let Some(parent) = self.parent_menu.as_ref() {
             if let Some(parent) = parent.upgrade() {
@@ -1128,7 +1224,7 @@ impl PopupMenu {
             Icon::empty()
         };
 
-        Some(icon.xsmall())
+        Some(icon.size_4())
     }
 
     #[inline]
@@ -1165,29 +1261,28 @@ impl PopupMenu {
         let has_left_icon = options.has_left_icon;
         let is_left_check = options.check_side.is_left() && item.is_checked();
         let right_check_icon = if options.check_side.is_right() && item.is_checked() {
-            Some(Icon::new(IconName::Check).xsmall())
+            Some(Icon::new(IconName::Check).size_4())
         } else {
             None
         };
 
         let selected = self.selected_index == Some(ix);
         const EDGE_PADDING: Pixels = px(4.);
-        const INNER_PADDING: Pixels = px(8.);
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
-        let (item_height, radius) = match self.size {
-            Size::Small => (px(20.), options.radius.half()),
-            _ => (px(26.), options.radius),
+        let item_height = match self.size {
+            Size::Small => options.item_height.min(px(24.)),
+            _ => options.item_height,
         };
 
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
             .text_sm()
             .py_0()
-            .px(INNER_PADDING)
-            .rounded(radius)
+            .px(options.item_padding_x)
+            .rounded(options.item_radius)
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, _, cx| {
@@ -1204,21 +1299,23 @@ impl PopupMenu {
 
         match item {
             PopupMenuItem::Separator => this
+                .accessibility_role(None)
                 .h_auto()
                 .p_0()
-                .my_0p5()
+                .my_1()
                 .mx_neg_1()
-                .border_b(px(2.))
-                .border_color(cx.theme().border)
+                .h(px(1.))
+                .bg(cx.theme().border)
                 .disabled(true),
-            PopupMenuItem::Label(label) => this.disabled(true).cursor_default().child(
-                h_flex()
-                    .cursor_default()
-                    .items_center()
-                    .gap_x_1()
-                    .children(Self::render_icon(has_left_icon, false, None, window, cx))
-                    .child(div().flex_1().child(label.clone())),
-            ),
+            PopupMenuItem::Label(label) => this
+                .accessibility_role(Some(Role::Label))
+                .disabled(true)
+                .cursor_default()
+                .h(item_height)
+                .text_xs()
+                .font_medium()
+                .text_color(cx.theme().muted_foreground)
+                .child(div().flex_1().child(label.clone())),
             PopupMenuItem::ElementItem {
                 render,
                 icon,
@@ -1236,7 +1333,7 @@ impl PopupMenu {
                         .flex_1()
                         .min_h(item_height)
                         .items_center()
-                        .gap_x_1()
+                        .gap(options.item_gap)
                         .children(Self::render_icon(
                             has_left_icon,
                             is_left_check,
@@ -1266,7 +1363,7 @@ impl PopupMenu {
                 })
                 .disabled(*disabled)
                 .h(item_height)
-                .gap_x_1()
+                .gap(options.item_gap)
                 .children(Self::render_icon(
                     has_left_icon,
                     is_left_check,
@@ -1280,18 +1377,37 @@ impl PopupMenu {
                         .gap_3()
                         .items_center()
                         .justify_between()
-                        .when(!show_link_icon, |this| this.child(label.clone()))
+                        .when(!show_link_icon, |this| {
+                            this.child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .overflow_x_hidden()
+                                    .whitespace_nowrap()
+                                    .text_ellipsis()
+                                    .child(label.clone()),
+                            )
+                        })
                         .children(right_check_icon)
                         .when(show_link_icon, |this| {
                             this.child(
                                 h_flex()
                                     .w_full()
+                                    .min_w(px(0.))
                                     .justify_between()
                                     .gap_1p5()
-                                    .child(label.clone())
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w(px(0.))
+                                            .overflow_x_hidden()
+                                            .whitespace_nowrap()
+                                            .text_ellipsis()
+                                            .child(label.clone()),
+                                    )
                                     .child(
                                         Icon::new(IconName::ExternalLink)
-                                            .xsmall()
+                                            .size_4()
                                             .text_color(cx.theme().muted_foreground),
                                     ),
                             )
@@ -1313,7 +1429,7 @@ impl PopupMenu {
                         .min_h(item_height)
                         .size_full()
                         .items_center()
-                        .gap_x_1()
+                        .gap(options.item_gap)
                         .children(Self::render_icon(
                             has_left_icon,
                             false,
@@ -1324,13 +1440,22 @@ impl PopupMenu {
                         .child(
                             h_flex()
                                 .flex_1()
+                                .min_w(px(0.))
                                 .gap_2()
                                 .items_center()
                                 .justify_between()
-                                .child(label.clone())
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w(px(0.))
+                                        .overflow_x_hidden()
+                                        .whitespace_nowrap()
+                                        .text_ellipsis()
+                                        .child(label.clone()),
+                                )
                                 .child(
                                     Icon::new(IconName::ChevronRight)
-                                        .xsmall()
+                                        .size_4()
                                         .text_color(cx.theme().muted_foreground),
                                 ),
                         ),
@@ -1373,7 +1498,10 @@ impl Focusable for PopupMenu {
 struct RenderOptions {
     has_left_icon: bool,
     check_side: Side,
-    radius: Pixels,
+    item_radius: Pixels,
+    item_height: Pixels,
+    item_padding_x: Pixels,
+    item_gap: Pixels,
 }
 
 impl Render for PopupMenu {
@@ -1393,6 +1521,7 @@ impl Render for PopupMenu {
                     menu.update(cx, |menu, _| {
                         menu.parent_menu = Some(parent.clone());
                         menu.priority = parent_priority + 1;
+                        menu.dismiss_exclusion_bounds = self.dismiss_exclusion_bounds;
                     });
                 }
             }
@@ -1412,10 +1541,14 @@ impl Render for PopupMenu {
             .any(|item| item.has_left_icon(self.check_side));
 
         let max_width = self.max_width();
+        let metrics = PopupMenuMetrics::resolve(cx);
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
-            radius: cx.theme().style.radii.md.min(px(8.)),
+            item_radius: metrics.item_radius,
+            item_height: metrics.item_height,
+            item_padding_x: metrics.item_padding_x,
+            item_gap: metrics.item_gap,
         };
 
         v_flex()
@@ -1431,6 +1564,7 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
             .popover_style(cx)
+            .rounded(metrics.surface_radius)
             .text_color(cx.theme().popover_foreground)
             .relative()
             .occlude()
@@ -1438,8 +1572,8 @@ impl Render for PopupMenu {
                 v_flex()
                     .id("items")
                     .p_1()
-                    .gap_y_0p5()
-                    .min_w(rems(8.))
+                    .gap_0()
+                    .min_w(metrics.min_width)
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
                     .max_w(max_width)
                     .when(self.scrollable, |this| {
@@ -1469,6 +1603,21 @@ mod tests {
     use std::{cell::Cell, rc::Rc};
 
     use super::*;
+    use gpui::{point, size};
+
+    #[test]
+    fn popup_menu_metrics_follow_semantic_density() {
+        let vega = PopupMenuMetrics::from_style(&crate::StylePreset::vega());
+        let nova = PopupMenuMetrics::from_style(&crate::StylePreset::nova());
+        let maia = PopupMenuMetrics::from_style(&crate::StylePreset::maia());
+
+        assert_eq!(vega.item_height, px(32.));
+        assert_eq!(vega.min_width, px(128.));
+        assert_eq!(nova.item_height, px(28.));
+        assert_eq!(nova.item_padding_x, px(6.));
+        assert_eq!(maia.item_height, px(36.));
+        assert_eq!(maia.min_width, px(192.));
+    }
 
     #[gpui::test]
     fn popup_menu_item_a11y_label_uses_visible_label(cx: &mut gpui::TestAppContext) {
@@ -1512,5 +1661,54 @@ mod tests {
         });
 
         assert_eq!(dismiss_count.get(), 1);
+    }
+
+    #[gpui::test]
+    fn trigger_exclusion_prevents_outside_dismissal_and_reaches_submenus(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let cx = cx.add_empty_window();
+        let submenu = cx.update(|_, cx| cx.new(|cx| PopupMenu::new(cx)));
+        let menu = cx.update(|_, cx| {
+            let submenu = submenu.clone();
+            cx.new(|cx| PopupMenu::new(cx).item(PopupMenuItem::submenu("More", submenu)))
+        });
+        let trigger_bounds = Bounds {
+            origin: point(px(10.), px(10.)),
+            size: size(px(100.), px(32.)),
+        };
+
+        cx.update(|window, cx| {
+            menu.update(cx, |menu, cx| {
+                menu.set_dismiss_exclusion_bounds(trigger_bounds, cx);
+                menu.handle_dismiss(&point(px(20.), px(20.)), window, cx);
+            });
+        });
+
+        assert!(!menu.read_with(cx, |menu, _| menu.dismissed));
+        assert_eq!(
+            submenu.read_with(cx, |menu, _| menu.dismiss_exclusion_bounds),
+            Some(trigger_bounds)
+        );
+
+        cx.update(|window, cx| {
+            menu.update(cx, |menu, cx| {
+                menu.handle_dismiss(&point(px(200.), px(200.)), window, cx);
+            });
+        });
+        assert!(menu.read_with(cx, |menu, _| menu.dismissed));
+    }
+
+    #[gpui::test]
+    fn retained_popup_menu_resets_transient_state_before_reopen(cx: &mut gpui::TestAppContext) {
+        let menu = cx.update(|cx| cx.new(|cx| PopupMenu::new(cx).label("Item")));
+        menu.update(cx, |menu, cx| {
+            menu.dismissed = true;
+            menu.selected_index = Some(0);
+            menu.prepare_for_open(cx);
+        });
+
+        assert!(!menu.read_with(cx, |menu, _| menu.dismissed));
+        assert_eq!(menu.read_with(cx, |menu, _| menu.selected_index), None);
     }
 }

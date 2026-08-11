@@ -269,3 +269,17 @@ Do not add a Toggle-only global metric or infer a preset from its ID or density.
 Button, Input-family controls, and Toggle can migrate together to a shared control-surface radius
 and elevation contract with at least three real consumers. Caller-provided `Styled` radius and
 shadow overrides remain available in the meantime.
+
+## Sidebar layout and caret motion parity
+
+**Status:** Deferred GPUI layout-motion capability; final geometry implemented
+
+The aligned SidebarMenu resolves Vega, Nova, and Maia item height, padding, gap, radius, collapsed
+edge, and submenu geometry from semantic Style Preset density. The pinned source transitions menu
+button width, height, and padding and rotates submenu carets during disclosure changes.
+
+GPUI currently has no interruption-safe layout transition that can animate those properties while
+preserving sibling measurement, text truncation, hit testing, and rapid collapse reversal. The
+component therefore applies the correct final geometry immediately and keeps caret rotation
+deterministic. Revisit exact parity after the motion runtime can interpolate layout properties from
+the currently painted value without restarting or producing stale frames.

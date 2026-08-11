@@ -7,6 +7,10 @@ description: A composable, themeable and customizable sidebar component for navi
 
 A flexible sidebar component that provides navigation structure for applications. Features collapsible states, nested menu items, header and footer sections, and responsive design. Perfect for creating application navigation panels, admin dashboards, and complex hierarchical interfaces.
 
+Sidebar menu geometry follows the active Style Preset. Menu items support keyboard activation,
+focus-visible treatment, disabled accessibility state, active styling, label truncation, and nested
+disclosure through the same semantic contracts used by the rest of the component library.
+
 ## Import
 
 ```rust

@@ -9,6 +9,15 @@ use crate::{Selectable, button::Button, menu::PopupMenu, popover::Popover};
 
 /// A dropdown menu trait for buttons and other interactive elements
 pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement + 'static {
+    /// Applies the resolved open state to the concrete trigger.
+    ///
+    /// The default keeps existing composite triggers selected while open. Triggers that own an
+    /// exposed accessibility node can override this method to publish `aria-expanded` as well.
+    fn dropdown_expanded(self, expanded: bool) -> Self {
+        let selected = self.is_selected();
+        self.selected(selected || expanded)
+    }
+
     /// Create a dropdown menu with the given items, anchored to the TopLeft corner
     fn dropdown_menu(
         self,
@@ -30,10 +39,15 @@ pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement +
     }
 }
 
-impl DropdownMenu for Button {}
+impl DropdownMenu for Button {
+    fn dropdown_expanded(self, expanded: bool) -> Self {
+        let selected = self.is_selected();
+        self.aria_expanded(expanded).selected(selected || expanded)
+    }
+}
 
 #[derive(IntoElement)]
-pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
+pub struct DropdownMenuPopover<T: DropdownMenu> {
     id: ElementId,
     style: StyleRefinement,
     anchor: Anchor,
@@ -44,7 +58,7 @@ pub struct DropdownMenuPopover<T: Selectable + IntoElement + 'static> {
 
 impl<T> DropdownMenuPopover<T>
 where
-    T: Selectable + IntoElement + 'static,
+    T: DropdownMenu,
 {
     fn new(
         id: ElementId,
@@ -84,25 +98,42 @@ where
 #[derive(Default)]
 struct DropdownMenuState {
     menu: Option<Entity<PopupMenu>>,
+    open: bool,
 }
 
 impl<T> RenderOnce for DropdownMenuPopover<T>
 where
-    T: Selectable + IntoElement + 'static,
+    T: DropdownMenu,
 {
     fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let builder = self.builder.clone();
         let menu_state =
             window.use_keyed_state(self.id.clone(), cx, |_, _| DropdownMenuState::default());
 
+        let open_state = menu_state.clone();
+        let close_state = menu_state.clone();
+
         Popover::new(SharedString::from(format!("popover:{}", self.id)))
             .appearance(false)
             .overlay_closable(false)
-            .trigger_without_expanded_state(self.trigger)
+            .on_open_change(move |open, _, cx| {
+                if !open {
+                    open_state.update(cx, |state, _| state.open = false);
+                }
+            })
+            .on_close_complete(move |_, cx| {
+                close_state.update(cx, |state, _| {
+                    state.menu = None;
+                    state.open = false;
+                });
+            })
+            .trigger_builder(move |expanded, _, _| {
+                self.trigger.dropdown_expanded(expanded).into_any_element()
+            })
             .trigger_style(self.style)
             .anchor(self.anchor)
             .when_some(self.side_offset, |this, offset| this.side_offset(offset))
-            .content(move |_, window, cx| {
+            .content(move |popover_state, window, cx| {
                 // Here is special logic to only create the PopupMenu once and reuse it.
                 // Because this `content` will called in every time render, so we need to store the menu
                 // in state to avoid recreating at every render.
@@ -119,21 +150,13 @@ where
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());
                         });
-                        menu.focus_handle(cx).focus(window, cx);
-
                         // Listen for dismiss events from the PopupMenu to close the popover.
                         let popover_state = cx.entity();
                         window
-                            .subscribe(&menu, cx, {
-                                let menu_state = menu_state.clone();
-                                move |_, _: &DismissEvent, window, cx| {
-                                    popover_state.update(cx, |state, cx| {
-                                        state.dismiss(window, cx);
-                                    });
-                                    menu_state.update(cx, |state, _| {
-                                        state.menu = None;
-                                    });
-                                }
+                            .subscribe(&menu, cx, move |_, _: &DismissEvent, window, cx| {
+                                popover_state.update(cx, |state, cx| {
+                                    state.dismiss(window, cx);
+                                });
                             })
                             .detach();
 
@@ -141,7 +164,93 @@ where
                     }
                 };
 
+                let becoming_open = popover_state.is_open() && !menu_state.read(cx).open;
+                let trigger_bounds = popover_state.trigger_bounds();
+                menu.update(cx, |menu, cx| {
+                    menu.set_dismiss_exclusion_bounds(trigger_bounds, cx);
+                    if becoming_open {
+                        menu.prepare_for_open(cx);
+                    }
+                });
+
+                if becoming_open {
+                    menu.focus_handle(cx).focus(window, cx);
+                    menu_state.update(cx, |state, _| state.open = true);
+                }
+
                 menu.clone()
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::Duration;
+
+    use super::*;
+    use gpui::{
+        AppContext as _, Context, Modifiers, ParentElement as _, Render, TestAppContext,
+        VisualTestContext, div,
+    };
+
+    struct DropdownFixture {
+        build_count: Arc<AtomicUsize>,
+    }
+
+    impl Render for DropdownFixture {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let build_count = self.build_count.clone();
+
+            div().debug_selector(|| "dropdown-trigger".into()).child(
+                Button::new("dropdown-button")
+                    .label("Menu")
+                    .dropdown_menu(move |menu, _, _| {
+                        build_count.fetch_add(1, Ordering::SeqCst);
+                        menu.label("Item")
+                    }),
+            )
+        }
+    }
+
+    #[gpui::test]
+    fn repeated_trigger_click_closes_without_reopening(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let build_count = Arc::new(AtomicUsize::new(0));
+        let (_, cx) = cx.add_window_view({
+            let build_count = build_count.clone();
+            move |window, cx| {
+                let fixture = cx.new(|_| DropdownFixture { build_count });
+                crate::Root::new(fixture, window, cx)
+            }
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| _ = window.draw(cx));
+        let trigger_bounds = cx
+            .debug_bounds("dropdown-trigger")
+            .expect("Dropdown trigger bounds should be available after drawing");
+
+        cx.simulate_click(trigger_bounds.center(), Modifiers::default());
+        cx.run_until_parked();
+        cx.update(|window, cx| _ = window.draw(cx));
+        assert_eq!(build_count.load(Ordering::SeqCst), 1);
+
+        cx.simulate_click(trigger_bounds.center(), Modifiers::default());
+        cx.run_until_parked();
+        cx.background_executor
+            .advance_clock(Duration::from_millis(150));
+        cx.run_until_parked();
+        cx.update(|window, cx| _ = window.draw(cx));
+        assert_eq!(build_count.load(Ordering::SeqCst), 1);
+
+        cx.simulate_click(trigger_bounds.center(), Modifiers::default());
+        cx.run_until_parked();
+        cx.update(|window, cx| _ = window.draw(cx));
+        assert_eq!(build_count.load(Ordering::SeqCst), 2);
     }
 }

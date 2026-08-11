@@ -35,7 +35,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 - [x] Popover
 - [x] HoverCard (`5dc85ea2`)
-- [ ] Menu and DropdownMenu
+- [x] Menu and DropdownMenu
 - [ ] ContextMenu
 - [ ] AppMenuBar
 - [x] Sheet
@@ -43,7 +43,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Accordion (`7a30099b`)
 - [x] Collapsible (`7a30099b`)
 - [x] Tabs and TabBar
-- [ ] Sidebar
+- [x] Sidebar
 - [ ] Form and Field
 - [x] Calendar (`b41326e4`)
 - [x] Range Calendar (`b41326e4`)

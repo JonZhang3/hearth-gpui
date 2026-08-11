@@ -7,6 +7,10 @@ description: Context menus and popup menus with support for icons, shortcuts, su
 
 The Menu component provides both context menus (right-click menus) and popup menus with comprehensive features including icons, keyboard shortcuts, submenus, separators, checkable items, and custom elements. Built with accessibility and keyboard navigation in mind.
 
+Popup menus consume the active Style Preset for item density, radius, padding, icon size, and
+surface width. Dropdown triggers expose their expanded state, disabled items are skipped by pointer
+and keyboard navigation, and labels and separators remain non-interactive.
+
 ## Import
 
 ```rust
