@@ -5,7 +5,7 @@ description: Display SVG icons with various sizes, colors, and transformations.
 
 # Icon
 
-A flexible icon component that renders SVG icons from the built-in icon library. Icons are based on Lucide.dev and support customization of size, color, and rotation. The component requires SVG files to be provided by the user in the assets bundle.
+A flexible icon component that renders SVG icons from the bundled icon library or a custom asset path. Icons are based on Lucide.dev and support customization of size, color, transformation, and accessibility semantics.
 
 Before you start, please make sure you have read: [Icons & Assets](../assets.md) to understand how use SVG in GPUI & GPUI Component application.
 
@@ -33,7 +33,7 @@ Icon::new(IconName::Heart)
 // Predefined sizes
 Icon::new(IconName::Search).xsmall()   // size_3()
 Icon::new(IconName::Search).small()    // size_3p5()
-Icon::new(IconName::Search).medium()   // size_4() (default)
+Icon::new(IconName::Search).with_size(Size::Medium) // size_4()
 Icon::new(IconName::Search).large()    // size_6()
 
 // Custom pixel size
@@ -55,23 +55,36 @@ Icon::new(IconName::Star)
 ### Rotated Icons
 
 ```rust
-use gpui::Radians;
+use gpui::{radians, Transformation};
+use std::f32::consts::{FRAC_PI_2, PI};
 
 // Rotate by radians
 Icon::new(IconName::ArrowUp)
-    .rotate(Radians::from_degrees(90.))
+    .rotate(radians(FRAC_PI_2))
 
 // Transform with custom transformation
 Icon::new(IconName::ChevronRight)
-    .transform(Transformation::rotate(Radians::PI))
+    .transform(Transformation::rotate(radians(PI)))
 ```
 
 ### Custom SVG Path
 
 ```rust
 // Using a custom SVG file from assets
-Icon::new(Icon::empty())
+Icon::empty()
     .path("icons/my-custom-icon.svg")
+```
+
+### Informative Icon
+
+Icons are decorative by default and are omitted from the accessibility tree. Use `informative` only when the icon conveys information that is not already present as visible text:
+
+```rust
+Icon::informative(
+    "connection-status-icon",
+    IconName::Wifi,
+    "Connected",
+)
 ```
 
 ## Available Icons
@@ -102,7 +115,7 @@ The `IconName` enum provides access to a curated set of icons. Here are some com
 
 ### Social & External
 
-- `GitHub`, `Globe`, `ExternalLink`
+- `Github`, `Globe`, `ExternalLink`
 - `Heart`, `HeartOff`, `Star`, `StarOff`
 - `ThumbsUp`, `ThumbsDown`
 
@@ -134,7 +147,7 @@ The Icon component supports several predefined sizes:
 | ----------- | --------------------- | ------------ | ------ |
 | Extra Small | `.xsmall()`           | `size_3()`   | 12px   |
 | Small       | `.small()`            | `size_3p5()` | 14px   |
-| Medium      | `.medium()` (default) | `size_4()`   | 16px   |
+| Medium      | `.with_size(Size::Medium)` | `size_4()` | 16px |
 | Large       | `.large()`            | `size_6()`   | 24px   |
 | Custom      | `.with_size(px(n))`   | -            | n px   |
 
@@ -202,7 +215,6 @@ Button::new("like-btn")
 ```rust
 Icon::new(IconName::LoaderCircle)
     .text_color(cx.theme().muted_foreground)
-    .medium()
     // Add rotation animation in your render logic
 ```
 
@@ -227,7 +239,7 @@ Icon::new(IconName::TriangleAlert)
 ```rust
 // Back button
 Icon::new(IconName::ArrowLeft)
-    .medium()
+    .with_size(Size::Medium)
     .text_color(cx.theme().foreground)
 
 // Dropdown indicator
@@ -249,7 +261,10 @@ Icon::empty()
 ## Notes
 
 - Icons are rendered as SVG elements and support full CSS styling
-- The default size matches the current text size if no explicit size is set
+- The default size and color inherit the current text style
+- `Sizable` methods set a fixed square size; explicit `.w(...)` and `.h(...)` styles override their respective axes
+- `Icon::empty()` renders a spacer until a custom path is supplied and does not query the asset loader
+- Icons are decorative by default; use `Icon::informative(...)` for meaningful standalone icons
 - Icons are flex-shrink-0 by default to prevent unwanted shrinking in flex layouts
 - All icon paths are relative to the assets bundle root
 - Icons from Lucide.dev are designed to work well at 16px and scale nicely to other sizes

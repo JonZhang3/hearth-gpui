@@ -5,7 +5,7 @@ description: 以不同尺寸、颜色和变换方式显示 SVG 图标。
 
 # Icon
 
-Icon 是一个灵活的图标组件，用于渲染内置图标库中的 SVG 图标。图标基于 Lucide.dev，并支持尺寸、颜色与旋转等定制。组件依赖你在资源包中提供对应的 SVG 文件。
+Icon 是一个灵活的图标组件，可渲染内置图标库或自定义资源路径中的 SVG 图标。图标基于 Lucide.dev，并支持尺寸、颜色、变换与无障碍语义定制。
 
 在开始之前，建议先阅读 [Icons & Assets](../assets.md)，了解如何在 GPUI 与 GPUI Component 应用中使用 SVG。
 
@@ -30,7 +30,7 @@ Icon::new(IconName::Heart)
 ```rust
 Icon::new(IconName::Search).xsmall()
 Icon::new(IconName::Search).small()
-Icon::new(IconName::Search).medium()
+Icon::new(IconName::Search).with_size(Size::Medium)
 Icon::new(IconName::Search).large()
 
 Icon::new(IconName::Search).with_size(px(20.))
@@ -49,20 +49,33 @@ Icon::new(IconName::Star)
 ### 旋转图标
 
 ```rust
-use gpui::Radians;
+use gpui::{radians, Transformation};
+use std::f32::consts::{FRAC_PI_2, PI};
 
 Icon::new(IconName::ArrowUp)
-    .rotate(Radians::from_degrees(90.))
+    .rotate(radians(FRAC_PI_2))
 
 Icon::new(IconName::ChevronRight)
-    .transform(Transformation::rotate(Radians::PI))
+    .transform(Transformation::rotate(radians(PI)))
 ```
 
 ### 自定义 SVG 路径
 
 ```rust
-Icon::new(Icon::empty())
+Icon::empty()
     .path("icons/my-custom-icon.svg")
+```
+
+### 信息型图标
+
+图标默认作为装饰元素，不进入无障碍树。仅当图标表达了可见文字中不存在的信息时，才使用 `informative`：
+
+```rust
+Icon::informative(
+    "connection-status-icon",
+    IconName::Wifi,
+    "已连接",
+)
 ```
 
 ## 可用图标
@@ -93,7 +106,7 @@ Icon::new(Icon::empty())
 
 ### 社交与外链
 
-- `GitHub`、`Globe`、`ExternalLink`
+- `Github`、`Globe`、`ExternalLink`
 - `Heart`、`HeartOff`、`Star`、`StarOff`
 - `ThumbsUp`、`ThumbsDown`
 
@@ -123,7 +136,7 @@ Icon::new(Icon::empty())
 | ----------- | --------------------- | ------------ | ------ |
 | 超小 | `.xsmall()` | `size_3()` | 12px |
 | 小 | `.small()` | `size_3p5()` | 14px |
-| 中 | `.medium()` | `size_4()` | 16px |
+| 中 | `.with_size(Size::Medium)` | `size_4()` | 16px |
 | 大 | `.large()` | `size_6()` | 24px |
 | 自定义 | `.with_size(px(n))` | - | n px |
 
@@ -189,7 +202,6 @@ Button::new("like-btn")
 ```rust
 Icon::new(IconName::LoaderCircle)
     .text_color(cx.theme().muted_foreground)
-    .medium()
 ```
 
 ### 状态图标
@@ -209,7 +221,7 @@ Icon::new(IconName::TriangleAlert)
 
 ```rust
 Icon::new(IconName::ArrowLeft)
-    .medium()
+    .with_size(Size::Medium)
     .text_color(cx.theme().foreground)
 
 Icon::new(IconName::ChevronDown)
@@ -229,7 +241,10 @@ Icon::empty()
 ## 说明
 
 - 图标以 SVG 形式渲染，可使用完整的样式能力。
-- 如果未显式指定尺寸，默认尺寸会跟随当前文字大小。
+- 如果未显式指定尺寸和颜色，它们会跟随当前文字样式。
+- `Sizable` 方法会设置固定的正方形尺寸；显式 `.w(...)` 和 `.h(...)` 样式分别覆盖对应轴。
+- `Icon::empty()` 在设置自定义路径前只渲染占位空间，不会查询资源加载器。
+- 图标默认是装饰性的；有独立语义的图标应使用 `Icon::informative(...)`。
 - 图标默认带有 `flex-shrink-0`，避免在 Flex 布局中被意外压缩。
 - 所有图标路径都相对于 assets bundle 根目录。
 - Lucide.dev 图标在 16px 下效果最佳，并且在其它尺寸下也有良好缩放表现。

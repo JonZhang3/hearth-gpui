@@ -68,7 +68,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] AvatarGroup (`e43b5245`)
 - [x] Label (`71019db9`)
 - [x] Kbd (`708769ce`)
-- [ ] Icon
+- [x] Icon
 - [x] Breadcrumb (`c1830227`)
 
 ### Data surfaces
