@@ -12,7 +12,7 @@ use crate::{
     window_border,
 };
 use gpui::{
-    Anchor, AnyView, App, AppContext, Bounds, ClipboardItem, Context, ElementId, Entity, EntityId,
+    AnyView, App, AppContext, Bounds, ClipboardItem, Context, ElementId, Entity, EntityId,
     FocusHandle, Hitbox, InteractiveElement, IntoElement, KeyBinding, ParentElement as _, Pixels,
     Render, StyleRefinement, Styled, WeakEntity, WeakFocusHandle, Window, actions, div,
     prelude::FluentBuilder as _,
@@ -185,29 +185,13 @@ impl Root {
             _ => (None, None, None, None),
         };
 
-        let placement = cx.theme().notification.placement;
-
         Some(
             div()
                 .absolute()
-                .when(matches!(placement, Anchor::TopRight), |this| {
-                    this.top_0().right_0()
-                })
-                .when(matches!(placement, Anchor::TopLeft), |this| {
-                    this.top_0().left_0()
-                })
-                .when(matches!(placement, Anchor::TopCenter), |this| {
-                    this.top_0().mx_auto()
-                })
-                .when(matches!(placement, Anchor::BottomRight), |this| {
-                    this.bottom_0().right_0()
-                })
-                .when(matches!(placement, Anchor::BottomLeft), |this| {
-                    this.bottom_0().left_0()
-                })
-                .when(matches!(placement, Anchor::BottomCenter), |this| {
-                    this.bottom_0().mx_auto()
-                })
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .left_0()
                 .when_some(mt, |this, offset| this.mt(offset))
                 .when_some(mr, |this, offset| this.mr(offset))
                 .when_some(mb, |this, offset| this.mb(offset))

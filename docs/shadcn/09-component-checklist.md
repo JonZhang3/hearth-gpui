@@ -39,7 +39,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] ContextMenu
 - [x] AppMenuBar
 - [x] Sheet
-- [ ] Notification
+- [x] Notification
 - [x] Accordion (`7a30099b`)
 - [x] Collapsible (`7a30099b`)
 - [x] Tabs and TabBar
