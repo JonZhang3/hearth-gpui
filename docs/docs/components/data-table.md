@@ -400,11 +400,14 @@ impl TableDelegate for MyTableDelegate {
 
 ### Table Styling
 
-Customize table appearance. `DataTable` implements `Sizable`: use preset sizes such as `.small()` and `.large()` for standard density, or pass a custom pixel size to set a uniform header and body row height.
+`DataTable` consumes the shared Table `DataMetrics`, so Vega, Nova, and Maia control row height and cell padding without changing data behavior. It implements both `Sizable` and `Styled`: use preset sizes for standard density, a custom pixel size for a uniform row height, and GPUI style refinements for container-level overrides.
+
+The default surface follows the shadcn Data Table composition: a transparent header, semantic row borders, `muted/50` hover, `muted` row selection, and an optional rounded outer border. Stripe rows, virtual scrolling, fixed columns, column resizing, and cell selection remain GPUI-native extensions.
 
 ```rust
 use gpui::px;
 use gpui_component::Sizable as _;
+use gpui::Styled as _;
 
 let state = cx.new(|cx| {
     TableState::new(delegate, window, cx)
@@ -412,11 +415,15 @@ let state = cx.new(|cx| {
 
 // In render
 DataTable::new(&state)
+    .aria_label("Stocks")            // Accessible grid name
     .with_size(px(48.))             // Custom uniform row height
     .stripe(true)                   // Alternating row colors
     .bordered(true)                 // Border around table
     .scrollbar_visible(true, true)  // Vertical, horizontal scrollbars
+    .max_h(px(640.))                // Container style refinement
 ```
+
+The focused DataTable is exposed as an accessible grid. Visible rows, column headers, and cells publish stable row/column indices, while the root reports the full virtualized row and column counts.
 
 ## Examples
 

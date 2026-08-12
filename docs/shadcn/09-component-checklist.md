@@ -74,7 +74,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 ### Data surfaces
 
 - [x] Table
-- [ ] DataTable
+- [x] DataTable
 - [x] List — GPUI-native optimization, not shadcn structural parity (`5d8f21bf`)
 - [ ] Tree
 - [x] DescriptionList

@@ -741,6 +741,7 @@ pub struct DataTableStory {
     num_stocks_input: Entity<InputState>,
     num_extra_cols_input: Entity<InputState>,
     stripe: bool,
+    bordered: bool,
     refresh_data: bool,
     size: Size,
 
@@ -840,6 +841,7 @@ impl DataTableStory {
             num_stocks_input,
             num_extra_cols_input,
             stripe: false,
+            bordered: true,
             refresh_data: false,
             size: Size::default(),
             _subscriptions,
@@ -961,6 +963,11 @@ impl DataTableStory {
 
     fn toggle_stripe(&mut self, checked: &bool, _: &mut Window, cx: &mut Context<Self>) {
         self.stripe = *checked;
+        cx.notify();
+    }
+
+    fn toggle_bordered(&mut self, checked: &bool, _: &mut Window, cx: &mut Context<Self>) {
+        self.bordered = *checked;
         cx.notify();
     }
 
@@ -1145,6 +1152,12 @@ impl Render for DataTableStory {
                             .on_click(cx.listener(Self::toggle_stripe)),
                     )
                     .child(
+                        Checkbox::new("bordered")
+                            .label("Bordered")
+                            .selected(self.bordered)
+                            .on_click(cx.listener(Self::toggle_bordered)),
+                    )
+                    .child(
                         Checkbox::new("loading")
                             .label("Loading")
                             .checked(self.table.read(cx).delegate().full_loading)
@@ -1324,8 +1337,10 @@ impl Render for DataTableStory {
             )
             .child(
                 DataTable::new(&self.table)
+                    .aria_label("Stocks")
                     .with_size(self.size)
-                    .stripe(self.stripe),
+                    .stripe(self.stripe)
+                    .bordered(self.bordered),
             )
     }
 }

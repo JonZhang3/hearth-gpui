@@ -2,13 +2,13 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
-## Table row color-transition parity
+## Table and DataTable row color-transition parity
 
 **Status:** Deferred shared pseudo-state animation capability; final row colors are aligned
 
-The pinned Vega, Nova, and Maia Table styles apply `transition-colors` to row hover and selected-state changes. The GPUI Table resolves the same semantic final colors (`muted/50` for hover and `muted` for selected), but hover changes remain immediate because GPUI has no reusable transition contract for a stateless element's hover pseudo-state.
+The pinned Vega, Nova, and Maia Table styles apply `transition-colors` to row hover and selected-state changes. GPUI Table and DataTable resolve the same semantic final colors (`muted/50` for hover and `muted` for selected), but hover changes remain immediate because GPUI has no reusable transition contract for stateless or virtualized row hover pseudo-states.
 
-Do not introduce one entity or timer per static Table row solely for this effect. Revisit the transition after GPUI Component has a shared, interruption-safe pseudo-state color animation primitive that preserves `Styled` background overrides, honors reduced motion, and does not add material per-row state or repaint overhead to large tables.
+Do not introduce one entity or timer per static or virtualized row solely for this effect. Revisit the transition after GPUI Component has a shared, interruption-safe pseudo-state color animation primitive that preserves `Styled` background overrides, honors reduced motion, and does not add material per-row state or repaint overhead to large tables.
 
 ## Separator accessibility role
 
