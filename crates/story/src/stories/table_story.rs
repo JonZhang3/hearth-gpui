@@ -152,9 +152,10 @@ impl Render for TableStory {
                                     .child(TableHead::new().text_right().child("Date")),
                             ),
                         )
-                        .child(TableBody::new().children(invoices.iter().map(
-                            |(invoice, status, method, amount, date)| {
+                        .child(TableBody::new().children(invoices.iter().enumerate().map(
+                            |(ix, (invoice, status, method, amount, date))| {
                                 TableRow::new()
+                                    .selected(ix == 2)
                                     .child(TableCell::new().w(px(150.)).child(invoice.to_string()))
                                     .child(TableCell::new().child(status_badge(status, cx)))
                                     .child(TableCell::new().child(method.to_string()))
@@ -211,6 +212,33 @@ impl Render for TableStory {
                                 },
                             )),
                         ),
+                ),
+            )
+            .child(
+                section("Horizontal Overflow").child(
+                    v_flex().w(px(360.)).child(
+                        Table::new()
+                            .child(
+                                TableHeader::new().child(
+                                    TableRow::new()
+                                        .child(TableHead::new().child("Invoice"))
+                                        .child(TableHead::new().child("Status"))
+                                        .child(TableHead::new().child("Method"))
+                                        .child(TableHead::new().child("Amount"))
+                                        .child(TableHead::new().child("Date")),
+                                ),
+                            )
+                            .child(
+                                TableBody::new().child(
+                                    TableRow::new()
+                                        .child(TableCell::new().child("INV001"))
+                                        .child(TableCell::new().child("Paid"))
+                                        .child(TableCell::new().child("Credit Card"))
+                                        .child(TableCell::new().child("$250.00"))
+                                        .child(TableCell::new().child("2024-01-15")),
+                                ),
+                            ),
+                    ),
                 ),
             )
     }

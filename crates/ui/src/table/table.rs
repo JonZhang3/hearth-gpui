@@ -4,7 +4,9 @@ use gpui::{
     prelude::FluentBuilder as _, px, relative,
 };
 
-use crate::{ActiveTheme as _, AnyChildElement, ChildElement, Sizable, Size, StyledExt as _};
+use crate::{
+    ActiveTheme as _, AnyChildElement, ChildElement, Selectable, Sizable, Size, StyledExt as _,
+};
 
 const MIN_CELL_WIDTH: Pixels = px(100.);
 
@@ -92,7 +94,7 @@ impl RenderOnce for Table {
             .role(Role::Table)
             .w_full()
             .text_sm()
-            .overflow_hidden()
+            .overflow_x_scroll()
             .bg(cx.theme().tokens.table)
             .refine_style(&self.style)
             .children(
@@ -164,11 +166,9 @@ impl RenderOnce for TableHeader {
             .id(("table-header", self.ix))
             .role(Role::RowGroup)
             .w_full()
-            .bg(cx.theme().tokens.table_head)
-            .text_color(cx.theme().table_head_foreground)
-            .refine_style(&self.style)
             .border_b_1()
             .border_color(cx.theme().table_row_border)
+            .refine_style(&self.style)
             .children(
                 self.children
                     .into_iter()
@@ -306,9 +306,10 @@ impl RenderOnce for TableFooter {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .id(("table-footer", self.ix))
+            .role(Role::RowGroup)
             .w_full()
-            .bg(cx.theme().tokens.table_foot)
-            .text_color(cx.theme().table_foot_foreground)
+            .bg(cx.theme().muted.opacity(0.5))
+            .font_medium()
             .border_t_1()
             .border_color(cx.theme().table_row_border)
             .refine_style(&self.style)
@@ -328,6 +329,7 @@ pub struct TableRow {
     style: StyleRefinement,
     children: Vec<AnyChildElement>,
     size: Size,
+    selected: bool,
 }
 
 impl TableRow {
@@ -337,6 +339,7 @@ impl TableRow {
             style: StyleRefinement::default(),
             children: Vec::new(),
             size: Size::default(),
+            selected: false,
         }
     }
 
@@ -368,6 +371,17 @@ impl Sizable for TableRow {
     }
 }
 
+impl Selectable for TableRow {
+    fn selected(mut self, selected: bool) -> Self {
+        self.selected = selected;
+        self
+    }
+
+    fn is_selected(&self) -> bool {
+        self.selected
+    }
+}
+
 impl ChildElement for TableRow {
     fn with_ix(mut self, ix: usize) -> Self {
         self.ix = ix;
@@ -381,12 +395,17 @@ impl RenderOnce for TableRow {
             .id(("table-row", self.ix))
             .role(Role::Row)
             .aria_row_index(self.ix + 1)
+            .aria_selected(self.selected)
             .w_full()
             .flex()
             .flex_row()
-            .refine_style(&self.style)
             .border_color(cx.theme().table_row_border)
             .when(self.ix > 0, |this| this.border_t_1())
+            .when(self.selected, |this| this.bg(cx.theme().muted))
+            .when(!self.selected, |this| {
+                this.hover(|this| this.bg(cx.theme().muted.opacity(0.5)))
+            })
+            .refine_style(&self.style)
             .children(
                 self.children
                     .into_iter()
@@ -474,6 +493,10 @@ impl RenderOnce for TableHead {
             .aria_column_index(self.ix + 1)
             .flex()
             .items_center()
+            .min_h(self.size.table_row_height(cx))
+            .font_medium()
+            .text_color(cx.theme().foreground)
+            .whitespace_nowrap()
             .when(self.style.size.width.is_none(), |this| {
                 this.flex_shrink_1()
                     .flex_basis(relative(self.col_span as f32))
@@ -568,6 +591,8 @@ impl RenderOnce for TableCell {
             .aria_column_index(self.ix + 1)
             .flex()
             .items_center()
+            .min_h(self.size.table_row_height(cx))
+            .whitespace_nowrap()
             .when(self.style.size.width.is_none(), |this| {
                 this.flex_shrink_1()
                     .flex_basis(relative(self.col_span as f32))
@@ -632,17 +657,39 @@ impl Styled for TableCaption {
 
 impl RenderOnce for TableCaption {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let paddings = self.size.table_cell_padding(cx);
-
         div()
             .id(("table-caption", self.ix))
             .w_full()
-            .px(paddings.left)
-            .py(paddings.top)
+            .mt_4()
             .text_sm()
             .text_color(cx.theme().muted_foreground)
             .text_center()
             .refine_style(&self.style)
             .children(self.children)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_row_selected_builder_tracks_state() {
+        let row = TableRow::new();
+        assert!(!row.is_selected());
+        assert!(row.selected(true).is_selected());
+    }
+
+    #[test]
+    fn table_cell_spans_are_never_zero() {
+        assert_eq!(TableHead::new().col_span(0).col_span, 1);
+        assert_eq!(TableCell::new().col_span(0).col_span, 1);
+        assert_eq!(TableCell::new().col_span(3).col_span, 3);
+    }
+
+    #[test]
+    fn table_size_builder_is_retained() {
+        assert_eq!(Table::new().with_size(Size::Small).size, Size::Small);
+        assert_eq!(TableRow::new().with_size(Size::Large).size, Size::Large);
     }
 }

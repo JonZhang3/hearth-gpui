@@ -7,6 +7,8 @@ description: A basic table component for directly rendering tabular data.
 
 A simple, stateless, composable table component for rendering tabular data. Unlike [DataTable], this component does not include virtual scrolling, sorting, or column management — it is designed for straightforward data display using a declarative API.
 
+The default presentation follows shadcn Vega: a transparent header with medium-weight labels, divided rows with a muted hover surface, a `muted/50` footer, non-wrapping cells, and horizontal scrolling when the columns exceed the available width. Maia and Nova consume their semantic Data Metrics without preset-name branches.
+
 ## Import
 
 ```rust
@@ -86,16 +88,34 @@ TableHead::new().text_center().child("Status")
 TableCell::new().text_right().child("$1,000.00")
 ```
 
-### Without Border (via Styled)
+### Selected Row
+
+Use `Selectable` to expose a selected row visually and through `aria-selected`:
+
+```rust
+use gpui_component::Selectable as _;
+
+TableRow::new()
+    .selected(true)
+    .child(TableCell::new().child("Selected invoice"))
+```
+
+Table is stateless, so the caller owns selection state and pointer or keyboard interaction. Use [DataTable] when the table itself should manage interactive selection.
+
+### Horizontal Overflow
+
+Table keeps cells on one line and scrolls horizontally when their minimum widths exceed the available width. It does not truncate cell content automatically; callers can apply explicit widths or overflow styling to individual cells when required.
+
+### Style Overrides
 
 All table sub-components implement the `Styled` trait, so you can customize styles directly:
 
 ```rust
-// Remove border and rounded corners
+// Add an outer border and remove the default header divider
 Table::new()
-    .border_0()
-    .rounded_none()
-    .child(/* ... */)
+    .border_1()
+    .rounded(cx.theme().style.radii.md)
+    .child(TableHeader::new().border_0())
 ```
 
 ### Custom Styling
@@ -118,11 +138,11 @@ TableCell::new()
 
 | Component | Description |
 |-----------|-------------|
-| `Table` | Root container with border, rounded corners, and background |
-| `TableHeader` | Header section with distinct background and font weight |
+| `Table` | Root table and horizontal overflow container |
+| `TableHeader` | Transparent header section with divided rows |
 | `TableBody` | Body section wrapping data rows |
 | `TableFooter` | Footer section with top border |
-| `TableRow` | A flex row with bottom border |
+| `TableRow` | A flex row with semantic dividers, hover, and selected states |
 | `TableHead` | Header cell with alignment and width options |
 | `TableCell` | Data cell with alignment and width options |
 | `TableCaption` | Caption text below the table |
@@ -146,6 +166,8 @@ TableCell::new()
 
 - `new()` - Create a new instance
 - Implements `Styled`, `ParentElement`, `RenderOnce`
+
+`TableRow` also implements `Selectable` for declarative selected-state styling and accessibility metadata.
 
 ## Table vs DataTable
 
