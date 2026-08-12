@@ -107,16 +107,16 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 These components do not require shadcn structural parity. They remain unchecked until a dedicated
 GPUI-native optimization batch is completed.
 
-- [ ] Dock and Tiles
-- [ ] Editor
-- [ ] TextView
-- [ ] Markdown and HTML rendering
+- [x] Dock and Tiles
+- [x] Editor
+- [x] TextView
+- [x] Markdown and HTML rendering
 - [ ] Chart and Plot
-- [ ] TitleBar
+- [x] TitleBar
 - [ ] StatusBar
-- [ ] WindowBorder
-- [ ] NativeMenu
-- [ ] FocusTrap and Root infrastructure
+- [x] WindowBorder
+- [x] NativeMenu
+- [x] FocusTrap and Root infrastructure
 
 ## Backlog: shadcn components without a required GPUI equivalent
 
