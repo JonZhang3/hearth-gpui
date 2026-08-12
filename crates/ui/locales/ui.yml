@@ -441,6 +441,12 @@ Settings:
     zh-HK: 搜索...
     zh-TW: 搜尋...
     it: Ricerca...
+  no_results:
+    en: No settings found
+    zh-CN: 未找到相关设置
+    zh-HK: 未找到相關設定
+    zh-TW: 找不到相關設定
+    it: Nessuna impostazione trovata
   Reset All:
     en: Reset All
     zh-CN: 重置全部

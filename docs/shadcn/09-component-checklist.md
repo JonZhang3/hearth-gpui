@@ -83,7 +83,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 - [x] Card (`dbea164b`)
 - [ ] GroupBox
-- [ ] Settings
+- [x] Settings
 - [x] Separator
 - [ ] Resizable
 

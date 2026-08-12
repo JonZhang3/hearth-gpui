@@ -22,7 +22,6 @@ struct AppSettings {
     cli_path: SharedString,
     font_family: SharedString,
     font_size: f64,
-    line_height: f64,
     /// Demonstrates a custom element field driving its own state, with reset
     /// support wired up via [`SettingField::on_reset`].
     density: SharedString,
@@ -39,7 +38,6 @@ impl Default for AppSettings {
             cli_path: "/usr/local/bin/bash".into(),
             font_family: "Arial".into(),
             font_size: 14.0,
-            line_height: 12.0,
             density: "Comfortable".into(),
             notifications_enabled: true,
             auto_update: true,
@@ -226,6 +224,7 @@ impl SettingsStory {
                             "Group Size",
                             SettingField::dropdown(
                                 vec![
+                                    (Size::Large.as_str().into(), "Large".into()),
                                     (Size::Medium.as_str().into(), "Medium".into()),
                                     (Size::Small.as_str().into(), "Small".into()),
                                     (Size::XSmall.as_str().into(), "XSmall".into()),
@@ -265,7 +264,9 @@ impl SettingsStory {
                                     ],
                                     |cx: &App| AppSettings::global(cx).font_family.clone(),
                                     |val: SharedString, cx: &mut App| {
-                                        AppSettings::global_mut(cx).font_family = val;
+                                        AppSettings::global_mut(cx).font_family = val.clone();
+                                        Theme::global_mut(cx).font_family = val;
+                                        cx.refresh_windows();
                                     },
                                 )
                                 .default_value(default_settings.font_family),
@@ -285,33 +286,14 @@ impl SettingsStory {
                                     |cx: &App| AppSettings::global(cx).font_size,
                                     |val: f64, cx: &mut App| {
                                         AppSettings::global_mut(cx).font_size = val;
+                                        Theme::global_mut(cx).font_size = px(val as f32);
+                                        cx.refresh_windows();
                                     },
                                 )
                                 .default_value(default_settings.font_size),
                             )
                             .description(
                                 "Adjust the font size for better readability between 8 and 72.",
-                            )
-                            .disabled(disabled),
-                        )
-                        .item(
-                            SettingItem::new(
-                                "Line Height",
-                                SettingField::number_input(
-                                    NumberFieldOptions {
-                                        min: 8.0,
-                                        max: 32.0,
-                                        ..Default::default()
-                                    },
-                                    |cx: &App| AppSettings::global(cx).line_height,
-                                    |val: f64, cx: &mut App| {
-                                        AppSettings::global_mut(cx).line_height = val;
-                                    },
-                                )
-                                .default_value(default_settings.line_height),
-                            )
-                            .description(
-                                "Adjust the line height for better readability between 8 and 32.",
                             )
                             .disabled(disabled),
                         ),

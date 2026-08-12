@@ -462,6 +462,11 @@ SettingItem::new(
 - `large()`：大尺寸
 - `with_size(Size)`：指定具体尺寸
 
+### 样式
+
+`Settings` 实现了 GPUI 的 `Styled` trait，可以直接设置根布局的宽度、高度、内边距或背景。
+内部间距跟随当前 Style Preset 的语义 density，子字段继续使用各自组件的 metrics。
+
 ## 示例
 
 ### 完整设置页示例

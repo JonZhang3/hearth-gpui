@@ -12,6 +12,7 @@ use crate::{
         fields::{
             BoolField, DropdownField, NumberField, ResetHandler, SettingFieldRender, StringField,
         },
+        settings::SettingsMetrics,
     },
     text::Text,
     v_flex,
@@ -249,6 +250,7 @@ impl SettingItem {
     pub(super) fn render_item(
         self,
         options: &RenderOptions,
+        metrics: SettingsMetrics,
         window: &mut Window,
         cx: &mut App,
     ) -> Stateful<Div> {
@@ -281,7 +283,7 @@ impl SettingItem {
                                 this.v_flex()
                             }
                         })
-                        .gap_3()
+                        .gap(metrics.item_gap)
                         .child(
                             v_flex()
                                 .map(|this| {
@@ -291,7 +293,7 @@ impl SettingItem {
                                         this.w_full()
                                     }
                                 })
-                                .gap_1()
+                                .gap(metrics.text_gap)
                                 .child(Label::new(title).text_sm())
                                 .when_some(description, |this, description| {
                                     this.child(

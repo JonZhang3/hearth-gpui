@@ -482,6 +482,12 @@ Implements [Sizable] trait:
 - `large()` - Large size
 - `with_size(Size)` - Set specific size
 
+### Styling
+
+`Settings` implements GPUI's `Styled` trait, so root layout refinements such as width, height,
+padding, or background can be applied directly. Internal spacing follows the active Style Preset's
+semantic density; child fields continue to use their own component metrics.
+
 ## Examples
 
 ### Complete Settings Example

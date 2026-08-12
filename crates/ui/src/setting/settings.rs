@@ -1,21 +1,71 @@
 use std::ops::Range;
 
 use crate::{
-    IconName, Sizable, Size, StyledExt,
+    ActiveTheme, Density, IconName, Sizable, Size, StyledExt,
     group_box::GroupBoxVariant,
-    input::{Input, InputState},
+    input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},
-    setting::{SettingGroup, SettingPage},
+    setting::SettingPage,
     sidebar::{Sidebar, SidebarMenu, SidebarMenuItem},
 };
 use gpui::{
-    App, AppContext as _, Axis, ElementId, Entity, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, StyleRefinement, Styled, Window, container_query, div, prelude::FluentBuilder as _,
-    px, relative,
+    App, AppContext as _, Axis, ElementId, Entity, InteractiveElement as _, IntoElement,
+    ParentElement as _, Pixels, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Subscription, Window, container_query, div, prelude::FluentBuilder as _, px, relative,
 };
 use rust_i18n::t;
 
 const STACKED_LAYOUT_MAX_WIDTH: Pixels = px(480.);
+
+/// Component-local geometry derived from semantic Style Preset density.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct SettingsMetrics {
+    pub(super) page_padding_x: Pixels,
+    pub(super) page_padding_y: Pixels,
+    pub(super) group_padding_y: Pixels,
+    pub(super) section_gap: Pixels,
+    pub(super) item_gap: Pixels,
+    pub(super) text_gap: Pixels,
+}
+
+impl SettingsMetrics {
+    /// Resolves Settings geometry without branching on concrete preset IDs.
+    pub(super) fn for_density(density: Density) -> Self {
+        match density {
+            Density::Compact => Self {
+                page_padding_x: px(12.),
+                page_padding_y: px(12.),
+                group_padding_y: px(12.),
+                section_gap: px(12.),
+                item_gap: px(8.),
+                text_gap: px(2.),
+            },
+            Density::Standard => Self {
+                page_padding_x: px(16.),
+                page_padding_y: px(16.),
+                group_padding_y: px(16.),
+                section_gap: px(16.),
+                item_gap: px(12.),
+                text_gap: px(4.),
+            },
+            Density::Comfortable => Self {
+                page_padding_x: px(20.),
+                page_padding_y: px(20.),
+                group_padding_y: px(20.),
+                section_gap: px(20.),
+                item_gap: px(16.),
+                text_gap: px(6.),
+            },
+        }
+    }
+}
+
+/// A filtered page keeps source indices stable while exposing only matching groups.
+#[derive(Debug, Clone)]
+struct VisiblePage {
+    page_ix: usize,
+    group_indices: Vec<usize>,
+}
 
 /// The settings structure containing multiple pages for app settings.
 ///
@@ -32,6 +82,7 @@ const STACKED_LAYOUT_MAX_WIDTH: Pixels = px(480.);
 #[derive(IntoElement)]
 pub struct Settings {
     id: ElementId,
+    style: StyleRefinement,
     pages: Vec<SettingPage>,
     group_variant: GroupBoxVariant,
     size: Size,
@@ -47,6 +98,7 @@ impl Settings {
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
             id: id.into(),
+            style: StyleRefinement::default(),
             pages: vec![],
             group_variant: GroupBoxVariant::default(),
             size: Size::default(),
@@ -108,68 +160,88 @@ impl Settings {
         self
     }
 
-    fn filtered_pages(&self, query: &str, cx: &App) -> Vec<SettingPage> {
+    fn visible_pages(&self, query: &str, cx: &App) -> Vec<VisiblePage> {
         self.pages
             .iter()
-            .filter_map(|page| {
-                let filtered_groups: Vec<SettingGroup> = page
+            .enumerate()
+            .filter_map(|(page_ix, page)| {
+                let group_indices = page
                     .groups
                     .iter()
-                    .filter_map(|group| {
-                        let mut group = group.clone();
-                        group.items = group
-                            .items
-                            .iter()
-                            .filter(|item| item.is_match(&query, cx))
-                            .cloned()
-                            .collect();
-                        if group.items.is_empty() {
-                            None
-                        } else {
-                            Some(group)
-                        }
-                    })
-                    .collect();
-                let mut page = page.clone();
-                page.groups = filtered_groups;
-                if page.groups.is_empty() {
+                    .enumerate()
+                    .filter_map(|(group_ix, group)| group.is_match(query, cx).then_some(group_ix))
+                    .collect::<Vec<_>>();
+                if group_indices.is_empty() {
                     None
                 } else {
-                    Some(page)
+                    Some(VisiblePage {
+                        page_ix,
+                        group_indices,
+                    })
                 }
             })
             .collect()
     }
 
+    /// Resolves the displayed page without overwriting the persisted selection during search.
+    fn active_page_ix(selected_page_ix: usize, pages: &[VisiblePage]) -> Option<usize> {
+        pages
+            .iter()
+            .find(|page| page.page_ix == selected_page_ix)
+            .or_else(|| pages.first())
+            .map(|page| page.page_ix)
+    }
+
     fn render_active_page(
         &self,
         state: &Entity<SettingsState>,
-        pages: &Vec<SettingPage>,
+        pages: &[VisiblePage],
         options: &RenderOptions,
         window: &mut Window,
         cx: &mut App,
     ) -> gpui::AnyElement {
         let selected_index = state.read(cx).selected_index;
+        let Some(page_ix) = Self::active_page_ix(selected_index.page_ix, pages) else {
+            let message = t!("Settings.no_results");
+            return div()
+                .id("settings-no-results")
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .role(Role::Status)
+                .aria_label(message.clone())
+                .child(message)
+                .into_any_element();
+        };
+        let visible_page = pages
+            .iter()
+            .find(|page| page.page_ix == page_ix)
+            .expect("active page must be visible");
 
-        for (ix, page) in pages.into_iter().enumerate() {
-            if selected_index.page_ix == ix {
-                return page
-                    .render(ix, state, &options, window, cx)
-                    .into_any_element();
-            }
-        }
-
-        return div().into_any_element();
+        self.pages[page_ix]
+            .render(
+                page_ix,
+                &visible_page.group_indices,
+                state,
+                options,
+                window,
+                cx,
+            )
+            .into_any_element()
     }
 
     fn render_sidebar(
         &self,
         state: &Entity<SettingsState>,
-        pages: &Vec<SettingPage>,
+        pages: &[VisiblePage],
         _: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         let selected_index = state.read(cx).selected_index;
+        let active_page_ix = Self::active_page_ix(selected_index.page_ix, pages);
         let search_input = state.read(cx).search_input.clone();
 
         Sidebar::new("settings-sidebar")
@@ -179,15 +251,25 @@ impl Settings {
             .collapsible(false)
             .collapsed(false)
             .header(
-                div()
-                    .w_full()
-                    .refine_style(&self.header_style)
-                    .child(Input::new(&search_input).prefix(IconName::Search)),
+                div().w_full().refine_style(&self.header_style).child(
+                    Input::new(&search_input)
+                        .prefix(IconName::Search)
+                        .with_size(self.size)
+                        .aria_label(t!("Settings.search_placeholder")),
+                ),
             )
             .child(
-                SidebarMenu::new().children(pages.iter().enumerate().map(|(page_ix, page)| {
+                SidebarMenu::new().children(pages.iter().map(|visible_page| {
+                    let page_ix = visible_page.page_ix;
+                    let page = &self.pages[page_ix];
+                    let selected_group_is_visible = visible_page.group_indices.len() > 1
+                        && selected_index.page_ix == page_ix
+                        && selected_index.group_ix.is_some_and(|group_ix| {
+                            visible_page.group_indices.contains(&group_ix)
+                                && page.groups[group_ix].title.is_some()
+                        });
                     let is_page_active =
-                        selected_index.page_ix == page_ix && selected_index.group_ix.is_none();
+                        active_page_ix == Some(page_ix) && !selected_group_is_visible;
                     SidebarMenuItem::new(page.title.clone())
                         .click_to_open(true)
                         .when_some(page.icon.clone(), |this, icon| this.icon(icon))
@@ -205,32 +287,30 @@ impl Settings {
                                 })
                             }
                         })
-                        .when(page.groups.len() > 1, |this| {
-                            this.children(
-                                page.groups
-                                    .iter()
-                                    .filter(|g| g.title.is_some())
-                                    .enumerate()
-                                    .map(|(group_ix, group)| {
-                                        let is_active = selected_index.page_ix == page_ix
-                                            && selected_index.group_ix == Some(group_ix);
-                                        let title = group.title.clone().unwrap_or_default();
+                        .when(visible_page.group_indices.len() > 1, |this| {
+                            this.children(visible_page.group_indices.iter().filter_map(
+                                |group_ix| {
+                                    let group = &page.groups[*group_ix];
+                                    let title = group.title.clone()?;
+                                    let is_active = selected_index.page_ix == page_ix
+                                        && selected_index.group_ix == Some(*group_ix);
+                                    let group_ix = *group_ix;
 
-                                        SidebarMenuItem::new(title).active(is_active).on_click({
-                                            let state = state.clone();
-                                            move |_, _, cx| {
-                                                state.update(cx, |state, cx| {
-                                                    state.selected_index = SelectIndex {
-                                                        page_ix,
-                                                        group_ix: Some(group_ix),
-                                                    };
-                                                    state.deferred_scroll_group_ix = Some(group_ix);
-                                                    cx.notify();
-                                                })
-                                            }
-                                        })
-                                    }),
-                            )
+                                    Some(SidebarMenuItem::new(title).active(is_active).on_click({
+                                        let state = state.clone();
+                                        move |_, _, cx| {
+                                            state.update(cx, |state, cx| {
+                                                state.selected_index = SelectIndex {
+                                                    page_ix,
+                                                    group_ix: Some(group_ix),
+                                                };
+                                                state.deferred_scroll_group_ix = Some(group_ix);
+                                                cx.notify();
+                                            })
+                                        }
+                                    }))
+                                },
+                            ))
                         })
                 })),
             )
@@ -244,11 +324,18 @@ impl Sizable for Settings {
     }
 }
 
+impl Styled for Settings {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 pub(super) struct SettingsState {
     pub(super) selected_index: SelectIndex,
     /// If set, defer scrolling to this group index after rendering.
     pub(super) deferred_scroll_group_ix: Option<usize>,
     pub(super) search_input: Entity<InputState>,
+    _search_subscription: Subscription,
 }
 
 /// Options for rendering setting item.
@@ -277,16 +364,25 @@ impl RenderOnce for Settings {
                     .placeholder(t!("Settings.search_placeholder"))
                     .default_value("")
             });
+            let search_subscription = cx.subscribe(&search_input, {
+                move |state: &mut SettingsState, _, event: &InputEvent, cx| {
+                    if matches!(event, InputEvent::Change) {
+                        state.deferred_scroll_group_ix = None;
+                        cx.notify();
+                    }
+                }
+            });
 
             SettingsState {
                 search_input,
                 selected_index: self.default_selected_index,
                 deferred_scroll_group_ix: None,
+                _search_subscription: search_subscription,
             }
         });
 
         let query = state.read(cx).search_input.read(cx).value();
-        let filtered_pages = self.filtered_pages(&query, cx);
+        let visible_pages = self.visible_pages(&query, cx);
         let options = RenderOptions {
             page_ix: 0,
             group_ix: 0,
@@ -298,28 +394,99 @@ impl RenderOnce for Settings {
         };
         let sidebar_size_range = self.sidebar_size_range.clone();
         let sidebar = self
-            .render_sidebar(&state, &filtered_pages, window, cx)
+            .render_sidebar(&state, &visible_pages, window, cx)
             .into_any_element();
 
-        h_resizable(self.id.clone())
-            .child(
-                resizable_panel()
-                    .size(self.sidebar_width)
-                    .size_range(sidebar_size_range)
-                    .child(sidebar),
-            )
-            .child(
-                resizable_panel().child(container_query(move |size, window, cx| {
-                    let options = RenderOptions {
-                        layout: if size.width <= STACKED_LAYOUT_MAX_WIDTH {
-                            Axis::Vertical
-                        } else {
-                            Axis::Horizontal
-                        },
-                        ..options
-                    };
-                    self.render_active_page(&state, &filtered_pages, &options, window, cx)
-                })),
-            )
+        div().size_full().refine_style(&self.style).child(
+            h_resizable(self.id.clone())
+                .child(
+                    resizable_panel()
+                        .size(self.sidebar_width)
+                        .size_range(sidebar_size_range)
+                        .child(sidebar),
+                )
+                .child(
+                    resizable_panel().child(container_query(move |size, window, cx| {
+                        let options = RenderOptions {
+                            layout: if size.width <= STACKED_LAYOUT_MAX_WIDTH {
+                                Axis::Vertical
+                            } else {
+                                Axis::Horizontal
+                            },
+                            ..options
+                        };
+                        self.render_active_page(&state, &visible_pages, &options, window, cx)
+                    })),
+                ),
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        setting::{SettingGroup, SettingItem},
+        v_flex,
+    };
+    use gpui::TestAppContext;
+
+    #[test]
+    fn density_metrics_expand_monotonically() {
+        let compact = SettingsMetrics::for_density(Density::Compact);
+        let standard = SettingsMetrics::for_density(Density::Standard);
+        let comfortable = SettingsMetrics::for_density(Density::Comfortable);
+
+        assert!(compact.page_padding_x < standard.page_padding_x);
+        assert!(standard.page_padding_x < comfortable.page_padding_x);
+        assert!(compact.item_gap < standard.item_gap);
+        assert!(standard.item_gap < comfortable.item_gap);
+    }
+
+    #[test]
+    fn active_page_preserves_source_indices() {
+        let pages = vec![
+            VisiblePage {
+                page_ix: 2,
+                group_indices: vec![1],
+            },
+            VisiblePage {
+                page_ix: 5,
+                group_indices: vec![0],
+            },
+        ];
+
+        assert_eq!(Settings::active_page_ix(5, &pages), Some(5));
+        assert_eq!(Settings::active_page_ix(3, &pages), Some(2));
+        assert_eq!(Settings::active_page_ix(0, &[]), None);
+    }
+
+    #[gpui::test]
+    fn filtering_preserves_source_page_and_group_indices(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let window = cx.add_empty_window();
+        window.update(|_, cx| {
+            let settings = Settings::new("settings")
+                .page(
+                    SettingPage::new("Hidden").group(
+                        SettingGroup::new()
+                            .item(SettingItem::render(|_, _, _| v_flex()).keywords(["other"])),
+                    ),
+                )
+                .page(
+                    SettingPage::new("Visible").groups([
+                        SettingGroup::new()
+                            .item(SettingItem::render(|_, _, _| v_flex()).keywords(["other"])),
+                        SettingGroup::new()
+                            .title("Match")
+                            .item(SettingItem::render(|_, _, _| v_flex()).keywords(["needle"])),
+                    ]),
+                );
+
+            let pages = settings.visible_pages("needle", cx);
+            assert_eq!(pages.len(), 1);
+            assert_eq!(pages[0].page_ix, 1);
+            assert_eq!(pages[0].group_indices, vec![1]);
+        });
     }
 }
