@@ -133,6 +133,8 @@ pub struct ThemeColor {
     pub group_box: Hsla,
     /// Text color for GroupBox.
     pub group_box_foreground: Hsla,
+    /// Title text color for GroupBox.
+    pub group_box_title_foreground: Hsla,
     /// Input caret color (Blinking cursor).
     pub caret: Hsla,
     /// Chart 1 color.
@@ -412,6 +414,7 @@ define_theme_tokens! {
     button_warning_hover,
     group_box,
     group_box_foreground,
+    group_box_title_foreground,
     caret,
     chart_1,
     chart_2,

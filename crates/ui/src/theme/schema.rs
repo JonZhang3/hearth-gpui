@@ -747,6 +747,7 @@ impl ThemeColor {
                 )
         );
         apply_color!(group_box_foreground, fallback = self.foreground);
+        apply_color!(group_box_title_foreground, fallback = self.muted_foreground);
         apply_color!(caret, fallback = self.primary);
         apply_color!(chart_1, fallback = self.blue.lighten(0.4));
         apply_color!(chart_2, fallback = self.blue.lighten(0.2));
@@ -1013,6 +1014,35 @@ mod tests {
 
         assert_eq!(theme.card, try_parse_color("#0f172a").unwrap());
         assert_eq!(theme.card_foreground, try_parse_color("#e2e8f0").unwrap());
+    }
+
+    #[test]
+    fn test_group_box_title_color_supports_fallback_and_configuration() {
+        let fallback_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "GroupBox fallback",
+            "mode": "light",
+            "colors": {
+                "muted.foreground": "#64748b"
+            }
+        }))
+        .unwrap();
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(fallback_config));
+        assert_eq!(theme.group_box_title_foreground, theme.muted_foreground);
+
+        let explicit_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "GroupBox explicit",
+            "mode": "light",
+            "colors": {
+                "group_box.title.foreground": "#334155"
+            }
+        }))
+        .unwrap();
+        theme.apply_config(&std::rc::Rc::new(explicit_config));
+        assert_eq!(
+            theme.group_box_title_foreground,
+            try_parse_color("#334155").unwrap()
+        );
     }
 
     #[test]

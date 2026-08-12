@@ -336,7 +336,7 @@ impl RenderOnce for Radio {
                 this.child(
                     v_flex()
                         .flex_1()
-                        .overflow_hidden()
+                        .min_w_0()
                         .line_height(relative(1.2))
                         .gap_1()
                         .when_some(self.label, |this, label| {

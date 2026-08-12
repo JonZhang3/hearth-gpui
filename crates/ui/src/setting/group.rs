@@ -84,6 +84,7 @@ impl SettingGroup {
     ) -> impl IntoElement {
         GroupBox::new()
             .id(SharedString::from(format!("group-{}", options.group_ix)))
+            .when_some(self.title.clone(), |this, title| this.aria_label(title))
             .with_variant(options.group_variant)
             .when_some(self.title.clone(), |this, title| {
                 this.title(
