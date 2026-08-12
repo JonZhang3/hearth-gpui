@@ -2,6 +2,15 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## Separator accessibility role
+
+**Status:** Deferred GPUI accessibility capability; Separator remains decorative
+
+The pinned Radix Separator defaults to `decorative=true`, which matches the current GPUI
+Separator. AccessKit does not expose a non-interactive separator role through GPUI. Do not use
+`Role::Splitter` as a substitute because Splitter represents an adjustable interactive control.
+Add a non-decorative API only after GPUI can expose the correct accessibility role and orientation.
+
 ## OtpInput separator accessibility role
 
 **Status:** Deferred GPUI accessibility capability; separator remains decorative
