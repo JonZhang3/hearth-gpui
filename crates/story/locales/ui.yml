@@ -39,6 +39,30 @@ gpui_component:
       fr: Novembre
     month.December:
       fr: Décembre
+    month_short.January:
+      fr: Janv.
+    month_short.February:
+      fr: Févr.
+    month_short.March:
+      fr: Mars
+    month_short.April:
+      fr: Avr.
+    month_short.May:
+      fr: Mai
+    month_short.June:
+      fr: Juin
+    month_short.July:
+      fr: Juil.
+    month_short.August:
+      fr: Août
+    month_short.September:
+      fr: Sept.
+    month_short.October:
+      fr: Oct.
+    month_short.November:
+      fr: Nov.
+    month_short.December:
+      fr: Déc.
   DatePicker:
     placeholder:
       fr: Sélectionner une date

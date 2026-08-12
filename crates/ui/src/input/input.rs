@@ -18,7 +18,7 @@ use crate::button::Button;
 use crate::input::clear_button;
 use crate::native_menu::NativeMenu;
 use crate::spinner::Spinner;
-use crate::{ActiveTheme, Colorize, Density, MotionEasing, StylePreset, v_flex};
+use crate::{ActiveTheme, Density, MotionEasing, StylePreset, v_flex};
 use crate::{IconName, Size};
 use crate::{Sizable, StyleSized};
 use crate::{StyledExt, h_flex};
@@ -26,18 +26,6 @@ use crate::{StyledExt, h_flex};
 use super::{
     InputContentType, InputState, content_type::sync_native_content_type, element::EditorScrollbar,
 };
-
-/// Returns `(background, foreground)` colors for input-like components.
-pub(crate) fn input_style(disabled: bool, cx: &App) -> (Hsla, Hsla) {
-    if disabled {
-        (
-            cx.theme().input.mix_oklab(cx.theme().transparent, 0.8),
-            cx.theme().muted_foreground,
-        )
-    } else {
-        (cx.theme().input_background(), cx.theme().foreground)
-    }
-}
 
 /// The properties animated by a Style Preset's Input transition.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

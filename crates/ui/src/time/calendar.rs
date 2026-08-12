@@ -416,6 +416,32 @@ impl CalendarState {
         self.date
     }
 
+    /// Resets the visible page and keyboard cursor to a DatePicker reopen anchor.
+    ///
+    /// This intentionally avoids a month transition because the enclosing Popover already owns
+    /// the opening motion. It also invalidates pending Calendar transition completion work.
+    pub(crate) fn reset_view_to_date(&mut self, date: NaiveDate, cx: &mut Context<Self>) {
+        self.current_year = date.year();
+        self.current_month = date.month() as u8;
+        self.active_date = date;
+        self.previous_month = None;
+        self.transition_direction = 0;
+        self.transition_generation = self.transition_generation.wrapping_add(1);
+        cx.notify();
+    }
+
+    /// Returns the first visible month for internal composite-state verification.
+    #[cfg(test)]
+    pub(crate) fn visible_month(&self) -> (i32, u8) {
+        (self.current_year, self.current_month)
+    }
+
+    /// Returns the keyboard cursor date for internal composite-state verification.
+    #[cfg(test)]
+    pub(crate) fn active_date(&self) -> NaiveDate {
+        self.active_date
+    }
+
     /// Set number of months to show.
     pub fn set_number_of_months(
         &mut self,

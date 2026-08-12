@@ -7,6 +7,18 @@ description: A date picker component for selecting single dates or date ranges w
 
 A flexible date picker component with calendar interface that supports single date selection, date range selection, custom date formatting, disabled dates, and preset ranges.
 
+DatePicker follows the shadcn composition of an Outline Button trigger, a start-aligned Popover with a 4px side offset, and the shared Calendar. The GPUI component additionally supports clear actions and preset shortcuts.
+
+## Interaction
+
+- Click the trigger, or press Enter/Space while it is focused, to open the calendar.
+- Click the trigger again, press Escape, or click outside to close it. Focus returns to the trigger after the exit transition.
+- Selecting a date, completing a range, or choosing a preset updates the value without closing the Popover.
+- Use Arrow keys to move the active date, Page Up/Page Down to change pages, Home/End to move to an edge, and Enter/Space to select.
+- The Popover uses the shared directional enter/exit motion without an opacity transition. Reduced-motion settings are respected.
+- A single-date picker displays one month by default. Set `.number_of_months(2)` explicitly for the canonical range composition.
+- Selected values follow the active application locale by default. A partially selected range displays its start date while the end date is pending.
+
 ## Import
 
 ```rust
@@ -68,6 +80,10 @@ DatePicker::new(&range_picker)
 ```
 
 ### With Custom Date Format
+
+Without `.date_format(...)`, the trigger uses the active application locale. English single dates use a long month and ordinal day (`September 16th, 2026`), while ranges use compact endpoints (`Sep 28, 2025 - Oct 15, 2025`). Chinese locales use the local year-month-day order (`2025年9月28日 - 2025年10月15日`). Locale changes are reflected on the next render.
+
+Use `.date_format(...)` when the application requires a fixed Chrono format. This override has priority over locale formatting.
 
 ```rust
 let date_picker = cx.new(|cx| {
@@ -210,7 +226,7 @@ let birthday_picker = cx.new(|cx| {
     let current_year = chrono::Local::now().year();
     let mut picker = DatePickerState::new(window, cx)
         .date_format("%Y-%m-%d");
-    picker.set_year_range((1900, current_year + 1), window, cx);
+    picker.set_year_range((1900, current_year + 1), cx);
     picker
 });
 

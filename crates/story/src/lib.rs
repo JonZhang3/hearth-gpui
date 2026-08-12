@@ -745,5 +745,9 @@ mod tests {
             gpui_component::_rust_i18n_try_translate("en", "Calendar.month.January"),
             Some("January".into())
         );
+        assert_eq!(
+            gpui_component::_rust_i18n_try_translate("fr", "Calendar.month_short.January"),
+            Some("Janv.".into())
+        );
     }
 }
