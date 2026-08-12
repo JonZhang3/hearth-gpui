@@ -25,6 +25,13 @@ DropdownButton:
     zh-HK: 更多選項
     zh-TW: 更多選項
     it: Altre opzioni
+Tree:
+  label:
+    en: Tree
+    zh-CN: 树
+    zh-HK: 樹
+    zh-TW: 樹
+    it: Albero
 Calendar:
   previous:
     en: Previous month
