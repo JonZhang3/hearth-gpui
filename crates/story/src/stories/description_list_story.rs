@@ -170,12 +170,18 @@ impl Render for DescriptionListStory {
                                         size == Size::Small,
                                         Box::new(ChangeSize(Size::Small)),
                                     )
+                                    .menu_with_check(
+                                        "Extra Small",
+                                        size == Size::XSmall,
+                                        Box::new(ChangeSize(Size::XSmall)),
+                                    )
                                 }
                             }),
                     ),
             )
             .child(
                 DescriptionList::new()
+                    .id("description-list-story-example")
                     .columns(3)
                     .layout(self.layout)
                     .bordered(self.bordered)

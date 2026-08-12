@@ -19,6 +19,7 @@ use gpui_component::description_list::{DescriptionList, DescriptionItem, Descrip
 
 ```rust
 DescriptionList::new()
+    .id("project-details")
     .item("Name", "GPUI Component", 1)
     .item("Version", "0.1.0", 1)
     .item("License", "Apache-2.0", 1)
@@ -90,6 +91,8 @@ DescriptionList::new()
     .small()
     .item("Title", "Small Description List", 1)
 ```
+
+间距、密度和圆角由当前 Style Preset 决定。Vega 保持默认视觉基线，Nova 更紧凑，Maia 更宽松。
 
 ### 无边框
 
@@ -236,3 +239,5 @@ DescriptionList::horizontal()
 - 标签保持简洁且语义明确。
 - 使用尺寸属性统一间距和密度。
 - 嵌入式场景下可考虑关闭边框。
+- 需要让辅助技术识别 `DescriptionList`、`Term` 和 `Definition` 语义时，应设置稳定的 `.id(...)`。
+- 项目跨度会规范到 `1..=columns`，分隔项始终独占一整行。
