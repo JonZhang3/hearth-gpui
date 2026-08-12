@@ -497,3 +497,14 @@ Pagination:
     zh-CN: 更多页码
     zh-HK: 更多頁碼
     zh-TW: 更多頁碼
+Stepper:
+  label:
+    en: Progress steps
+    zh-CN: 流程步骤
+    zh-HK: 流程步驟
+    zh-TW: 流程步驟
+  step:
+    en: Step %{step}
+    zh-CN: 第 %{step} 步
+    zh-HK: 第 %{step} 步
+    zh-TW: 第 %{step} 步
