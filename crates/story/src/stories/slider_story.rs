@@ -181,11 +181,14 @@ impl SliderStory {
             cx.emit(SliderEvent::Change(slider.value()));
         });
 
+        let slider1_value = slider1.read(cx).value().start();
+        let slider2_value = slider2.read(cx).value().start();
+
         Self {
             focus_handle: cx.focus_handle(),
-            slider1_value: 0.,
-            slider1_released_value: 0.,
-            slider2_value: 0.,
+            slider1_value,
+            slider1_released_value: slider1_value,
+            slider2_value,
             slider1,
             slider2,
             slider3_released_value: (12.0, 45.0).into(),
@@ -227,9 +230,14 @@ impl Render for SliderStory {
             )
             .child(
                 section("Horizontal Slider")
+                    .sub_title("Tab to focus; use Arrow keys or Home/End to change the value.")
                     .max_w_md()
                     .v_flex()
-                    .child(Slider::new(&self.slider1).disabled(self.disabled))
+                    .child(
+                        Slider::new(&self.slider1)
+                            .aria_label("Horizontal value")
+                            .disabled(self.disabled),
+                    )
                     .child(format!("Value: {}", self.slider1_value))
                     .child(format!("Released: {}", self.slider1_released_value)),
             )
@@ -239,6 +247,7 @@ impl Render for SliderStory {
                     .v_flex()
                     .child(
                         Slider::new(&self.slider2)
+                            .aria_label("Success value")
                             .disabled(self.disabled)
                             .bg(cx.theme().success)
                             .text_color(cx.theme().success_foreground),
@@ -249,7 +258,11 @@ impl Render for SliderStory {
                 section("Range Mode")
                     .max_w_md()
                     .v_flex()
-                    .child(Slider::new(&self.slider3).disabled(self.disabled))
+                    .child(
+                        Slider::new(&self.slider3)
+                            .aria_label("Price range")
+                            .disabled(self.disabled),
+                    )
                     .child(format!("Value: {}", self.slider3.read(cx).value()))
                     .child(format!("Released: {}", self.slider3_released_value)),
             )
@@ -259,6 +272,7 @@ impl Render for SliderStory {
                     .v_flex()
                     .child(
                         Slider::new(&self.slider_reverse)
+                            .aria_label("Remaining time")
                             .horizontal()
                             .reverse()
                             .disabled(self.disabled),
@@ -274,6 +288,7 @@ impl Render for SliderStory {
                     .v_flex()
                     .child(
                         Slider::new(&self.slider4)
+                            .aria_label("Angle range")
                             .vertical()
                             .h(px(200.))
                             .rounded(px(2.))
@@ -302,12 +317,15 @@ impl Render for SliderStory {
                     .justify_around()
                     .child(
                         v_flex()
-                            .h_32()
+                            // The vertical Slider has a 160 px preset minimum. Reserve
+                            // separate space for its label and value below the control.
+                            .h_56()
                             .gap_3()
                             .items_center()
                             .justify_center()
                             .child(
                                 Slider::new(&self.slider_hsl[0])
+                                    .aria_label("Hue")
                                     .vertical()
                                     .disabled(self.disabled),
                             )
@@ -320,12 +338,13 @@ impl Render for SliderStory {
                     )
                     .child(
                         v_flex()
-                            .h_32()
+                            .h_56()
                             .gap_3()
                             .items_center()
                             .justify_center()
                             .child(
                                 Slider::new(&self.slider_hsl[1])
+                                    .aria_label("Saturation")
                                     .vertical()
                                     .disabled(self.disabled),
                             )
@@ -338,12 +357,13 @@ impl Render for SliderStory {
                     )
                     .child(
                         v_flex()
-                            .h_32()
+                            .h_56()
                             .gap_3()
                             .items_center()
                             .justify_center()
                             .child(
                                 Slider::new(&self.slider_hsl[2])
+                                    .aria_label("Lightness")
                                     .vertical()
                                     .disabled(self.disabled),
                             )
@@ -356,12 +376,13 @@ impl Render for SliderStory {
                     )
                     .child(
                         v_flex()
-                            .h_32()
+                            .h_56()
                             .gap_3()
                             .items_center()
                             .justify_center()
                             .child(
                                 Slider::new(&self.slider_hsl[3])
+                                    .aria_label("Alpha")
                                     .vertical()
                                     .disabled(self.disabled),
                             )
@@ -379,6 +400,7 @@ impl Render for SliderStory {
                     .v_flex()
                     .child(
                         Slider::new(&self.slider_logarithmic)
+                            .aria_label("Playback speed")
                             .horizontal()
                             .disabled(self.disabled),
                     )

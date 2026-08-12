@@ -53,6 +53,7 @@ impl MyView {
                     this.current_value = value.start();
                     cx.notify();
                 }
+                SliderEvent::Release(_) => {}
             }
         });
 
@@ -85,6 +86,23 @@ let range_slider = cx.new(|_| {
 });
 
 Slider::new(&range_slider)
+```
+
+区间 Slider 的两个 Thumb 可以分别获得焦点，并向辅助技术暴露各自的当前值和允许范围。
+
+### 键盘与无障碍
+
+- `ArrowLeft` / `ArrowDown`：将当前 Thumb 减少一个步进值。
+- `ArrowRight` / `ArrowUp`：将当前 Thumb 增加一个步进值。
+- `Home` / `End`：将当前 Thumb 移动到允许的最小值或最大值。
+- 区间 Slider 提供两个 Tab 停靠点，分别对应两个 Thumb。
+
+当周围内容无法准确描述控件用途时，应提供业务含义明确的无障碍名称：
+
+```rust
+Slider::new(&slider_state)
+    .aria_label("播放音量")
+    .aria_description("调整预览音量")
 ```
 
 ### 纵向 Slider
@@ -197,16 +215,19 @@ let range_value: SliderValue = (10.0..90.0).into();
 | 事件 | 说明 |
 | --- | --- |
 | `Change(SliderValue)` | 滑块值变化过程中持续触发 |
-| `Release(SliderValue)` | 拖拽结束（松开鼠标）时触发一次 |
+| `Release(SliderValue)` | 指针、键盘或辅助功能操作提交数值时触发一次 |
 
 ### 样式
 
 Slider 实现了 `Styled` trait，支持：
 
-- 轨道和滑块背景色
-- 滑块文本颜色
+- 使用背景色设置已选 Range，未选 Track 使用其低透明度表面
+- 使用文本颜色设置 Thumb 表面色
 - 圆角
 - 尺寸定制
+
+Track 粗细、Thumb 几何、阴影、点击热区和焦点环动效均由当前语义 Style Preset 解析。
+Vega 是默认视觉基准，Nova 与 Maia 保留各自固定的密度和动效差异。
 
 ## 示例
 

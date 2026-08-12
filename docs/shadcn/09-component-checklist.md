@@ -48,7 +48,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Calendar (`b41326e4`)
 - [x] Range Calendar (`b41326e4`)
 - [ ] DatePicker
-- [ ] Slider
+- [x] Slider
 
 ## P2: display and data components
 

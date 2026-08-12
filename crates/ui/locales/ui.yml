@@ -453,6 +453,19 @@ Settings:
     zh-HK: 重置全部
     zh-TW: 全部重設
     it: Resetta Tutto
+Slider:
+  label:
+    en: Slider
+    zh-CN: 滑块
+    zh-HK: 滑桿
+  start:
+    en: Start value
+    zh-CN: 起始值
+    zh-HK: 起始值
+  end:
+    en: End value
+    zh-CN: 结束值
+    zh-HK: 結束值
 Pagination:
   previous:
     en: Previous
