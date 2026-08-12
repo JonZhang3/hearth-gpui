@@ -5,7 +5,7 @@ description: Pagination with page navigation, next and previous links.
 
 # Pagination
 
-The [Pagination] component provides page navigation with next and previous links. It displays page numbers and allows users to navigate through multiple pages of content.
+The [Pagination] component provides centered page navigation with previous and next controls. Its visual hierarchy follows the shadcn Vega Pagination while preserving an interactive ellipsis menu as a GPUI desktop extension.
 
 ## Import
 
@@ -19,6 +19,7 @@ use gpui_component::pagination::Pagination;
 
 ```rust
 Pagination::new("my-pagination")
+    .aria_label("Search results pages")
     .current_page(5)
     .total_pages(10)
     .on_click(|page, _, cx| {
@@ -28,7 +29,7 @@ Pagination::new("my-pagination")
 
 ### With Visible Pages
 
-By default, the pagination shows up to 5 visible page buttons. You can customize this with `visible_pages()`:
+By default, Pagination shows up to five items, including the first and last pages and any ellipsis controls. Customize the maximum with `visible_pages()`; values below five are normalized to five.
 
 ```rust
 Pagination::new("my-pagination")
@@ -93,6 +94,16 @@ Pagination::new("my-pagination")
     .on_click(|_, _, _| {})
 ```
 
+### Accessibility and Keyboard Behavior
+
+- The root exposes a named navigation region; use `aria_label()` when multiple paginations are present.
+- The active page exposes `aria-current="page"`.
+- Previous and next controls provide localized action labels, including in compact icon-only mode.
+- Every actionable page remains reachable with Tab and activates with Enter or Space through the shared Button contract.
+- The ellipsis opens the hidden page range as a native popup menu. This is an intentional desktop extension over shadcn's decorative ellipsis.
+
+Pagination itself declares no independent motion. Hover, active, and focus-visible behavior comes from the aligned Button component.
+
 ### Handle Page Change Events
 
 The `on_click` callback receives the new page number when users click on page numbers, previous, or next buttons:
@@ -125,7 +136,8 @@ Implements [Sizable] trait:
 
 - `current_page(page: usize)` - Set the current page number (1-based). The value will be clamped between 1 and total_pages.
 - `total_pages(pages: usize)` - Set the total number of pages.
-- `visible_pages(max: usize)` - Set the maximum number of visible page buttons (default: 5).
+- `visible_pages(max: usize)` - Set the maximum number of visible page and ellipsis items (default and minimum: 5).
+- `aria_label(label)` - Set the accessible navigation-region name.
 - `compact()` - Enable compact style (only shows prev/next buttons with icons).
 - `disabled(bool)` - Set the disabled state.
 - `on_click(handler)` - Set the handler for page change events.

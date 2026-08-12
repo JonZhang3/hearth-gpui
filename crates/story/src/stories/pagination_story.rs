@@ -15,6 +15,7 @@ pub struct PaginationStory {
     basic_page: usize,
     many_pages_page: usize,
     compact_page: usize,
+    boundary_page: usize,
     focus_handle: FocusHandle,
     size: Size,
 }
@@ -39,6 +40,7 @@ impl PaginationStory {
             basic_page: 5,
             many_pages_page: 1,
             compact_page: 3,
+            boundary_page: 10,
             focus_handle: cx.focus_handle(),
             size: Size::default(),
         })
@@ -144,6 +146,23 @@ impl Render for PaginationStory {
                             move |page, _, cx| {
                                 entity.update(cx, |this, cx| {
                                     this.compact_page = *page;
+                                    cx.notify();
+                                });
+                            }
+                        }),
+                ),
+            )
+            .child(
+                section("Boundary State").child(
+                    Pagination::new("boundary-pagination")
+                        .current_page(self.boundary_page)
+                        .total_pages(10)
+                        .with_size(self.size)
+                        .on_click({
+                            let entity = entity.clone();
+                            move |page, _, cx| {
+                                entity.update(cx, |this, cx| {
+                                    this.boundary_page = *page;
                                     cx.notify();
                                 });
                             }

@@ -89,7 +89,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 ### Navigation
 
-- [ ] Pagination
+- [x] Pagination
 - [ ] Stepper
 
 ### Scrolling

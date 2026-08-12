@@ -467,13 +467,33 @@ Slider:
     zh-CN: 结束值
     zh-HK: 結束值
 Pagination:
+  label:
+    en: Pagination
+    zh-CN: 分页导航
+    zh-HK: 分頁導覽
+    zh-TW: 分頁導覽
   previous:
     en: Previous
     zh-CN: 上一页
     zh-HK: 上一頁
     zh-TW: 上一頁
+  previous_aria:
+    en: Go to previous page
+    zh-CN: 前往上一页
+    zh-HK: 前往上一頁
+    zh-TW: 前往上一頁
   next:
     en: Next
     zh-CN: 下一页
     zh-HK: 下一頁
     zh-TW: 下一頁
+  next_aria:
+    en: Go to next page
+    zh-CN: 前往下一页
+    zh-HK: 前往下一頁
+    zh-TW: 前往下一頁
+  more_pages:
+    en: More pages
+    zh-CN: 更多页码
+    zh-HK: 更多頁碼
+    zh-TW: 更多頁碼
