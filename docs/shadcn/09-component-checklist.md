@@ -85,7 +85,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] GroupBox
 - [x] Settings
 - [x] Separator
-- [ ] Resizable
+- [x] Resizable
 
 ### Navigation
 
@@ -94,9 +94,9 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 ### Scrolling
 
-- [ ] Scrollable
-- [ ] Scrollbar
-- [ ] VirtualList
+- [x] Scrollable
+- [x] Scrollbar
+- [x] VirtualList
 
 ### Pickers
 
