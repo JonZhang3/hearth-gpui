@@ -114,6 +114,21 @@ Do not add a Dialog- or Sheet-only framebuffer path. Revisit this with the share
 
 Acceptance requires Vega and Nova blur parity without changing Maia's stronger overlay, no blur leakage outside the overlay bounds, correct nested modal composition, and no material regression to overlay frame time or batching.
 
+## Dialog paint-only scale parity
+
+**Status:** Renderer support deferred; opacity fallback implemented
+
+The pinned Vega Dialog content uses a 100 ms combined fade and `zoom-in-95`/`zoom-out-95`
+transition. Standard Dialog currently reproduces only the 100 ms fade, with stable final geometry
+and no vertical movement. The existing overlay animation remains independent.
+
+GPUI still has no paint-only transform for an arbitrary element subtree. Do not approximate the
+zoom by interpolating width or height because that produces one-axis distortion, layout reflow,
+text wrapping, and clipping. Exact parity requires a renderer-level subtree transform with stable
+layout, transformed clipping and hit testing, accessibility bounds, reduced-motion behavior, and
+equivalent Metal, WGPU, Direct3D, Web, and headless output. Add the 95% two-axis zoom when that
+primitive becomes available.
+
 ## Rounded overflow masks
 
 **Status:** Renderer support deferred; Card workaround implemented

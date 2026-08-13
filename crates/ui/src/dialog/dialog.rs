@@ -557,12 +557,21 @@ impl RenderOnce for Dialog {
         }
         let motion = cx.theme().style.motion;
         let elevation_enabled = cx.theme().style.elevation.enabled;
-        let animation = Animation::new(if is_alert {
+        let overlay_animation = Animation::new(if is_alert {
             motion.fast()
         } else {
             motion.emphasis()
         })
         .with_easing(move |delta| {
+            if closing {
+                motion.exit_easing.sample(delta)
+            } else {
+                motion.enter_easing.sample(delta)
+            }
+        });
+        // shadcn Dialog content uses a 100 ms zoom transition. Keep this
+        // independent from the existing overlay timing.
+        let content_animation = Animation::new(motion.fast()).with_easing(move |delta| {
             if closing {
                 motion.exit_easing.sample(delta)
             } else {
@@ -766,21 +775,22 @@ impl RenderOnce for Dialog {
             })
             .with_animation(
                 ElementId::NamedInteger("dialog-motion".into(), closing as u64),
-                animation.clone(),
+                content_animation,
                 move |this, delta| {
                     let delta = if closing { 1.0 - delta } else { delta };
-                    // This is equivalent to `shadow_xl` with an extra opacity.
+                    // This is equivalent to `shadow_xl`. Standard Dialog keeps its
+                    // final geometry stable and animates only content opacity.
                     let shadow = (elevation_enabled && !is_alert).then(|| {
                         vec![
                             BoxShadow {
-                                color: hsla(0., 0., 0., 0.1 * delta),
+                                color: hsla(0., 0., 0., 0.1),
                                 offset: point(px(0.), px(20.)),
                                 blur_radius: px(25.),
                                 spread_radius: px(-5.),
                                 inset: false,
                             },
                             BoxShadow {
-                                color: hsla(0., 0., 0., 0.1 * delta),
+                                color: hsla(0., 0., 0., 0.1),
                                 offset: point(px(0.), px(8.)),
                                 blur_radius: px(10.),
                                 spread_radius: px(-6.),
@@ -794,15 +804,18 @@ impl RenderOnce for Dialog {
                         // modal motion never reflows or clips semantic content.
                         this.opacity(delta)
                     } else {
-                        this.top(y * delta)
+                        this.opacity(delta)
+                            .left(x)
+                            .top(y)
+                            .w(width)
                             .when_some(shadow, |this, shadow| this.shadow(shadow))
                     }
                 },
             )
             .selection_scope(SelectionScope::Dialog(layer_ix));
 
-        // AlertDialog keeps backdrop and content as siblings so their opacity
-        // animations remain independent instead of multiplying through nesting.
+        // Backdrop and content remain siblings so overlay opacity never fades the
+        // Dialog content. This is required for scale-only content motion.
         let dialog_layer = if is_alert {
             div()
                 .id(("alert-dialog-layer", layer_ix))
@@ -824,7 +837,7 @@ impl RenderOnce for Dialog {
                                 "alert-dialog-overlay-motion".into(),
                                 closing as u64,
                             ),
-                            animation,
+                            overlay_animation,
                             move |this, delta| {
                                 this.opacity(if closing { 1.0 - delta } else { delta })
                             },
@@ -833,14 +846,26 @@ impl RenderOnce for Dialog {
                 .child(content)
                 .into_any_element()
         } else {
-            backdrop
-                .id("dialog")
-                .child(content)
-                .with_animation(
-                    ElementId::NamedInteger("dialog-overlay".into(), closing as u64),
-                    animation,
-                    move |this, delta| this.opacity(if closing { 1.0 - delta } else { delta }),
+            div()
+                .id(("dialog-layer", layer_ix))
+                .relative()
+                .w(view_size.width)
+                .h(view_size.height)
+                .child(
+                    backdrop
+                        .id(("dialog-backdrop", layer_ix))
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .with_animation(
+                            ElementId::NamedInteger("dialog-overlay".into(), closing as u64),
+                            overlay_animation,
+                            move |this, delta| {
+                                this.opacity(if closing { 1.0 - delta } else { delta })
+                            },
+                        ),
                 )
+                .child(content)
                 .into_any_element()
         };
 

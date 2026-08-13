@@ -18,6 +18,7 @@ collapsed: false
 - [Card](card) - Structured surfaces for related content and actions
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content
+- [Command](command) - Searchable command menus and palettes
 - [DropdownButton](dropdown_button) - Button with dropdown menu
 - [Empty](empty) - Empty and no-result states
 - [Icon](icon) - Icon display component

@@ -124,7 +124,7 @@ GPUI-native optimization batch is completed.
 - [ ] Attachment
 - [ ] Bubble
 - [ ] Carousel
-- [ ] Command as a standalone public component
+- [x] Command as a standalone public component
 - [ ] Direction provider
 - [ ] Drawer distinct from Sheet
 - [x] Empty

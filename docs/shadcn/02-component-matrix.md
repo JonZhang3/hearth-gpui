@@ -88,6 +88,7 @@ Equivalent concepts use different names. They do not require duplicate component
 | `field` | `form::field` |
 | `input-group` | `InputGroup`, with typed `Input` and composable addon slots |
 | `aspect-ratio` | `AspectRatio`, backed by GPUI/Taffy native ratio layout |
+| `command` | `Command` and `CommandDialog`, backed by GPUI List virtualization and input state |
 
 ## Backlog, not part of alignment
 
@@ -96,7 +97,6 @@ The following shadcn components have no necessary one-to-one existing target. Ad
 - Attachment
 - Bubble
 - Carousel
-- Command as a standalone public component
 - Direction provider
 - Drawer distinct from Sheet
 - Empty

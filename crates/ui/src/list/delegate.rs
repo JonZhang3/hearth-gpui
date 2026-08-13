@@ -47,6 +47,11 @@ pub trait ListDelegate: Sized + 'static {
         true
     }
 
+    /// Returns an optional checked or pressed state for the option node.
+    fn item_toggled(&self, _ix: IndexPath, _cx: &App) -> Option<bool> {
+        None
+    }
+
     /// Render the item at the given index.
     ///
     /// NOTE: Every item should have same height.

@@ -12,15 +12,16 @@ use crate::{
 use crate::{Disableable, Icon, IndexPath, Selectable, Sizable, StyledExt};
 use crate::{VirtualListScrollHandle, list::ListDelegate, v_virtual_list};
 use gpui::{
-    App, AvailableSpace, ClickEvent, Context, DefiniteLength, EdgesRefinement, EventEmitter,
-    ListSizingBehavior, RenderOnce, Role, ScrollStrategy, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Subscription, px, size,
+    AnyElement, App, AvailableSpace, ClickEvent, Context, DefiniteLength, EdgesRefinement,
+    EventEmitter, ListSizingBehavior, RenderOnce, Role, ScrollStrategy, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Subscription, px, size,
 };
 use gpui::{
     AppContext, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     Length, MouseButton, ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder,
 };
 use rust_i18n::t;
+use std::rc::Rc;
 
 pub(crate) fn init(cx: &mut App) {
     let context: Option<&str> = Some("List");
@@ -52,7 +53,11 @@ struct ListOptions {
     max_height: Option<Length>,
     paddings: EdgesRefinement<DefiniteLength>,
     aria_label: SharedString,
+    search_renderer: Option<SearchRenderer>,
 }
+
+type SearchRenderer =
+    Rc<dyn Fn(Entity<InputState>, Option<SharedString>, &mut Window, &mut App) -> AnyElement>;
 
 impl Default for ListOptions {
     fn default() -> Self {
@@ -63,6 +68,7 @@ impl Default for ListOptions {
             search_placeholder: None,
             paddings: EdgesRefinement::default(),
             aria_label: t!("List.label").into(),
+            search_renderer: None,
         }
     }
 }
@@ -236,6 +242,11 @@ where
         self.query_input.update(cx, |input, cx| {
             input.set_value(query, window, cx);
         });
+    }
+
+    /// Returns the InputState used by the searchable list header.
+    pub(crate) fn query_input(&self) -> Entity<InputState> {
+        self.query_input.clone()
     }
 
     /// Set a specific list item for measurement.
@@ -607,6 +618,7 @@ where
     ) -> impl IntoElement {
         let selectable = self.selectable;
         let enabled = self.delegate.is_item_enabled(ix, cx);
+        let toggled = self.delegate.item_toggled(ix, cx);
         let selected = self.selected_index.map(|s| s.eq_row(ix)).unwrap_or(false);
         let mouse_right_clicked = self
             .mouse_right_clicked_index
@@ -636,6 +648,7 @@ where
             .aria_position_in_set(position)
             .aria_size_of_set(total_items)
             .when(selectable, |this| this.aria_selected(selected))
+            .when_some(toggled, |this, toggled| this.aria_toggled(toggled.into()))
             .when(selected, |this| this.aria_active_descendant())
             .w_full()
             .relative()
@@ -839,7 +852,10 @@ where
             .relative()
             .overflow_hidden()
             .when_some(query_input, |this, input| {
-                this.child(
+                let custom_search = self.options.search_renderer.clone();
+                this.child(if let Some(renderer) = custom_search {
+                    renderer(input, active_item_label.clone(), window, cx)
+                } else {
                     div()
                         .px(search_padding_x)
                         .border_b_1()
@@ -863,8 +879,9 @@ where
                                 .cleanable(true)
                                 .p_0()
                                 .appearance(false),
-                        ),
-                )
+                        )
+                        .into_any_element()
+                })
             })
             .when(!loading, |this| {
                 this.on_action(cx.listener(Self::on_action_cancel))
@@ -930,6 +947,16 @@ where
     /// Sets the accessible name announced for the list.
     pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.options.aria_label = label.into();
+        self
+    }
+
+    /// Replaces the built-in searchable header while retaining ListState behavior.
+    pub(crate) fn search_renderer(
+        mut self,
+        renderer: impl Fn(Entity<InputState>, Option<SharedString>, &mut Window, &mut App) -> AnyElement
+        + 'static,
+    ) -> Self {
+        self.options.search_renderer = Some(Rc::new(renderer));
         self
     }
 }

@@ -39,6 +39,7 @@ pub mod clipboard;
 pub mod collapsible;
 pub mod color_picker;
 pub mod combobox;
+pub mod command;
 pub mod description_list;
 pub mod dialog;
 pub mod dock;
