@@ -556,7 +556,7 @@ impl RenderOnce for Dialog {
             });
         }
         let motion = cx.theme().style.motion;
-        let elevation_enabled = cx.theme().style.elevation.enabled;
+        let content_enter_offset = cx.theme().style.overlays.side_offset;
         let overlay_animation = Animation::new(if is_alert {
             motion.fast()
         } else {
@@ -569,9 +569,14 @@ impl RenderOnce for Dialog {
                 motion.enter_easing.sample(delta)
             }
         });
-        // shadcn Dialog content uses a 100 ms zoom transition. Keep this
-        // independent from the existing overlay timing.
-        let content_animation = Animation::new(motion.fast()).with_easing(move |delta| {
+        // Keep standard Dialog content motion independent from the existing
+        // overlay timing. Geometry remains fixed while paint position settles.
+        let content_animation = Animation::new(if is_alert {
+            motion.fast()
+        } else {
+            motion.emphasis()
+        })
+        .with_easing(move |delta| {
             if closing {
                 motion.exit_easing.sample(delta)
             } else {
@@ -640,6 +645,15 @@ impl RenderOnce for Dialog {
                 .children(title)
                 .children(description)
         });
+        // shadcn uses `ring-1`, which paints outside the surface without
+        // consuming content geometry. A zero-blur spread shadow is the GPUI
+        // equivalent; caller-provided Styled shadows may still override it.
+        let surface_ring = BoxShadow::new(
+            px(0.),
+            px(0.),
+            cx.theme().foreground.opacity(modal_metrics.ring_opacity),
+        )
+        .spread_radius(px(1.));
 
         let content = v_flex()
             .id(layer_ix)
@@ -652,8 +666,7 @@ impl RenderOnce for Dialog {
             .focus_trap(format!("dialog-{}", layer_ix), &self.focus_handle)
             .bg(cx.theme().tokens.popover)
             .text_color(cx.theme().popover_foreground)
-            .border_1()
-            .border_color(cx.theme().foreground.opacity(modal_metrics.ring_opacity))
+            .shadow(vec![surface_ring])
             .rounded(cx.theme().style.radii.xl)
             .min_h_24()
             .pt(paddings.top)
@@ -778,44 +791,24 @@ impl RenderOnce for Dialog {
                 content_animation,
                 move |this, delta| {
                     let delta = if closing { 1.0 - delta } else { delta };
-                    // This is equivalent to `shadow_xl`. Standard Dialog keeps its
-                    // final geometry stable and animates only content opacity.
-                    let shadow = (elevation_enabled && !is_alert).then(|| {
-                        vec![
-                            BoxShadow {
-                                color: hsla(0., 0., 0., 0.1),
-                                offset: point(px(0.), px(20.)),
-                                blur_radius: px(25.),
-                                spread_radius: px(-5.),
-                                inset: false,
-                            },
-                            BoxShadow {
-                                color: hsla(0., 0., 0., 0.1),
-                                offset: point(px(0.), px(8.)),
-                                blur_radius: px(10.),
-                                spread_radius: px(-6.),
-                                inset: false,
-                            },
-                        ]
-                    });
                     if is_alert {
                         // GPUI does not expose a layout-independent transform for
                         // arbitrary element trees. Keep the final width stable so
                         // modal motion never reflows or clips semantic content.
                         this.opacity(delta)
                     } else {
-                        this.opacity(delta)
-                            .left(x)
-                            .top(y)
+                        // Translate the fixed-size surface as one layout box. Enter
+                        // settles upward into place; exit reverses the same path.
+                        this.left(x)
+                            .top(y + content_enter_offset * (1.0 - delta))
                             .w(width)
-                            .when_some(shadow, |this, shadow| this.shadow(shadow))
                     }
                 },
             )
             .selection_scope(SelectionScope::Dialog(layer_ix));
 
-        // Backdrop and content remain siblings so overlay opacity never fades the
-        // Dialog content. This is required for scale-only content motion.
+        // Backdrop and content remain siblings so overlay opacity never affects
+        // the independently translated Dialog content.
         let dialog_layer = if is_alert {
             div()
                 .id(("alert-dialog-layer", layer_ix))
