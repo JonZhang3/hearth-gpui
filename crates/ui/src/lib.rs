@@ -27,6 +27,7 @@ pub(crate) mod actions;
 pub mod accordion;
 pub mod alert;
 pub mod animation;
+pub mod aspect_ratio;
 pub mod avatar;
 pub mod badge;
 pub mod breadcrumb;

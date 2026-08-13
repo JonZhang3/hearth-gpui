@@ -120,7 +120,7 @@ GPUI-native optimization batch is completed.
 
 ## Backlog: shadcn components without a required GPUI equivalent
 
-- [ ] AspectRatio
+- [x] AspectRatio
 - [ ] Attachment
 - [ ] Bubble
 - [ ] Carousel

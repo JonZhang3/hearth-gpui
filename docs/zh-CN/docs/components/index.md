@@ -10,6 +10,7 @@ collapsed: false
 
 - [Accordion](accordion) - 折叠内容面板
 - [Alert](alert) - 多种变体的提示消息
+- [AspectRatio](aspect-ratio) - 保持固定宽高比的布局容器
 - [Avatar](avatar) - 用户头像与回退文本
 - [Badge](badge) - 内联标签与覆盖角标
 - [Breadcrumb](breadcrumb) - 层级导航路径

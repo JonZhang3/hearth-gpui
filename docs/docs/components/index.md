@@ -10,6 +10,7 @@ collapsed: false
 
 - [Accordion](accordion) - Collapsible content panels
 - [Alert](alert) - Alert messages with different variants
+- [AspectRatio](aspect-ratio) - Preserve a width-to-height ratio
 - [Avatar](avatar) - User avatars with fallback text
 - [Badge](badge) - Inline labels and overlay indicators
 - [Breadcrumb](breadcrumb) - Hierarchical navigation path

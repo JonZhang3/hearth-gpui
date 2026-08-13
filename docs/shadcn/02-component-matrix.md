@@ -87,12 +87,12 @@ Equivalent concepts use different names. They do not require duplicate component
 | `textarea` | Multiline `Input` or `TextArea` mode |
 | `field` | `form::field` |
 | `input-group` | `InputGroup`, with typed `Input` and composable addon slots |
+| `aspect-ratio` | `AspectRatio`, backed by GPUI/Taffy native ratio layout |
 
 ## Backlog, not part of alignment
 
 The following shadcn components have no necessary one-to-one existing target. Adding them requires a separate product case and API proposal:
 
-- AspectRatio
 - Attachment
 - Bubble
 - Carousel
