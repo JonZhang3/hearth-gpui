@@ -44,7 +44,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] Collapsible (`7a30099b`)
 - [x] Tabs and TabBar
 - [x] Sidebar
-- [ ] Form and Field
+- [x] Form and Field
 - [x] Calendar (`b41326e4`)
 - [x] Range Calendar (`b41326e4`)
 - [x] DatePicker

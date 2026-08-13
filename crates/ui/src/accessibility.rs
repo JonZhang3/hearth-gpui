@@ -10,6 +10,7 @@ pub(crate) struct AccessibilityStateElement<E> {
     invalid: bool,
     read_only: bool,
     disabled: bool,
+    required: bool,
     current: Option<accesskit::AriaCurrent>,
 }
 
@@ -37,7 +38,25 @@ pub(crate) fn accessibility_state_with_current(
         invalid,
         read_only,
         disabled,
+        required: false,
         current,
+    }
+}
+
+/// Applies validation states used by a composed form Field.
+pub(crate) fn accessibility_field_state(
+    element: impl IntoElement,
+    invalid: bool,
+    disabled: bool,
+    required: bool,
+) -> AccessibilityStateElement<impl Element> {
+    AccessibilityStateElement {
+        element: element.into_element(),
+        invalid,
+        read_only: false,
+        disabled,
+        required,
+        current: None,
     }
 }
 
@@ -50,6 +69,7 @@ pub(crate) fn accessibility_current_page(
         invalid: false,
         read_only: false,
         disabled: true,
+        required: false,
         current: Some(accesskit::AriaCurrent::Page),
     }
 }
@@ -133,6 +153,9 @@ impl<E: Element> Element for AccessibilityStateElement<E> {
         if self.disabled {
             node.set_disabled();
         }
+        if self.required {
+            node.set_required();
+        }
         if let Some(current) = self.current {
             node.set_aria_current(current);
         }
@@ -167,6 +190,18 @@ mod tests {
         assert_eq!(node.invalid(), Some(accesskit::Invalid::True));
         assert!(node.is_read_only());
         assert!(node.is_disabled());
+        assert!(!node.is_required());
+    }
+
+    #[test]
+    fn writes_required_field_state() {
+        let element = div().id("required-field").role(Role::Group);
+        let wrapped = accessibility_field_state(element, false, false, true);
+        let mut node = accesskit::Node::new(Role::Group);
+
+        wrapped.write_a11y_info(&mut node);
+
+        assert!(node.is_required());
     }
 
     #[test]

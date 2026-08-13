@@ -19,7 +19,7 @@ use gpui_component::{
     combobox::{Combobox, ComboboxState},
     date_picker::{DatePicker, DatePickerState},
     dialog::{AlertDialogAction, AlertDialogCancel},
-    form::field,
+    form::{FieldBody, FieldContent, FieldDescription, FieldError, FieldLabel, field},
     group_box::GroupBox,
     h_flex,
     hover_card::HoverCard,
@@ -402,12 +402,37 @@ impl Render for ShadcnAlignmentStory {
             )
             .child(
                 section("Form field contract").max_w(px(520.)).child(
-                    field()
-                        .label("Email")
-                        .description("Used for account notifications.")
+                    field("alignment-form-email")
+                        .aria_label("Email")
+                        .aria_description("Enter a valid email address.")
                         .required(true)
-                        .error("Enter a valid email address.")
-                        .child(Input::new(&self.form_input).invalid(true)),
+                        .invalid(true)
+                        .content({
+                            let form_input = self.form_input.clone();
+                            move |state| {
+                                FieldBody::new()
+                                    .child(
+                                        FieldLabel::new("Email")
+                                            .disabled(state.disabled())
+                                            .required(state.required()),
+                                    )
+                                    .child(
+                                        FieldContent::new()
+                                            .child(
+                                                Input::new(&form_input)
+                                                    .disabled(state.disabled())
+                                                    .invalid(state.invalid()),
+                                            )
+                                            .child(FieldDescription::new(
+                                                "Used for account notifications.",
+                                            ))
+                                            .child(FieldError::new(
+                                                "alignment-form-error",
+                                                "Enter a valid email address.",
+                                            )),
+                                    )
+                            }
+                        }),
                 ),
             )
             .child(

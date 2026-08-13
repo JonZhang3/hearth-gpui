@@ -7,10 +7,10 @@ use gpui::{
     Styled as _, Window, div, px, size,
 };
 use gpui_component::{
-    ActiveTheme as _, StyledExt as _, Theme, ThemeMode,
+    ActiveTheme as _, Disableable as _, StyledExt as _, Theme, ThemeMode,
     calendar::{Calendar, CalendarState},
     date_picker::{DatePicker, DatePickerState},
-    form::field,
+    form::{FieldBody, FieldContent, FieldDescription, FieldError, FieldLabel, field},
     h_flex,
     input::{Input, InputState},
     v_flex,
@@ -98,12 +98,38 @@ impl Render for LocaleCaptureRoot {
                             .gap_4()
                             .child(DatePicker::new(&self.date_picker).cleanable(true).w_full())
                             .child(
-                                field()
-                                    .label(self.copy.field_label)
-                                    .description(self.copy.description)
+                                field("locale-invalid-email")
+                                    .aria_label(self.copy.field_label)
+                                    .aria_description(self.copy.error)
                                     .required(true)
-                                    .error(self.copy.error)
-                                    .child(Input::new(&self.input).invalid(true)),
+                                    .invalid(true)
+                                    .content({
+                                        let input = self.input.clone();
+                                        let field_label = self.copy.field_label;
+                                        let description = self.copy.description;
+                                        let error = self.copy.error;
+                                        move |state| {
+                                            FieldBody::new()
+                                                .child(
+                                                    FieldLabel::new(field_label)
+                                                        .disabled(state.disabled())
+                                                        .required(state.required()),
+                                                )
+                                                .child(
+                                                    FieldContent::new()
+                                                        .child(
+                                                            Input::new(&input)
+                                                                .disabled(state.disabled())
+                                                                .invalid(state.invalid()),
+                                                        )
+                                                        .child(FieldDescription::new(description))
+                                                        .child(FieldError::new(
+                                                            "locale-invalid-email-error",
+                                                            error,
+                                                        )),
+                                                )
+                                        }
+                                    }),
                             ),
                     ),
             )
