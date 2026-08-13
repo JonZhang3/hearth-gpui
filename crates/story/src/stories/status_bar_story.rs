@@ -1,6 +1,6 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window,
+    Styled, Window, px,
 };
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _, button::Button,
@@ -70,7 +70,7 @@ impl Render for StatusBarStory {
                                         window.push_notification("Switch branch", cx);
                                     }),
                             )
-                            .left(Separator::vertical().h_3())
+                            .left(Separator::vertical())
                             .left(
                                 h_flex()
                                     .items_center()
@@ -108,7 +108,7 @@ impl Render for StatusBarStory {
                                         window.push_notification("Go to Line/Column", cx);
                                     }),
                             )
-                            .right(Separator::vertical().h_3())
+                            .right(Separator::vertical())
                             .right(
                                 Button::new("encoding")
                                     .ghost()
@@ -187,6 +187,17 @@ impl Render for StatusBarStory {
                                 .right("Right"),
                         )
                         .child(StatusBar::new().left("Left").right("Right")),
+                ),
+            )
+            .child(
+                section("Narrow layout").child(
+                    v_flex().w_full().max_w(px(420.)).child(
+                        StatusBar::new()
+                            .left("main")
+                            .child("A deliberately long center status that yields to pinned items")
+                            .right("UTF-8")
+                            .right("Ln 12, Col 34"),
+                    ),
                 ),
             )
     }

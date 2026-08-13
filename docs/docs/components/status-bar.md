@@ -81,6 +81,10 @@ StatusBar::new()
     .left("Ready")
 ```
 
+### Style Presets
+
+StatusBar derives its minimum height, padding, and item spacing from the active Style Preset. Nova is compact, Vega uses the standard density, and Maia provides more breathing room. Color Theme and Style Preset remain independent: the Theme owns the surface colors, while the Style Preset owns geometry.
+
 ## API Reference
 
 ### StatusBar
@@ -97,5 +101,6 @@ Each region method takes `impl IntoElement`. `StatusBar` also implements `Styled
 ## Notes
 
 - The center (via `child` / `children`) is centered with both `left` and `right`, end-aligned with only `left`, and start-aligned otherwise (only `right`, or neither — like a plain container).
+- In constrained widths, pinned left and right regions remain stable while the flexible center region yields and clips overflowing content.
 - Use a plain string (or any non-interactive element) for read-only items to avoid the button hover effect; use a ghost xsmall `Button` only for clickable items.
-- Colors come from the `status_bar` (background) and `status_bar_border` theme tokens, which fall back to `background` / `border`.
+- Colors come from the `status_bar` (background) and `status_bar_border` theme tokens, which fall back to `title_bar` / `title_bar_border`.

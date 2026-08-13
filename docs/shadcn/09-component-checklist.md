@@ -113,7 +113,7 @@ GPUI-native optimization batch is completed.
 - [x] Markdown and HTML rendering
 - [x] Chart and Plot
 - [x] TitleBar
-- [ ] StatusBar
+- [x] StatusBar
 - [x] WindowBorder
 - [x] NativeMenu
 - [x] FocusTrap and Root infrastructure

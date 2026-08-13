@@ -81,6 +81,10 @@ StatusBar::new()
     .left("Ready")
 ```
 
+### Style Preset
+
+StatusBar 根据当前 Style Preset 解析最小高度、内边距和项目间距。Nova 使用紧凑密度,Vega 使用标准密度,Maia 提供更宽松的空间。Color Theme 与 Style Preset 相互独立:Theme 负责表面颜色,Style Preset 负责几何尺寸。
+
 ## API 参考
 
 ### StatusBar
@@ -97,5 +101,6 @@ StatusBar::new()
 ## 注意事项
 
 - 中间区域(通过 `child` / `children`)在同时有 `left` 和 `right` 时居中,只有 `left` 时右对齐,否则左对齐(只有 `right`,或两者都没有 —— 像普通容器一样)。
+- 宽度受限时,固定在左右两端的区域保持稳定,可伸缩的中间区域优先收缩并裁切溢出内容。
 - 只读项请用纯字符串(或任意不可交互元素),以避免按钮的 hover 效果;只有可点击项才用 ghost、xsmall 的 `Button`。
-- 颜色取自 `status_bar`(背景)和 `status_bar_border`(边框)主题变量,缺省回退到 `background` / `border`。
+- 颜色取自 `status_bar`(背景)和 `status_bar_border`(边框)主题变量,缺省回退到 `title_bar` / `title_bar_border`。
