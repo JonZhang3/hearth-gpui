@@ -1,14 +1,17 @@
+use std::sync::{Arc, LazyLock};
+
 use gpui::{
-    Anchor, App, AppContext, Context, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    Hsla, InteractiveElement as _, IntoElement, KeyBinding, ParentElement, Render, RenderOnce,
-    Role, SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Subscription, TextAlign, Window, div, hsla, linear_color_stop, linear_gradient,
-    prelude::FluentBuilder as _,
+    Anchor, App, AppContext, Context, Corners, Div, ElementId, Entity, EventEmitter, FocusHandle,
+    Focusable, Hsla, InteractiveElement as _, IntoElement, KeyBinding, ParentElement, Pixels,
+    Render, RenderOnce, Role, SharedString, Stateful, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Subscription, TextAlign, Window, canvas, div, fill, hsla,
+    linear_color_stop, linear_gradient, point, prelude::FluentBuilder as _, px,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, Selectable, Sizable, Size, StyleSized,
+    ActiveTheme as _, Colorize as _, Density, Icon, Selectable, Sizable, Size, StylePreset,
+    StyleSized, StyledExt as _,
     actions::Confirm,
     h_flex,
     input::{Input, InputEvent, InputState},
@@ -21,6 +24,48 @@ use crate::{
 };
 
 const CONTEXT: &'static str = "ColorPicker";
+
+/// Component-local geometry derived from semantic Style Preset values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ColorPickerMetrics {
+    section_gap: Pixels,
+    palette_gap: Pixels,
+    swatch_size: Pixels,
+    swatch_radius: Pixels,
+    preview_size: Pixels,
+    slider_row_height: Pixels,
+    slider_track_height: Pixels,
+    label_width: Pixels,
+}
+
+impl ColorPickerMetrics {
+    /// Resolves ColorPicker geometry without branching on a concrete preset ID.
+    fn resolve(style: &StylePreset) -> Self {
+        let (section_gap, palette_gap, swatch_size, preview_size, label_width) = match style.density
+        {
+            Density::Compact => (px(8.), px(3.), px(18.), px(18.), px(56.)),
+            Density::Standard => (px(12.), px(4.), px(20.), px(20.), px(64.)),
+            Density::Comfortable => (px(16.), px(4.), px(20.), px(24.), px(72.)),
+        };
+
+        Self {
+            section_gap,
+            palette_gap,
+            swatch_size,
+            swatch_radius: style.radii.sm,
+            preview_size,
+            slider_row_height: style.controls.sm.height,
+            slider_track_height: style.controls.sm.gap.max(px(8.)),
+            label_width,
+        }
+    }
+}
+
+/// Derives stable child identities without flattening the parent ColorPicker ID.
+fn color_picker_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
+}
+
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new(
         "enter",
@@ -35,7 +80,7 @@ pub enum ColorPickerEvent {
     Change(Option<Hsla>),
 }
 
-fn color_palettes() -> Vec<Vec<Hsla>> {
+fn color_palettes() -> &'static [Vec<Hsla>] {
     use crate::theme::DEFAULT_COLORS;
     use itertools::Itertools as _;
 
@@ -50,17 +95,20 @@ fn color_palettes() -> Vec<Vec<Hsla>> {
         };
     }
 
-    vec![
-        c!(stone),
-        c!(red),
-        c!(orange),
-        c!(yellow),
-        c!(green),
-        c!(cyan),
-        c!(blue),
-        c!(purple),
-        c!(pink),
-    ]
+    static PALETTES: LazyLock<Vec<Vec<Hsla>>> = LazyLock::new(|| {
+        vec![
+            c!(stone),
+            c!(red),
+            c!(orange),
+            c!(yellow),
+            c!(green),
+            c!(cyan),
+            c!(blue),
+            c!(purple),
+            c!(pink),
+        ]
+    });
+    PALETTES.as_slice()
 }
 
 #[derive(Clone)]
@@ -164,8 +212,11 @@ impl ColorPickerState {
                         }
                         let value = state.read(cx).value();
                         if let Ok(color) = Hsla::parse_hex(value.as_str()) {
+                            this.value = Some(color);
                             this.hovered_color = Some(color);
                             this.sync_sliders(Some(color), window, cx);
+                            cx.emit(ColorPickerEvent::Change(Some(color)));
+                            cx.notify();
                         }
                     }
                     InputEvent::PressEnter { .. } => {
@@ -408,35 +459,41 @@ impl ColorPicker {
 
     fn render_item(
         &self,
+        id: ElementId,
         color: Hsla,
-        clickable: bool,
+        metrics: ColorPickerMetrics,
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> Stateful<Div> {
         let state = self.state.clone();
         div()
-            .id(SharedString::from(format!("color-{}", color.to_hex())))
-            .h_5()
-            .w_5()
+            .id(id)
+            .role(Role::Button)
+            .aria_label(color.to_hex())
+            .size(metrics.swatch_size)
+            .rounded(metrics.swatch_radius)
             .bg(color)
             .border_1()
-            .border_color(color.darken(0.1))
-            .when(clickable, |this| {
-                this.hover(|this| this.border_color(color.darken(0.3)).bg(color.lighten(0.1)))
-                    .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
-                    .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
-                        state.hovered_color = Some(color);
-                        state.state.update(cx, |input, cx| {
-                            input.set_value(color.to_hex(), window, cx);
-                        });
-                        cx.notify();
-                    }))
-                    .on_click(window.listener_for(&state, move |state, _, window, cx| {
-                        state.open = false;
-                        state.update_value(Some(color), true, window, cx);
-                        cx.notify();
-                    }))
-            })
+            .border_color(cx.theme().foreground.opacity(0.18))
+            .hover(|this| this.border_color(cx.theme().foreground.opacity(0.5)))
+            .active(|this| this.border_color(cx.theme().foreground.opacity(0.75)))
+            .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
+                let hex = color.to_hex();
+                state.hovered_color = Some(color);
+                if state.state.read(cx).value() != hex {
+                    // Programmatic preview updates must not be treated as user input.
+                    state.suppress_input_change = true;
+                    state.state.update(cx, |input, cx| {
+                        input.set_value(hex, window, cx);
+                    });
+                }
+                cx.notify();
+            }))
+            .on_click(window.listener_for(&state, move |state, _, window, cx| {
+                state.open = false;
+                state.update_value(Some(color), true, window, cx);
+                cx.notify();
+            }))
     }
 
     fn render_colors(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
@@ -448,6 +505,7 @@ impl ColorPicker {
         });
 
         let active_tab = self.state.read(cx).active_tab;
+        let metrics = ColorPickerMetrics::resolve(&cx.theme().style);
 
         let (slider_color, hovered_color) = {
             let state = self.state.read(cx);
@@ -459,10 +517,9 @@ impl ColorPicker {
         };
 
         v_flex()
-            .p_0p5()
-            .gap_3()
+            .gap(metrics.section_gap)
             .child(
-                TabBar::new("mode")
+                TabBar::new(color_picker_child_id(&self.id, "mode"))
                     .segmented()
                     .selected_index(active_tab)
                     .on_click(
@@ -475,15 +532,17 @@ impl ColorPicker {
                     .child(Tab::new().flex_1().label(t!("ColorPicker.HSLA"))),
             )
             .child(match active_tab {
-                0 => self.render_palette_panel(window, cx).into_any_element(),
+                0 => self
+                    .render_palette_panel(metrics, window, cx)
+                    .into_any_element(),
                 _ => self
-                    .render_slider_tab_panel(slider_color, cx)
+                    .render_slider_tab_panel(slider_color, metrics, cx)
                     .into_any_element(),
             })
             .when_some(hovered_color, |this, hovered_color| {
                 this.child(Separator::horizontal()).child(
                     h_flex()
-                        .gap_2()
+                        .gap(metrics.palette_gap)
                         .items_center()
                         .child(
                             div()
@@ -491,15 +550,20 @@ impl ColorPicker {
                                 .flex_shrink_0()
                                 .border_1()
                                 .border_color(hovered_color.darken(0.2))
-                                .size_5()
-                                .rounded(cx.theme().style.radii.md),
+                                .size(metrics.preview_size)
+                                .rounded(metrics.swatch_radius),
                         )
-                        .child(Input::new(&self.state.read(cx).state).small().px_2p5()),
+                        .child(Input::new(&self.state.read(cx).state).small()),
                 )
             })
     }
 
-    fn render_palette_panel(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render_palette_panel(
+        &self,
+        metrics: ColorPickerMetrics,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> impl IntoElement {
         let featured_colors = self.featured_colors.clone().unwrap_or(vec![
             cx.theme().red,
             cx.theme().red_light,
@@ -516,30 +580,50 @@ impl ColorPicker {
         ]);
 
         v_flex()
-            .gap_3()
-            .child(
-                h_flex().gap_1().children(
-                    featured_colors
-                        .iter()
-                        .map(|color| self.render_item(*color, true, window, cx)),
-                ),
-            )
+            .gap(metrics.section_gap)
+            .child(h_flex().gap(metrics.palette_gap).children(
+                featured_colors.iter().enumerate().map(|(ix, color)| {
+                    self.render_item(
+                        color_picker_child_id(&self.id, format!("featured-{ix}")),
+                        *color,
+                        metrics,
+                        window,
+                        cx,
+                    )
+                }),
+            ))
             .child(Separator::horizontal())
             .child(
-                v_flex()
-                    .gap_1()
-                    .children(color_palettes().iter().map(|sub_colors| {
-                        h_flex().gap_1().children(
-                            sub_colors
-                                .iter()
-                                .rev()
-                                .map(|color| self.render_item(*color, true, window, cx)),
-                        )
-                    })),
+                v_flex().gap(metrics.palette_gap).children(
+                    color_palettes()
+                        .iter()
+                        .enumerate()
+                        .map(|(row, sub_colors)| {
+                            h_flex().gap(metrics.palette_gap).children(
+                                sub_colors.iter().rev().enumerate().map(|(column, color)| {
+                                    self.render_item(
+                                        color_picker_child_id(
+                                            &self.id,
+                                            format!("palette-{row}-{column}"),
+                                        ),
+                                        *color,
+                                        metrics,
+                                        window,
+                                        cx,
+                                    )
+                                }),
+                            )
+                        }),
+                ),
             )
     }
 
-    fn render_slider_tab_panel(&self, slider_color: Hsla, cx: &mut App) -> impl IntoElement {
+    fn render_slider_tab_panel(
+        &self,
+        slider_color: Hsla,
+        metrics: ColorPickerMetrics,
+        cx: &mut App,
+    ) -> impl IntoElement {
         let hsla_sliders = self.state.read(cx).hsla_sliders.clone();
         let steps = 96usize;
         let hue_colors = (0..steps)
@@ -562,14 +646,14 @@ impl ColorPicker {
         let label_color = cx.theme().foreground.opacity(0.7);
 
         v_flex()
-            .gap_2()
+            .gap(metrics.palette_gap)
             .child(
                 h_flex()
                     .gap_2()
                     .items_center()
                     .child(
                         div()
-                            .min_w_16()
+                            .w(metrics.label_width)
                             .text_xs()
                             .text_color(label_color)
                             .child(t!("ColorPicker.Hue")),
@@ -580,8 +664,8 @@ impl ColorPicker {
                             .flex()
                             .items_center()
                             .flex_1()
-                            .h_8()
-                            .child(self.render_slider_track(hue_colors, cx))
+                            .h(metrics.slider_row_height)
+                            .child(self.render_slider_track(hue_colors, metrics))
                             .child(
                                 Slider::new(&hsla_sliders.hue)
                                     .flex_1()
@@ -603,7 +687,7 @@ impl ColorPicker {
                     .items_center()
                     .child(
                         div()
-                            .min_w_16()
+                            .w(metrics.label_width)
                             .text_xs()
                             .text_color(label_color)
                             .child(t!("ColorPicker.Saturation")),
@@ -614,11 +698,11 @@ impl ColorPicker {
                             .flex()
                             .items_center()
                             .flex_1()
-                            .h_8()
+                            .h(metrics.slider_row_height)
                             .child(self.render_slider_track_gradient(
                                 saturation_start,
                                 saturation_end,
-                                cx,
+                                metrics,
                             ))
                             .child(
                                 Slider::new(&hsla_sliders.saturation)
@@ -641,7 +725,7 @@ impl ColorPicker {
                     .items_center()
                     .child(
                         div()
-                            .min_w_16()
+                            .w(metrics.label_width)
                             .text_xs()
                             .text_color(label_color)
                             .child(t!("ColorPicker.Lightness")),
@@ -652,8 +736,8 @@ impl ColorPicker {
                             .flex()
                             .items_center()
                             .flex_1()
-                            .h_8()
-                            .child(self.render_slider_track(lightness_colors, cx))
+                            .h(metrics.slider_row_height)
+                            .child(self.render_slider_track(lightness_colors, metrics))
                             .child(
                                 Slider::new(&hsla_sliders.lightness)
                                     .flex_1()
@@ -675,7 +759,7 @@ impl ColorPicker {
                     .items_center()
                     .child(
                         div()
-                            .min_w_16()
+                            .w(metrics.label_width)
                             .text_xs()
                             .text_color(label_color)
                             .child(t!("ColorPicker.Alpha")),
@@ -686,8 +770,12 @@ impl ColorPicker {
                             .flex()
                             .items_center()
                             .flex_1()
-                            .h_8()
-                            .child(self.render_slider_track_gradient(alpha_start, alpha_end, cx))
+                            .h(metrics.slider_row_height)
+                            .child(self.render_slider_track_gradient(
+                                alpha_start,
+                                alpha_end,
+                                metrics,
+                            ))
                             .child(
                                 Slider::new(&hsla_sliders.alpha)
                                     .flex_1()
@@ -705,26 +793,81 @@ impl ColorPicker {
             )
     }
 
-    fn render_slider_track(&self, colors: Vec<Hsla>, _: &App) -> impl IntoElement {
-        h_flex()
-            .absolute()
-            .left_0()
-            .right_0()
-            .h_2_5()
-            .overflow_hidden()
-            .children(
-                colors
-                    .into_iter()
-                    .map(|color| div().flex_1().h_full().bg(color)),
-            )
+    fn render_slider_track(
+        &self,
+        colors: Vec<Hsla>,
+        metrics: ColorPickerMetrics,
+    ) -> impl IntoElement {
+        let radius = metrics.swatch_radius;
+        canvas(
+            move |bounds, _, _| bounds,
+            move |_, bounds, window, _| {
+                let color_count = colors.len();
+                if color_count == 0 {
+                    return;
+                }
+
+                let radius = radius
+                    .min(bounds.size.height / 2.)
+                    .min(bounds.size.width / 2.);
+                window.paint_quad(fill(bounds, colors[0]).corner_radii(Corners::all(radius)));
+
+                if color_count == 1 || radius >= bounds.size.width / 2. {
+                    return;
+                }
+
+                // Paint the right cap before the center so the center masks its
+                // square half while leaving a stable rounded outer edge.
+                let right_cap_bounds = gpui::Bounds::from_corners(
+                    point(bounds.right() - radius * 2., bounds.top()),
+                    point(bounds.right(), bounds.bottom()),
+                );
+                window.paint_quad(
+                    fill(right_cap_bounds, colors[color_count - 1]).corner_radii(Corners {
+                        top_left: px(0.),
+                        top_right: radius,
+                        bottom_left: px(0.),
+                        bottom_right: radius,
+                    }),
+                );
+
+                let center_left = bounds.left() + radius;
+                let center_right = bounds.right() - radius;
+                let segment_width = (center_right - center_left) / color_count as f32;
+                for (ix, color) in colors.iter().enumerate() {
+                    let is_last = ix + 1 == color_count;
+                    let left = center_left + segment_width * ix as f32;
+                    let right = if is_last {
+                        center_right
+                    } else {
+                        center_left + segment_width * (ix + 1) as f32
+                    };
+                    let segment_bounds = gpui::Bounds::from_corners(
+                        point(left, bounds.top()),
+                        point(right, bounds.bottom()),
+                    );
+                    window.paint_quad(fill(segment_bounds, *color));
+                }
+            },
+        )
+        .absolute()
+        .left_0()
+        .right_0()
+        .h(metrics.slider_track_height)
     }
 
-    fn render_slider_track_gradient(&self, start: Hsla, end: Hsla, _: &App) -> impl IntoElement {
+    fn render_slider_track_gradient(
+        &self,
+        start: Hsla,
+        end: Hsla,
+        metrics: ColorPickerMetrics,
+    ) -> impl IntoElement {
         div()
             .absolute()
             .left_0()
             .right_0()
-            .h_2_5()
+            .h(metrics.slider_track_height)
+            .rounded(metrics.swatch_radius)
             .overflow_hidden()
             .bg(linear_gradient(
                 90.,
@@ -755,6 +898,8 @@ impl Styled for ColorPicker {
 
 impl RenderOnce for ColorPicker {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let popover_id = color_picker_child_id(&self.id, "popover");
+        let trigger_id = color_picker_child_id(&self.id, "trigger");
         let state = self.state.read(cx);
         let display_title: SharedString = if let Some(value) = state.value {
             value.to_hex()
@@ -767,13 +912,15 @@ impl RenderOnce for ColorPicker {
 
         div()
             .id(self.id.clone())
+            .refine_style(&self.style)
             .key_context(CONTEXT)
             .track_focus(&focus_handle)
             .on_action(window.listener_for(&self.state, ColorPickerState::on_confirm))
             .child(
-                Popover::new("popover")
+                Popover::new(popover_id)
                     .open(state.open)
                     .w_72()
+                    .anchor(self.anchor)
                     .on_open_change(
                         window.listener_for(&self.state, |this, open: &bool, _, cx| {
                             this.open = *open;
@@ -781,7 +928,7 @@ impl RenderOnce for ColorPicker {
                         }),
                     )
                     .trigger(ColorPickerButton {
-                        id: "trigger".into(),
+                        id: trigger_id,
                         size: self.size,
                         label: self.label.clone(),
                         value: state.value,
@@ -839,20 +986,20 @@ impl Sizable for ColorPickerButton {
 impl RenderOnce for ColorPickerButton {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_icon = self.icon.is_some();
-        let tooltip_trigger_id = ElementId::NamedChild(
-            std::sync::Arc::new(self.id.clone()),
-            "tooltip-trigger".into(),
-        );
+        let metrics = cx.theme().style.controls.for_size(self.size);
+        let tooltip_trigger_id = color_picker_child_id(&self.id, "tooltip-trigger");
+        let square_id = color_picker_child_id(&self.id, "square");
         h_flex()
             .id(self.id)
             .role(Role::Button)
             .aria_expanded(self.expanded)
-            .gap_2()
+            .gap(metrics.gap)
+            .input_text_size(self.size)
             .children(self.icon)
             .when(!has_icon, |this| {
                 this.child(
                     div()
-                        .id("square")
+                        .id(square_id)
                         .bg(cx.theme().tokens.background)
                         .border_1()
                         .border_color(cx.theme().input)
@@ -877,5 +1024,39 @@ impl RenderOnce for ColorPickerButton {
                 )
             })
             .when_some(self.label, |this, label| this.child(label))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_follow_semantic_style_presets() {
+        let vega = ColorPickerMetrics::resolve(&StylePreset::vega());
+        let nova = ColorPickerMetrics::resolve(&StylePreset::nova());
+        let maia = ColorPickerMetrics::resolve(&StylePreset::maia());
+
+        assert_eq!(vega.swatch_radius, StylePreset::vega().radii.sm);
+        assert_eq!(nova.swatch_radius, StylePreset::nova().radii.sm);
+        assert_eq!(maia.swatch_radius, StylePreset::maia().radii.sm);
+        assert!(nova.section_gap < vega.section_gap);
+        assert!(maia.section_gap > vega.section_gap);
+    }
+
+    #[test]
+    fn palette_positions_keep_unique_structural_ids() {
+        let picker_id: ElementId = "picker".into();
+        let first = color_picker_child_id(&picker_id, "featured-0");
+        let duplicate_color = color_picker_child_id(&picker_id, "palette-2-5");
+        let other_picker = color_picker_child_id(&"other-picker".into(), "featured-0");
+
+        assert_ne!(first, duplicate_color);
+        assert_ne!(first, other_picker);
+    }
+
+    #[test]
+    fn palettes_are_cached_between_renders() {
+        assert!(std::ptr::eq(color_palettes(), color_palettes()));
     }
 }

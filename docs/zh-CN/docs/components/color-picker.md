@@ -28,6 +28,14 @@ let color_picker = cx.new(|cx|
 ColorPicker::new(&color_picker)
 ```
 
+ColorPicker 使用当前 Theme 提供浮层、边框、焦点和颜色 token。调色板间距、
+色块几何、滑块密度和 Trigger 尺寸均由当前 Style Preset 解析，支持 Vega、
+Nova 和 Maia。
+
+每个 ColorPicker 实例都会为 Popover、Tab、Trigger 和每个调色板位置派生结构化
+ID。因此即使颜色重复，或者同一页面存在多个 ColorPicker，其点击与浮层状态也
+能保持独立。
+
 ### 处理事件
 
 ```rust

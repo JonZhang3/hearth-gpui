@@ -30,6 +30,14 @@ let color_picker = cx.new(|cx|
 ColorPicker::new(&color_picker)
 ```
 
+ColorPicker consumes the active Theme for surface, border, focus, and color
+tokens. Palette spacing, swatch geometry, slider density, and trigger sizing are
+resolved from the active Style Preset, including Vega, Nova, and Maia.
+
+Each ColorPicker instance derives structural IDs for its Popover, tabs, trigger,
+and every palette position. Repeated colors and multiple pickers on the same
+page therefore keep independent click and overlay state.
+
 ### With Event Handling
 
 ```rust

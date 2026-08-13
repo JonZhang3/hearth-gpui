@@ -100,7 +100,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 
 ### Pickers
 
-- [ ] ColorPicker
+- [x] ColorPicker
 
 ## P3: GPUI-specific surfaces
 
