@@ -49,8 +49,11 @@ let command = cx.new(|cx| CommandState::new(commands, window, cx));
 Command::new(&command)
     .input(CommandInput::new().placeholder("Type a command or search..."))
     .w(px(420.))
-    .h(px(336.))
 ```
+
+`CommandList` grows with the filtered groups and items up to the shadcn-aligned
+`288px` maximum. Searching for fewer items therefore reduces the Command surface
+height. Apply `.h(...)` only when a deliberately fixed-height surface is required.
 
 ## Command dialog
 

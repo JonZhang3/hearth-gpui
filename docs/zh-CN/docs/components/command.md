@@ -49,8 +49,11 @@ let command = cx.new(|cx| CommandState::new(commands, window, cx));
 Command::new(&command)
     .input(CommandInput::new().placeholder("输入命令或搜索……"))
     .w(px(420.))
-    .h(px(336.))
 ```
+
+`CommandList` 会根据筛选后可见的分组与条目自然增长，并以与 shadcn 对齐的
+`288px` 为最大高度。因此搜索结果减少时，Command 表面高度也会同步收缩。仅在
+确实需要固定高度时，才调用 `.h(...)`。
 
 ## CommandDialog
 

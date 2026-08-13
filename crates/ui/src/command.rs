@@ -917,7 +917,7 @@ impl CommandDialog {
                 .content(move |content, _, _| {
                     content
                         .p_0()
-                        .child(Command::new(&state).input(input.clone()).h(px(336.)))
+                        .child(Command::new(&state).input(input.clone()))
                 })
         });
     }
@@ -952,7 +952,7 @@ impl RenderOnce for CommandDialog {
             .content(move |content, _, _| {
                 content
                     .p_0()
-                    .child(Command::new(&state).input(input.clone()).h(px(336.)))
+                    .child(Command::new(&state).input(input.clone()))
             })
     }
 }

@@ -116,7 +116,6 @@ impl Render for CommandStory {
                     Command::new(&self.inline)
                         .input(CommandInput::new().placeholder("Type a command or search..."))
                         .w(px(420.))
-                        .h(px(336.))
                         .border_1(),
                 ),
             )
