@@ -6,8 +6,14 @@ use gpui::{
 };
 
 use super::origin_point;
+use crate::ActiveTheme as _;
 
-pub const TEXT_SIZE: f32 = 10.;
+/// Resolves the standard `text-xs` size from the active Theme base font size.
+pub fn plot_text_size(cx: &App) -> Pixels {
+    cx.theme().font_size * 0.75
+}
+
+pub const TEXT_SIZE: f32 = 12.;
 pub const TEXT_GAP: f32 = 2.;
 pub const TEXT_HEIGHT: f32 = TEXT_SIZE + TEXT_GAP;
 

@@ -2,6 +2,14 @@
 
 This document records intentionally deferred shadcn alignment work. An item remains here until its implementation scope, platform contract, and verification requirements are approved.
 
+## Radial chart rounded segment caps
+
+**Status:** Plot primitive capability deferred; Radial capability matrix otherwise implemented
+
+The pinned shadcn Radial Bar examples can apply `cornerRadius` to the leading and trailing ends of radial segments. GPUI Component's current `Arc` primitive paints annular sectors with straight radial edges and cannot round only the segment caps without changing the underlying path geometry.
+
+Do not emulate this with circles painted over the endpoints: that breaks narrow rings, padded segments, partial angles, hit testing, and overlapping stacked series. Add rounded caps to the shared `Arc` path primitive, then reuse the exact geometry for paint and pointer hit testing. Acceptance requires full and partial rings, clockwise and counter-clockwise ranges, inner radius zero, narrow segments, padding, background tracks, and stacked series to remain geometrically stable.
+
 ## Table and DataTable row color-transition parity
 
 **Status:** Deferred shared pseudo-state animation capability; final row colors are aligned

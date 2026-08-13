@@ -7,6 +7,8 @@ description: A low-level plotting library for creating custom charts and data vi
 
 The `plot` module provides low-level building blocks for creating custom charts. It includes scales, shapes, and utilities that power the high-level `Chart` components.
 
+High-level Chart axis labels resolve the active Theme's standard `text-xs` size and muted foreground color. They render grid lines with the semantic border color at 50% opacity. Custom Plot implementations continue to control label sizes, stroke colors, and dash patterns explicitly.
+
 ## Import
 
 ```rust

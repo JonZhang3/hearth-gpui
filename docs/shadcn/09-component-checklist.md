@@ -111,7 +111,7 @@ GPUI-native optimization batch is completed.
 - [x] Editor
 - [x] TextView
 - [x] Markdown and HTML rendering
-- [ ] Chart and Plot
+- [x] Chart and Plot
 - [x] TitleBar
 - [ ] StatusBar
 - [x] WindowBorder

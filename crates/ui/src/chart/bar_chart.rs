@@ -11,7 +11,7 @@ use crate::{
     ActiveTheme,
     plot::{
         AXIS_GAP, AxisLabelSide, Grid, Plot, PlotAxis,
-        label::{TEXT_GAP, TEXT_SIZE, Text, measure_text_width},
+        label::{TEXT_GAP, Text, measure_text_width, plot_text_size},
         scale::{Scale, ScaleBand, ScaleLinear, Sealed},
         shape::{Bar, BarAlignment},
         tooltip::{CrossLine, Tooltip, TooltipState},
@@ -19,6 +19,14 @@ use crate::{
 };
 
 use super::build_band_labels;
+
+/// Layout used when a BarChart contains additional value series.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BarChartLayout {
+    #[default]
+    Grouped,
+    Stacked,
+}
 
 #[derive(IntoPlot)]
 pub struct BarChart<T, B, V>
@@ -42,6 +50,10 @@ where
     corner_radii: Corners<Pixels>,
     id: Option<ElementId>,
     name: Option<SharedString>,
+    additional_values: Vec<Rc<dyn Fn(&T) -> V>>,
+    additional_names: Vec<SharedString>,
+    additional_colors: Vec<Option<Hsla>>,
+    layout: BarChartLayout,
 }
 
 impl<T, B, V> BarChart<T, B, V>
@@ -67,6 +79,10 @@ where
             corner_radii: Corners::all(px(0.)),
             id: None,
             name: None,
+            additional_values: Vec::new(),
+            additional_names: Vec::new(),
+            additional_colors: Vec::new(),
+            layout: BarChartLayout::Grouped,
         }
     }
 
@@ -95,6 +111,38 @@ where
     /// Map each datum to its numeric value along the value axis.
     pub fn value(mut self, value: impl Fn(&T) -> V + 'static) -> Self {
         self.value = Some(Rc::new(value));
+        self
+    }
+
+    /// Appends a named value series after the primary [`BarChart::value`] series.
+    pub fn series(
+        mut self,
+        name: impl Into<SharedString>,
+        value: impl Fn(&T) -> V + 'static,
+    ) -> Self {
+        self.additional_values.push(Rc::new(value));
+        self.additional_names.push(name.into());
+        self.additional_colors.push(None);
+        self
+    }
+
+    /// Sets the semantic color of the most recently appended series.
+    pub fn series_color(mut self, color: impl Into<Hsla>) -> Self {
+        if let Some(slot) = self.additional_colors.last_mut() {
+            *slot = Some(color.into());
+        }
+        self
+    }
+
+    /// Selects grouped or stacked rendering for multiple series.
+    pub fn layout(mut self, layout: BarChartLayout) -> Self {
+        self.layout = layout;
+        self
+    }
+
+    /// Stacks all additional series on top of the primary value series.
+    pub fn stacked(mut self) -> Self {
+        self.layout = BarChartLayout::Stacked;
         self
     }
 
@@ -240,11 +288,11 @@ where
     /// Label gaps `(band_side, value_end_side)` reserved along the value axis for
     /// horizontal bars, measured from the actual label text. Shared by `paint` and the
     /// tooltip so the crosshair lines up with the bar region.
-    fn horizontal_gaps(&self, window: &mut Window) -> (f32, f32) {
+    fn horizontal_gaps(&self, window: &mut Window, cx: &App) -> (f32, f32) {
         let Some(band_fn) = self.band.as_ref() else {
             return (0., 0.);
         };
-        let font_size = px(TEXT_SIZE);
+        let font_size = plot_text_size(cx);
         let band_gap = if self.label_axis {
             self.data
                 .iter()
@@ -304,7 +352,7 @@ where
         // Similarly, value labels (numbers) at the bar ends are measured so the
         // scale range is always shrunk by exactly the right amount.
         let (band_gap, value_end_gap) = if is_horizontal {
-            self.horizontal_gaps(window)
+            self.horizontal_gaps(window, cx)
         } else {
             (axis_gap, 10.)
         };
@@ -326,14 +374,32 @@ where
                 (vec![baseline, value_end_gap], baseline)
             }
         };
-        let value_scale = ScaleLinear::new(
-            self.data
-                .iter()
-                .map(|v| value_fn(v))
-                .chain(Some(V::zero()))
-                .collect(),
-            range,
-        );
+        let mut values = vec![value_fn.clone()];
+        values.extend(self.additional_values.iter().cloned());
+        let mut domain = vec![0.];
+        match self.layout {
+            BarChartLayout::Grouped => domain.extend(
+                self.data
+                    .iter()
+                    .flat_map(|datum| values.iter().filter_map(move |value| value(datum).to_f64())),
+            ),
+            BarChartLayout::Stacked => {
+                for datum in &self.data {
+                    let mut positive = 0.;
+                    let mut negative = 0.;
+                    for value in &values {
+                        let value = value(datum).to_f64().unwrap_or(0.);
+                        if value >= 0. {
+                            positive += value;
+                        } else {
+                            negative += value;
+                        }
+                    }
+                    domain.extend([negative, positive]);
+                }
+            }
+        }
+        let value_scale = ScaleLinear::new(domain, range);
 
         // Draw band axis (with categorical labels).
         let mut axis = PlotAxis::new().stroke(cx.theme().border);
@@ -345,6 +411,7 @@ where
                 band_width,
                 self.tick_margin,
                 cx.theme().muted_foreground,
+                plot_text_size(cx),
             );
             axis = match alignment {
                 BarAlignment::Bottom => axis.x(baseline).x_label(labels),
@@ -377,9 +444,7 @@ where
             let grid_steps: Vec<f32> = (0..4)
                 .map(|i| far + (baseline - far) * i as f32 / 4.0)
                 .collect();
-            let grid = Grid::new()
-                .stroke(cx.theme().border)
-                .dash_array(&[px(4.), px(2.)]);
+            let grid = Grid::new().stroke(cx.theme().border.opacity(0.5));
             let grid = if is_horizontal {
                 grid.x(grid_steps)
             } else {
@@ -388,13 +453,106 @@ where
             grid.paint(&bounds, window);
         }
 
-        // Draw bars.
+        // Draw grouped or stacked multi-series bars before the fully custom
+        // single-series fill path.
+        if !self.additional_values.is_empty() {
+            let series_count = values.len();
+            let series_band_width = if self.layout == BarChartLayout::Grouped {
+                band_width / series_count as f32
+            } else {
+                band_width
+            };
+            for (series_index, value) in values.iter().enumerate() {
+                let band = ScaleBand::new(
+                    self.data.iter().map(|datum| band_fn(datum)).collect(),
+                    vec![
+                        0.,
+                        if is_horizontal {
+                            total_height
+                        } else {
+                            total_width
+                        },
+                    ],
+                )
+                .padding_inner(0.4)
+                .padding_outer(0.2);
+                let band_fn = band_fn.clone();
+                let previous = values[..series_index].to_vec();
+                let values_for_tip = values.clone();
+                let value_for_base = value.clone();
+                let value_for_tip = value.clone();
+                let scale_for_base = value_scale.clone();
+                let scale_for_tip = value_scale.clone();
+                let layout = self.layout;
+                let color = if series_index == 0 {
+                    cx.theme().chart_1
+                } else {
+                    self.additional_colors
+                        .get(series_index - 1)
+                        .copied()
+                        .flatten()
+                        .unwrap_or(match series_index % 5 {
+                            0 => cx.theme().chart_1,
+                            1 => cx.theme().chart_2,
+                            2 => cx.theme().chart_3,
+                            3 => cx.theme().chart_4,
+                            _ => cx.theme().chart_5,
+                        })
+                };
+                Bar::new()
+                    .data(&self.data)
+                    .alignment(alignment)
+                    .band_width(series_band_width)
+                    .cross(move |datum| {
+                        band.tick(&band_fn(datum)).map(|tick| {
+                            tick + if layout == BarChartLayout::Grouped {
+                                series_band_width * series_index as f32
+                            } else {
+                                0.
+                            }
+                        })
+                    })
+                    .base(move |datum| {
+                        let current = value_for_base(datum).to_f64().unwrap_or(0.);
+                        let lower = if layout == BarChartLayout::Stacked {
+                            previous
+                                .iter()
+                                .filter_map(|value| value(datum).to_f64())
+                                .filter(|value| current == 0. || value.signum() == current.signum())
+                                .sum()
+                        } else {
+                            0.
+                        };
+                        scale_for_base.tick(&lower).unwrap_or(baseline)
+                    })
+                    .value(move |datum| {
+                        let current = value_for_tip(datum).to_f64()?;
+                        let lower = if layout == BarChartLayout::Stacked {
+                            values_for_tip[..series_index]
+                                .iter()
+                                .filter_map(|value| value(datum).to_f64())
+                                .filter(|value| current == 0. || value.signum() == current.signum())
+                                .sum()
+                        } else {
+                            0.
+                        };
+                        scale_for_tip.tick(&(lower + current))
+                    })
+                    .corner_radii(self.corner_radii)
+                    .fill(move |_, _, _| color)
+                    .paint(&bounds, window, cx);
+            }
+            return;
+        }
+
+        // Draw the primary series with its custom fill and label capabilities.
         let band_fn_cloned = band_fn.clone();
         let value_fn_cloned = value_fn.clone();
         let default_fill: Background = cx.theme().chart_2.into();
         let fill = self.fill.clone();
         let fill_gradient = self.fill_gradient.clone();
         let label_color = cx.theme().foreground;
+        let label_font_size = plot_text_size(cx);
 
         // Chart bounds in pixel space, with origin (0, 0) and size equal to
         // the full chart extent. Passed to user `fill` closures so they can
@@ -424,7 +582,7 @@ where
             .band_width(band_width)
             .cross(move |d| band_scale.tick(&band_fn_cloned(d)))
             .base(move |_| baseline)
-            .value(move |d| value_scale.tick(&value_fn_cloned(d)))
+            .value(move |d| value_scale.tick(&value_fn_cloned(d).to_f64()?))
             .corner_radii(self.corner_radii);
 
         bar = match (fill, fill_gradient) {
@@ -456,8 +614,13 @@ where
                 BarAlignment::Left => TextAlign::Left,
                 BarAlignment::Right => TextAlign::Right,
             };
-            bar =
-                bar.label(move |d, p| vec![Text::new(label(d), p, label_color).align(text_align)]);
+            bar = bar.label(move |d, p| {
+                vec![
+                    Text::new(label(d), p, label_color)
+                        .font_size(label_font_size)
+                        .align(text_align),
+                ]
+            });
         }
 
         bar.paint(&bounds, window, cx);
@@ -520,7 +683,7 @@ where
         // of a hairline. Confined to the plot area so it doesn't cover the axis labels.
         let band_width = self.band_scale(bounds)?.band_width();
         let cross_line = if self.alignment.is_horizontal() {
-            let (band_gap, value_end_gap) = self.horizontal_gaps(window);
+            let (band_gap, value_end_gap) = self.horizontal_gaps(window, cx);
             let length = (bounds.size.width.as_f32() - band_gap - value_end_gap).max(0.);
             let start = if matches!(self.alignment, BarAlignment::Left) {
                 band_gap
@@ -552,15 +715,39 @@ where
                 .band(px(band_width))
         };
 
-        Some(
-            // Follow the cursor; the highlight band stays snapped to the bar.
-            Tooltip::new(cursor, bounds.size)
-                .gap(px(8.))
-                .cross_line(cross_line)
-                .title(title)
-                .row(cx.theme().chart_2, name, format!("{}", value))
-                .into_any_element(),
-        )
+        let primary_color = if self.additional_values.is_empty() {
+            cx.theme().chart_2
+        } else {
+            cx.theme().chart_1
+        };
+        let mut tooltip = Tooltip::new(cursor, bounds.size)
+            .gap(px(8.))
+            .cross_line(cross_line)
+            .title(title)
+            .row(primary_color, name, format!("{}", value));
+        for (index, series) in self.additional_values.iter().enumerate() {
+            let color = self
+                .additional_colors
+                .get(index)
+                .copied()
+                .flatten()
+                .unwrap_or(match (index + 1) % 5 {
+                    0 => cx.theme().chart_1,
+                    1 => cx.theme().chart_2,
+                    2 => cx.theme().chart_3,
+                    3 => cx.theme().chart_4,
+                    _ => cx.theme().chart_5,
+                });
+            tooltip = tooltip.row(
+                color,
+                self.additional_names
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_default(),
+                format!("{}", series(d).to_f64()?),
+            );
+        }
+        Some(tooltip.into_any_element())
     }
 }
 
@@ -611,4 +798,51 @@ fn clip_stops_to_bar(stops: [LinearColorStop; 2]) -> [LinearColorStop; 2] {
         }
     };
     [new_a, new_b]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct Datum {
+        category: SharedString,
+        primary: f64,
+        secondary: f64,
+    }
+
+    #[test]
+    fn bar_chart_builder_supports_grouped_and_stacked_series() {
+        let chart = BarChart::new([Datum {
+            category: "A".into(),
+            primary: 1.,
+            secondary: 2.,
+        }])
+        .band(|datum| datum.category.clone())
+        .value(|datum| datum.primary)
+        .series("Secondary", |datum| datum.secondary)
+        .series_color(gpui::red())
+        .stacked();
+
+        assert_eq!(chart.additional_values.len(), 1);
+        assert_eq!(chart.additional_names[0].as_ref(), "Secondary");
+        assert_eq!(chart.additional_colors[0], Some(gpui::red()));
+        assert_eq!(chart.layout, BarChartLayout::Stacked);
+    }
+
+    #[test]
+    fn bar_series_color_stays_associated_with_the_latest_series() {
+        let chart = BarChart::new([Datum {
+            category: "A".into(),
+            primary: 1.,
+            secondary: 2.,
+        }])
+        .band(|datum| datum.category.clone())
+        .value(|datum| datum.primary)
+        .series("Default", |datum| datum.secondary)
+        .series("Custom", |datum| datum.primary)
+        .series_color(gpui::red());
+
+        assert_eq!(chart.additional_colors, vec![None, Some(gpui::red())]);
+    }
 }

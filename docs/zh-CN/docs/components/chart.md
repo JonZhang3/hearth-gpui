@@ -1,19 +1,48 @@
 ---
 title: Chart
-description: 支持折线图、柱状图、面积图、饼图、雷达图、K 线图和桑基图的数据可视化组件。
+description: 支持折线图、柱状图、面积图、饼图、雷达图、径向图、K 线图和桑基图的数据可视化组件。
 ---
 
 # Chart
 
-Chart 是一组完整的数据可视化组件，提供 Line、Bar、Area、Pie、Radar、Candlestick 和 Sankey 图表。它们支持动画、自定义样式、主题配色和多种展示方式，适合仪表盘、统计分析和行情场景。
+Chart 是一组 GPUI 原生的数据可视化组件，提供 Line、Bar、Area、Pie、Radar、Radial、Candlestick 和 Sankey 图表。图表颜色来自当前 Color Theme，Tooltip 的几何、圆角和阴影遵循当前 Style Preset。组件不会添加锁定版 shadcn 源码中不存在的装饰动效。
 
 ## 导入
 
 ```rust
 use gpui_component::chart::{
-    LineChart, BarChart, AreaChart, PieChart, RadarChart, CandlestickChart, SankeyChart,
+    AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartAccessibilityItem,
+    ChartConfig, ChartConfigItem, ChartContainer, ChartLegend, LineChart, PieChart,
+    RadarChart, RadialChart, SankeyChart,
 };
 ```
+
+## 组合
+
+`ChartContainer` 提供标准 `text-xs` 图表上下文和 graphics-document 无障碍语义，但不会自带 Card 表面。需要标题卡片时，应与现有 `Card` 组合。`ChartConfig` 负责为 Legend 和无障碍摘要保留稳定的系列顺序。
+
+```rust
+let config = ChartConfig::new()
+    .item(ChartConfigItem::new("desktop", "Desktop", cx.theme().chart_1))
+    .item(ChartConfigItem::new("mobile", "Mobile", cx.theme().chart_2));
+
+v_flex()
+    .child(
+        ChartContainer::new("visitors-chart")
+            .accessibility(
+                ChartAccessibility::new("每月访客")
+                    .item(
+                        ChartAccessibilityItem::new("一月")
+                            .value("桌面端", "186")
+                            .value("移动端", "80"),
+                    ),
+            )
+            .child(chart),
+    )
+    .child(ChartLegend::new(config));
+```
+
+提供无障碍数据项后，容器会成为 Tab 停靠点。方向键用于切换数据项，Home 和 End 跳到首尾数据项，当前数据会作为 graphics document 的无障碍值暴露。
 
 ## 图表类型
 
@@ -67,6 +96,18 @@ LineChart::new(data)
     .x(|d| d.month.clone())
     .y(|d| d.value)
     .stroke(cx.theme().success)
+```
+
+多系列会共享比例尺和 Tooltip：
+
+```rust
+LineChart::new(data)
+    .x(|d| d.month.clone())
+    .series("Desktop", |d| d.desktop)
+    .stroke(cx.theme().chart_1)
+    .series("Mobile", |d| d.mobile)
+    .stroke(cx.theme().chart_2)
+    .id("traffic-lines")
 ```
 
 #### 刻度控制
@@ -246,7 +287,30 @@ AreaChart::new(data)
     .y(|d| d.mobile)
     .stroke(cx.theme().chart_2)
     .fill(cx.theme().chart_2.opacity(0.4))
+    .stacked()
 ```
+
+使用 `.stacked_expand()` 可生成归一化的百分比堆叠面积图。
+
+### RadialChart
+
+`RadialChart` 对应 shadcn 的 Radial Bar 能力，支持同心或堆叠系列、背景轨道、局部角度、中心内容、Tooltip 和 Legend 组合。
+
+```rust
+RadialChart::new(data)
+    .label(|d| d.month.clone())
+    .series("Desktop", |d| d.desktop as f32)
+    .color(cx.theme().chart_1)
+    .series("Mobile", |d| d.mobile as f32)
+    .color(cx.theme().chart_2)
+    .background(true)
+    .center_label("1,260", "Visitors")
+    .id("radial-visitors")
+```
+
+## Tooltip 与动效
+
+结构化 Tooltip 支持 dot、line、dashed 和隐藏指示器，使用 `text-xs`、128px 最小宽度、等宽表格数字、`border/50` 和 Style Preset elevation。锁定版 shadcn Chart 源码没有定义专用进入或退出动画，因此 GPUI Chart Tooltip 不添加透明度、缩放或位移动效。
 
 #### 样式
 
@@ -276,9 +340,13 @@ AreaChart::new(data)
 
 ```rust
 PieChart::new(data)
+    .id("pie")
     .value(|d| d.amount as f32)
+    .label(|d| d.name.clone())
     .outer_radius(100.)
 ```
+
+设置 `id` 后会启用共享 Tooltip，切片标签同时作为 Tooltip 标签。
 
 #### 环形图
 
@@ -461,11 +529,13 @@ let links = vec![
 ];
 
 SankeyChart::new(nodes, links)
+    .id("cash-flow")
     .node_label(|d| d.name.clone())
     .value_label(|_, value| format!("{:.1}", value).into())
 ```
 
 数值标签显示在名称标签上方，闭包会收到节点的吞吐量（进出流量的较大值）。
+设置 `id` 会启用节点 Tooltip 命中检测，不会改变流图布局。
 
 #### 节点对齐
 

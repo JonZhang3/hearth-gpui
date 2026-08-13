@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    App, Bounds, Corners, Hsla, Pixels, SharedString, TextAlign, Window, fill, linear_color_stop,
-    linear_gradient, point, px,
+    AnyElement, App, Bounds, Corners, ElementId, Hsla, IntoElement, Pixels, Point, SharedString,
+    TextAlign, Window, fill, linear_color_stop, linear_gradient, point, px,
 };
 use gpui_component_macros::IntoPlot;
 
@@ -10,11 +10,17 @@ use crate::{
     ActiveTheme,
     plot::{
         Plot,
-        label::{PlotLabel, TEXT_GAP, TEXT_SIZE, Text, measure_text_width, truncate_text_to_width},
+        label::{
+            PlotLabel, TEXT_GAP, Text, measure_text_width, plot_text_size, truncate_text_to_width,
+        },
         origin_point,
-        shape::{Sankey, SankeyAlign, SankeyLink, SankeyValueScale, sankey_link_path},
+        shape::{Sankey, SankeyAlign, SankeyGraph, SankeyLink, SankeyValueScale, sankey_link_path},
+        tooltip::{Tooltip, TooltipState},
     },
 };
+
+#[cfg(test)]
+use crate::plot::label::TEXT_SIZE;
 
 const DEFAULT_NODE_WIDTH: f32 = 10.;
 const DEFAULT_NODE_PADDING: f32 = 16.;
@@ -26,6 +32,14 @@ const DEFAULT_LABEL_GAP: f32 = 6.;
 const MAX_LABEL_WIDTH_RATIO: f32 = 0.2;
 /// Cap the reserved top+bottom label band as a fraction of height.
 const MAX_LABEL_MARGIN_RATIO: f32 = 0.6;
+
+struct ResolvedSankeyLayout {
+    graph: SankeyGraph,
+    node_labels: Vec<Vec<SankeyLabel>>,
+    left: f32,
+    right: f32,
+    default_font_size: f32,
+}
 
 /// A styled line of a sankey node label.
 #[derive(Clone)]
@@ -57,13 +71,26 @@ impl SankeyLabel {
         self
     }
 
+    #[cfg(test)]
     fn line_height(&self) -> f32 {
         self.font_size.unwrap_or(TEXT_SIZE) + TEXT_GAP
     }
+
+    fn line_height_with_default(&self, default_font_size: f32) -> f32 {
+        self.font_size.unwrap_or(default_font_size) + TEXT_GAP
+    }
 }
 
+#[cfg(test)]
 fn block_height(lines: &[SankeyLabel]) -> f32 {
     lines.iter().map(|line| line.line_height()).sum()
+}
+
+fn block_height_with_default(lines: &[SankeyLabel], default_font_size: f32) -> f32 {
+    lines
+        .iter()
+        .map(|line| line.line_height_with_default(default_font_size))
+        .sum()
 }
 
 /// A Sankey diagram, layout modeled after [d3-sankey](https://github.com/d3/d3-sankey).
@@ -87,6 +114,9 @@ pub struct SankeyChart<T: 'static> {
     link_opacity: f32,
     min_link_width: f32,
     label_gap: f32,
+    id: Option<ElementId>,
+    node_hit_bounds: Vec<(usize, Bounds<Pixels>)>,
+    resolved_layout: Option<ResolvedSankeyLayout>,
 }
 
 impl<T> SankeyChart<T> {
@@ -113,6 +143,9 @@ impl<T> SankeyChart<T> {
             link_opacity: DEFAULT_LINK_OPACITY,
             min_link_width: DEFAULT_MIN_LINK_WIDTH,
             label_gap: DEFAULT_LABEL_GAP,
+            id: None,
+            node_hit_bounds: Vec::new(),
+            resolved_layout: None,
         }
     }
 
@@ -213,6 +246,12 @@ impl<T> SankeyChart<T> {
         self
     }
 
+    /// Enables node tooltips using a stable sibling-unique identifier.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
     fn sankey(&self) -> Sankey {
         Sankey::new()
             .node_width(self.node_width)
@@ -242,27 +281,23 @@ impl<T> SankeyChart<T> {
             .map(|(i, o)| i.max(o))
             .collect()
     }
-}
 
-impl<T> Plot for SankeyChart<T> {
-    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+    fn resolve_layout(
+        &self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &App,
+    ) -> Option<ResolvedSankeyLayout> {
         let width = bounds.size.width.as_f32();
         let height = bounds.size.height.as_f32();
         if self.nodes.is_empty() || self.links.is_empty() || width <= 0. || height <= 0. {
-            return;
+            return None;
         }
 
-        // First pass: only the topology (each node's `layer`) is needed to
-        // measure the label margins; label values come from `raw_throughput`.
-        let Ok(topology) = self.sankey().topology(self.nodes.len(), &self.links) else {
-            return;
-        };
+        let topology = self.sankey().topology(self.nodes.len(), &self.links).ok()?;
         let layer_count = topology.layer_count();
-        // Labels get the raw throughput, not the layout's (possibly scaled) value.
+        let default_font_size = plot_text_size(cx).as_f32();
         let raw_value = self.raw_throughput();
-
-        // Collect each node's label lines: the custom `labels` closure wins,
-        // otherwise synthesize the value/name lines with the default styles.
         let node_labels: Vec<Vec<SankeyLabel>> = topology
             .nodes
             .iter()
@@ -287,8 +322,6 @@ impl<T> Plot for SankeyChart<T> {
             .collect();
         let has_labels = node_labels.iter().any(|lines| !lines.is_empty());
 
-        // Reserve margins so the labels beside the first/last columns and
-        // above the middle columns are not clipped.
         let mut left = 0f32;
         let mut right = 0f32;
         if has_labels {
@@ -296,38 +329,34 @@ impl<T> Plot for SankeyChart<T> {
                 if node.layer != 0 && node.layer + 1 != layer_count {
                     continue;
                 }
-                let mut label_width = 0f32;
-                for line in &node_labels[node.index] {
-                    label_width = label_width.max(measure_text_width(
-                        &line.text,
-                        px(line.font_size.unwrap_or(TEXT_SIZE)),
-                        window,
-                    ));
-                }
+                let label_width = node_labels[node.index]
+                    .iter()
+                    .map(|line| {
+                        measure_text_width(
+                            &line.text,
+                            px(line.font_size.unwrap_or(default_font_size)),
+                            window,
+                        )
+                    })
+                    .fold(0f32, f32::max);
                 if node.layer == 0 {
                     left = left.max(label_width + self.label_gap);
                 } else {
                     right = right.max(label_width + self.label_gap);
                 }
             }
-
-            // Cap each side independently so one long label is truncated to a
-            // modest column rather than eating into the flow area.
             let side_cap = width * MAX_LABEL_WIDTH_RATIO;
             left = left.min(side_cap);
             right = right.min(side_cap);
         }
-        // Above-node labels are only emitted for middle columns, so reserve
-        // the top band for the tallest such label block. Cap the vertical
-        // margins like the horizontal ones so a short chart doesn't collapse
-        // the flow.
+
         let mut top = 0f32;
         if has_labels && layer_count > 2 {
             for node in &topology.nodes {
                 if node.layer == 0 || node.layer + 1 == layer_count {
                     continue;
                 }
-                let block = block_height(&node_labels[node.index]);
+                let block = block_height_with_default(&node_labels[node.index], default_font_size);
                 if block > 0. {
                     top = top.max(block + TEXT_GAP);
                 }
@@ -336,13 +365,11 @@ impl<T> Plot for SankeyChart<T> {
         let mut bottom = if has_labels { TEXT_GAP } else { 0. };
         let max_vertical = height * MAX_LABEL_MARGIN_RATIO;
         if top + bottom > max_vertical {
-            let k = max_vertical / (top + bottom);
-            top *= k;
-            bottom *= k;
+            let scale = max_vertical / (top + bottom);
+            top *= scale;
+            bottom *= scale;
         }
 
-        // Second pass: complete the placement on the final extent, reusing
-        // the first pass's topology.
         let graph = self
             .sankey()
             .extent(
@@ -352,6 +379,64 @@ impl<T> Plot for SankeyChart<T> {
                 (height - bottom).max(top + 1.),
             )
             .layout_from(topology);
+        Some(ResolvedSankeyLayout {
+            graph,
+            node_labels,
+            left,
+            right,
+            default_font_size,
+        })
+    }
+}
+
+impl<T> Plot for SankeyChart<T> {
+    fn prepaint(
+        &mut self,
+        bounds: Bounds<Pixels>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Vec<AnyElement> {
+        self.resolved_layout = self.resolve_layout(bounds, window, cx);
+        self.node_hit_bounds = self
+            .resolved_layout
+            .as_ref()
+            .map(|layout| {
+                layout
+                    .graph
+                    .nodes
+                    .iter()
+                    .map(|node| {
+                        (
+                            node.index,
+                            Bounds::from_corners(
+                                point(px(node.x0), px(node.y0)),
+                                point(px(node.x1), px(node.y1.max(node.y0 + 1.))),
+                            ),
+                        )
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Vec::new()
+    }
+
+    fn paint(&mut self, bounds: Bounds<Pixels>, window: &mut Window, cx: &mut App) {
+        let width = bounds.size.width.as_f32();
+        let height = bounds.size.height.as_f32();
+        let Some(ResolvedSankeyLayout {
+            graph,
+            node_labels,
+            left,
+            right,
+            default_font_size,
+        }) = self
+            .resolved_layout
+            .take()
+            .or_else(|| self.resolve_layout(bounds, window, cx))
+        else {
+            return;
+        };
+        let layer_count = graph.layer_count();
 
         let palette = [
             cx.theme().chart_1,
@@ -435,7 +520,7 @@ impl<T> Plot for SankeyChart<T> {
                 (center, TextAlign::Center, edge_budget)
             };
 
-            let block = block_height(lines);
+            let block = block_height_with_default(lines, default_font_size);
             let mut y = if is_first || is_last {
                 // Block vertically centered beside the node, clamped into
                 // the plot area so labels of nodes near the top or bottom
@@ -449,7 +534,7 @@ impl<T> Plot for SankeyChart<T> {
             };
 
             for line in lines {
-                let font_size = px(line.font_size.unwrap_or(TEXT_SIZE));
+                let font_size = px(line.font_size.unwrap_or(default_font_size));
                 let text = truncate_text_to_width(&line.text, font_size, max_width, window);
                 texts.push(
                     Text::new(
@@ -460,10 +545,60 @@ impl<T> Plot for SankeyChart<T> {
                     .font_size(font_size)
                     .align(align),
                 );
-                y += line.line_height();
+                y += line.line_height_with_default(default_font_size);
             }
         }
         PlotLabel::new(texts).paint(&bounds, window, cx);
+    }
+
+    fn id(&self) -> Option<ElementId> {
+        self.id.clone()
+    }
+
+    fn tooltip_state(
+        &self,
+        position: Point<Pixels>,
+        _bounds: Bounds<Pixels>,
+        _cx: &App,
+    ) -> Option<TooltipState> {
+        let index = self
+            .node_hit_bounds
+            .iter()
+            .find_map(|(index, bounds)| bounds.contains(&position).then_some(*index))?;
+        Some(TooltipState::new(index, position, Vec::new()))
+    }
+
+    fn tooltip(
+        &self,
+        state: &TooltipState,
+        cursor: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let datum = self.nodes.get(state.index)?;
+        let value = *self.raw_throughput().get(state.index)?;
+        let label = self
+            .node_label
+            .as_ref()
+            .map(|label| label(datum))
+            .unwrap_or_else(|| format!("Node {}", state.index + 1).into());
+        let color = self
+            .node_color
+            .as_ref()
+            .map(|color| color(datum))
+            .unwrap_or(match state.index % 5 {
+                0 => cx.theme().chart_1,
+                1 => cx.theme().chart_2,
+                2 => cx.theme().chart_3,
+                3 => cx.theme().chart_4,
+                _ => cx.theme().chart_5,
+            });
+        Some(
+            Tooltip::new(cursor, bounds.size)
+                .row(color, label, format!("{value}"))
+                .into_any_element(),
+        )
     }
 }
 

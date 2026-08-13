@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use gpui::{App, Bounds, Hsla, Pixels, SharedString, TextAlign, Window, point};
+use gpui::{
+    AnyElement, App, Bounds, ElementId, Hsla, IntoElement, Pixels, Point, SharedString, TextAlign,
+    Window, point,
+};
 use gpui_component_macros::IntoPlot;
 use num_traits::Zero;
 
@@ -8,9 +11,10 @@ use crate::{
     ActiveTheme,
     plot::{
         Plot,
-        label::{PlotLabel, TEXT_HEIGHT, TEXT_SIZE, Text},
+        label::{PlotLabel, TEXT_GAP, Text, plot_text_size},
         polygon,
         shape::{Arc, ArcData, Pie},
+        tooltip::{Tooltip, TooltipState},
     },
 };
 
@@ -31,6 +35,11 @@ pub struct PieChart<T: 'static> {
     label_line_color: Option<Rc<dyn Fn(&T) -> Hsla + 'static>>,
     label_color: Option<Hsla>,
     label_gap: f32,
+    active_index: Option<usize>,
+    active_offset: f32,
+    center_title: Option<SharedString>,
+    center_description: Option<SharedString>,
+    id: Option<ElementId>,
 }
 
 impl<T> PieChart<T> {
@@ -51,6 +60,11 @@ impl<T> PieChart<T> {
             label_line_color: None,
             label_color: None,
             label_gap: DEFAULT_LABEL_GAP,
+            active_index: None,
+            active_offset: 4.,
+            center_title: None,
+            center_description: None,
+            id: None,
         }
     }
 
@@ -147,6 +161,71 @@ impl<T> PieChart<T> {
         self.label_gap = gap;
         self
     }
+
+    /// Expands one controlled slice to expose an active state.
+    pub fn active_index(mut self, index: Option<usize>) -> Self {
+        self.active_index = index;
+        self
+    }
+
+    /// Sets the radial expansion applied to the active slice.
+    pub fn active_offset(mut self, offset: f32) -> Self {
+        self.active_offset = offset.max(0.);
+        self
+    }
+
+    /// Sets a two-line label painted inside a donut chart.
+    pub fn center_label(
+        mut self,
+        title: impl Into<SharedString>,
+        description: impl Into<SharedString>,
+    ) -> Self {
+        self.center_title = Some(title.into());
+        self.center_description = Some(description.into());
+        self
+    }
+
+    /// Enables slice tooltips using a stable sibling-unique identifier.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
+    }
+
+    fn arcs(&self) -> Option<Vec<ArcData<'_, T>>> {
+        let value = self.value.as_ref()?.clone();
+        Some(
+            Pie::new()
+                .value(move |datum| Some(value(datum)))
+                .pad_angle(self.pad_angle)
+                .arcs(&self.data),
+        )
+    }
+
+    fn hovered_index(&self, position: Point<Pixels>, bounds: Bounds<Pixels>) -> Option<usize> {
+        let arcs = self.arcs()?;
+        let default_outer_radius = bounds.size.height.as_f32() * 0.4;
+        let shape = Arc::new();
+        arcs.iter()
+            .find(|arc| {
+                let configured_outer_radius = self.get_outer_radius(arc);
+                let mut outer_radius = if configured_outer_radius.is_zero() {
+                    default_outer_radius
+                } else {
+                    configured_outer_radius
+                };
+                if self.active_index == Some(arc.index) {
+                    outer_radius += self.active_offset;
+                }
+                shape.contains(
+                    arc,
+                    position,
+                    &bounds,
+                    Some(self.get_inner_radius(arc)),
+                    Some(outer_radius),
+                )
+            })
+            .map(|arc| arc.index)
+    }
 }
 
 impl<T> Plot for PieChart<T> {
@@ -165,13 +244,23 @@ impl<T> Plot for PieChart<T> {
             .inner_radius(self.inner_radius)
             .outer_radius(outer_radius);
         let value_fn = value_fn.clone();
-        let mut pie = Pie::<T>::new().value(move |d| Some(value_fn(d)));
-        pie = pie.pad_angle(self.pad_angle);
-        let arcs = pie.arcs(&self.data);
+        let arcs = Pie::<T>::new()
+            .value(move |d| Some(value_fn(d)))
+            .pad_angle(self.pad_angle)
+            .arcs(&self.data);
 
         for a in &arcs {
             let inner_radius = self.get_inner_radius(a);
-            let outer_radius = self.get_outer_radius(a);
+            let configured_outer_radius = self.get_outer_radius(a);
+            let outer_radius = if configured_outer_radius.is_zero() {
+                outer_radius
+            } else {
+                configured_outer_radius
+            } + if self.active_index == Some(a.index) {
+                self.active_offset
+            } else {
+                0.
+            };
             arc.paint(
                 a,
                 if let Some(color_fn) = self.color.as_ref() {
@@ -185,6 +274,36 @@ impl<T> Plot for PieChart<T> {
                 window,
             );
         }
+
+        let center = point(
+            bounds.size.width.as_f32() / 2.,
+            bounds.size.height.as_f32() / 2.,
+        );
+        let mut center_labels = Vec::new();
+        let text_size = plot_text_size(cx);
+        if let Some(title) = self.center_title.clone() {
+            center_labels.push(
+                Text::new(
+                    title,
+                    point(center.x, center.y - 10.),
+                    cx.theme().foreground,
+                )
+                .font_size(cx.theme().font_size)
+                .align(TextAlign::Center),
+            );
+        }
+        if let Some(description) = self.center_description.clone() {
+            center_labels.push(
+                Text::new(
+                    description,
+                    point(center.x, center.y + 10.),
+                    cx.theme().muted_foreground,
+                )
+                .font_size(text_size)
+                .align(TextAlign::Center),
+            );
+        }
+        PlotLabel::new(center_labels).paint(&bounds, window, cx);
 
         // Draw leader-line labels outside the ring (only when `label` is set).
         let Some(label_fn) = self.label.as_ref() else {
@@ -237,10 +356,12 @@ impl<T> Plot for PieChart<T> {
 
         // Second pass: spread labels on each side so neighbors keep at least one
         // text height apart, clamped within the vertical bounds.
-        let top = -center_y + TEXT_HEIGHT / 2.;
-        let bottom = center_y - TEXT_HEIGHT / 2.;
-        spread_labels(&mut right, top, bottom);
-        spread_labels(&mut left, top, bottom);
+        let text_size = plot_text_size(cx).as_f32();
+        let text_height = text_size + TEXT_GAP;
+        let top = -center_y + text_height / 2.;
+        let bottom = center_y - text_height / 2.;
+        spread_labels(&mut right, top, bottom, text_height);
+        spread_labels(&mut left, top, bottom, text_height);
 
         // Third pass: paint leader lines first, then the text on top.
         let mut labels = vec![];
@@ -260,18 +381,66 @@ impl<T> Plot for PieChart<T> {
                 // Text sits 4px further out, aligned by side.
                 let origin = point(
                     side * (label_radius + 4.) + center_x,
-                    item.y - TEXT_SIZE / 2. + center_y,
+                    item.y - text_size / 2. + center_y,
                 );
                 let align = if side > 0. {
                     TextAlign::Left
                 } else {
                     TextAlign::Right
                 };
-                labels.push(Text::new(item.text.clone(), origin, label_color).align(align));
+                labels.push(
+                    Text::new(item.text.clone(), origin, label_color)
+                        .font_size(plot_text_size(cx))
+                        .align(align),
+                );
             }
         }
 
         PlotLabel::new(labels).paint(&bounds, window, cx);
+    }
+
+    fn id(&self) -> Option<ElementId> {
+        self.id.clone()
+    }
+
+    fn tooltip_state(
+        &self,
+        position: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _cx: &App,
+    ) -> Option<TooltipState> {
+        Some(TooltipState::new(
+            self.hovered_index(position, bounds)?,
+            position,
+            Vec::new(),
+        ))
+    }
+
+    fn tooltip(
+        &self,
+        state: &TooltipState,
+        cursor: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let datum = self.data.get(state.index)?;
+        let value = self.value.as_ref()?(datum);
+        let label = self
+            .label
+            .as_ref()
+            .map(|label| label(datum))
+            .unwrap_or_else(|| format!("Item {}", state.index + 1).into());
+        let color = self
+            .color
+            .as_ref()
+            .map(|color| color(datum))
+            .unwrap_or(cx.theme().chart_2);
+        Some(
+            Tooltip::new(cursor, bounds.size)
+                .row(color, label, format!("{value}"))
+                .into_any_element(),
+        )
     }
 }
 
@@ -288,13 +457,12 @@ struct LabelLayout {
     line_color: Hsla,
 }
 
-/// Spread `items` vertically so that adjacent labels keep at least
-/// [`TEXT_HEIGHT`] apart, clamped within `[top, bottom]`.
+/// Spread `items` vertically so adjacent labels keep one resolved text line apart.
 ///
 /// Uses a two-direction relaxation: a top-down pass pushes crowded labels down,
 /// then a bottom-up pass (anchored at `bottom`) pushes them back up. This
 /// resolves cascading overlaps that a single-neighbor nudge cannot.
-fn spread_labels(items: &mut [LabelLayout], top: f32, bottom: f32) {
+fn spread_labels(items: &mut [LabelLayout], top: f32, bottom: f32, text_height: f32) {
     let n = items.len();
     if n == 0 {
         return;
@@ -305,7 +473,7 @@ fn spread_labels(items: &mut [LabelLayout], top: f32, bottom: f32) {
 
     // Top-down: enforce the minimum gap by pushing labels down.
     for i in 1..n {
-        let min_y = items[i - 1].y + TEXT_HEIGHT;
+        let min_y = items[i - 1].y + text_height;
         if items[i].y < min_y {
             items[i].y = min_y;
         }
@@ -316,7 +484,7 @@ fn spread_labels(items: &mut [LabelLayout], top: f32, bottom: f32) {
         items[n - 1].y = bottom;
     }
     for i in (0..n - 1).rev() {
-        let max_y = items[i + 1].y - TEXT_HEIGHT;
+        let max_y = items[i + 1].y - text_height;
         if items[i].y > max_y {
             items[i].y = max_y;
         }
@@ -325,5 +493,46 @@ fn spread_labels(items: &mut [LabelLayout], top: f32, bottom: f32) {
     // Keep the top-most label within bounds.
     if items[0].y < top {
         items[0].y = top;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::px;
+
+    #[test]
+    fn pie_chart_builder_supports_active_and_center_content() {
+        let chart = PieChart::new([1., 2.])
+            .value(|value| *value)
+            .inner_radius(40.)
+            .active_index(Some(1))
+            .active_offset(6.)
+            .center_label("3", "Total")
+            .id("pie");
+
+        assert_eq!(chart.active_index, Some(1));
+        assert_eq!(chart.active_offset, 6.);
+        assert_eq!(chart.center_title.as_deref(), Some("3"));
+        assert_eq!(chart.center_description.as_deref(), Some("Total"));
+        assert_eq!(chart.id, Some("pie".into()));
+    }
+
+    #[test]
+    fn pie_hit_test_includes_active_offset_and_excludes_padding() {
+        let chart = PieChart::new([1., 1.])
+            .value(|value| *value)
+            .inner_radius(40.)
+            .outer_radius(80.)
+            .pad_angle(0.2)
+            .active_index(Some(0))
+            .active_offset(10.);
+        let bounds = Bounds::from_corners(point(px(0.), px(0.)), point(px(200.), px(200.)));
+
+        assert_eq!(
+            chart.hovered_index(point(px(185.), px(100.)), bounds),
+            Some(0)
+        );
+        assert_eq!(chart.hovered_index(point(px(100.), px(180.)), bounds), None);
     }
 }

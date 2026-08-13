@@ -1,19 +1,48 @@
 ---
 title: Chart
-description: Beautiful charts and graphs for data visualization including line, bar, area, pie, radar, candlestick, and sankey charts.
+description: Theme-aware charts for line, bar, area, pie, radar, radial, candlestick, and sankey data visualization.
 ---
 
 # Chart
 
-A comprehensive charting library providing Line, Bar, Area, Pie, Radar, Candlestick, and Sankey charts for data visualization. The charts feature smooth animations, customizable styling, tooltips, legends, and automatic theming that adapts to your application's theme.
+A GPUI-native charting library providing Line, Bar, Area, Pie, Radar, Radial, Candlestick, and Sankey charts. Chart colors come from the active Color Theme, while tooltip geometry, radius, and elevation follow the active Style Preset. Charts do not add decorative motion that is absent from the pinned shadcn implementation.
 
 ## Import
 
 ```rust
 use gpui_component::chart::{
-    LineChart, BarChart, AreaChart, PieChart, RadarChart, CandlestickChart, SankeyChart,
+    AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartAccessibilityItem,
+    ChartConfig, ChartConfigItem, ChartContainer, ChartLegend, LineChart, PieChart,
+    RadarChart, RadialChart, SankeyChart,
 };
 ```
+
+## Composition
+
+`ChartContainer` supplies the standard `text-xs` chart context and graphics-document accessibility semantics without owning a Card surface. Compose it with `Card` when a titled surface is required. `ChartConfig` preserves semantic series order for `ChartLegend` and accessible summaries.
+
+```rust
+let config = ChartConfig::new()
+    .item(ChartConfigItem::new("desktop", "Desktop", cx.theme().chart_1))
+    .item(ChartConfigItem::new("mobile", "Mobile", cx.theme().chart_2));
+
+v_flex()
+    .child(
+        ChartContainer::new("visitors-chart")
+            .accessibility(
+                ChartAccessibility::new("Visitors by month")
+                    .item(
+                        ChartAccessibilityItem::new("January")
+                            .value("Desktop", "186")
+                            .value("Mobile", "80"),
+                    ),
+            )
+            .child(chart),
+    )
+    .child(ChartLegend::new(config));
+```
+
+When accessible data items are supplied, the container becomes a Tab stop. Arrow keys move through values, while Home and End jump to the first and last item. The current item is exposed as the graphics document's accessible value.
 
 ## Chart Types
 
@@ -72,6 +101,18 @@ LineChart::new(data)
     .x(|d| d.month.clone())
     .y(|d| d.value)
     .stroke(cx.theme().success)
+```
+
+Multiple series share one scale and tooltip:
+
+```rust
+LineChart::new(data)
+    .x(|d| d.month.clone())
+    .series("Desktop", |d| d.desktop)
+    .stroke(cx.theme().chart_1)
+    .series("Mobile", |d| d.mobile)
+    .stroke(cx.theme().chart_2)
+    .id("traffic-lines")
 ```
 
 #### Tick Control
@@ -255,7 +296,30 @@ AreaChart::new(data)
     .y(|d| d.mobile)   // Second series
     .stroke(cx.theme().chart_2)
     .fill(cx.theme().chart_2.opacity(0.4))
+    .stacked()
 ```
+
+Use `.stacked_expand()` for a normalized 100% stack.
+
+### RadialChart
+
+`RadialChart` is the GPUI equivalent of shadcn's Radial Bar family. It supports concentric or stacked series, background tracks, partial angles, center content, Tooltip, and Legend composition.
+
+```rust
+RadialChart::new(data)
+    .label(|d| d.month.clone())
+    .series("Desktop", |d| d.desktop as f32)
+    .color(cx.theme().chart_1)
+    .series("Mobile", |d| d.mobile as f32)
+    .color(cx.theme().chart_2)
+    .background(true)
+    .center_label("1,260", "Visitors")
+    .id("radial-visitors")
+```
+
+## Tooltip and motion
+
+Structured tooltips support dot, line, dashed, or hidden indicators. They use `text-xs`, a 128px minimum width, tabular monospace values, `border/50`, and Style Preset elevation. The pinned shadcn Chart source declares no dedicated enter or exit animation, so GPUI chart tooltips appear without opacity, scale, or displacement transitions.
 
 #### Area Chart Styling
 
@@ -287,9 +351,13 @@ A pie chart displays data as slices of a circular chart, ideal for showing propo
 
 ```rust
 PieChart::new(data)
+    .id("pie")
     .value(|d| d.amount as f32)
+    .label(|d| d.name.clone())
     .outer_radius(100.)
 ```
+
+`id` enables the shared Tooltip. The slice label is reused as the Tooltip label.
 
 #### Donut Chart
 
@@ -486,11 +554,13 @@ let links = vec![
 ];
 
 SankeyChart::new(nodes, links)
+    .id("cash-flow")
     .node_label(|d| d.name.clone())
     .value_label(|_, value| format!("{:.1}", value).into())
 ```
 
 The value label is drawn above the name label. Its closure receives the node's computed throughput (the larger of incoming and outgoing flow).
+`id` enables node Tooltip hit testing without changing the flow layout.
 
 #### Node Alignment
 

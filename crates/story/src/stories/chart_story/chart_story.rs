@@ -6,8 +6,9 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, StyledExt,
     chart::{
-        AreaChart, BarChart, CandlestickChart, LineChart, PieChart, RadarChart, SankeyChart,
-        SankeyLabel,
+        AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartConfig, ChartConfigItem,
+        ChartContainer, ChartLegend, LineChart, PieChart, RadarChart, RadarGridShape, RadialChart,
+        SankeyChart, SankeyLabel,
     },
     dock::PanelControl,
     h_flex,
@@ -17,7 +18,6 @@ use gpui_component::{
 };
 use serde::Deserialize;
 
-use super::StackedBarChart;
 use crate::Story;
 
 #[derive(Clone, Deserialize)]
@@ -234,7 +234,16 @@ fn chart_container<C: IntoElement>(
                 .text_sm()
                 .child("January-June 2025"),
         )
-        .child(div().flex_1().py_4().child(chart))
+        .child(
+            ChartContainer::new(format!("{}-plot", title.to_lowercase().replace(' ', "-")))
+                .accessibility(
+                    ChartAccessibility::new(title)
+                        .description("Showing total visitors for January through June 2025"),
+                )
+                .flex_1()
+                .py_4()
+                .child(chart),
+        )
         .child(
             div()
                 .when(center, |this| this.text_center())
@@ -279,6 +288,7 @@ impl Render for ChartStory {
                             linear_color_stop(cx.theme().background.opacity(0.3), 0.),
                         ))
                         .name("Mobile")
+                        .stacked()
                         .tick_margin(8)
                         .id("area-chart-tooltip"),
                     false,
@@ -292,6 +302,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Pie Chart",
                         PieChart::new(self.monthly_devices.clone())
+                            .id("pie-chart")
                             .value(|d| d.desktop as f32)
                             .outer_radius(100.)
                             .color(move |d| d.color(color)),
@@ -301,16 +312,20 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Pie Chart - Donut",
                         PieChart::new(self.monthly_devices.clone())
+                            .id("pie-chart-donut")
                             .value(|d| d.desktop as f32)
                             .inner_radius(60.)
                             .outer_radius_fn(|d| 100. - d.index as f32 * 4.)
-                            .color(move |d| d.color(color)),
+                            .color(move |d| d.color(color))
+                            .active_index(Some(1))
+                            .center_label("1,260", "Visitors"),
                         true,
                         cx,
                     ))
                     .child(chart_container(
                         "Pie Chart - Pad Angle",
                         PieChart::new(self.monthly_devices.clone())
+                            .id("pie-chart-pad")
                             .value(|d| d.desktop as f32)
                             .inner_radius(60.)
                             .outer_radius(100.)
@@ -322,6 +337,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Pie Chart - Label",
                         PieChart::new(self.monthly_devices.clone())
+                            .id("pie-chart-label")
                             .value(|d| d.desktop as f32)
                             .inner_radius(50.)
                             .outer_radius(80.)
@@ -331,6 +347,69 @@ impl Render for ChartStory {
                         cx,
                     )),
             )
+            .child(Separator::horizontal())
+            .child({
+                let config = ChartConfig::new()
+                    .item(ChartConfigItem::new(
+                        "desktop",
+                        "Desktop",
+                        cx.theme().chart_1,
+                    ))
+                    .item(ChartConfigItem::new("mobile", "Mobile", cx.theme().chart_2));
+                h_flex()
+                    .flex_wrap()
+                    .gap_4()
+                    .child(chart_container(
+                        "Radial Chart",
+                        v_flex()
+                            .size_full()
+                            .child(
+                                div().flex_1().child(
+                                    RadialChart::new(self.radar_devices.clone())
+                                        .label(|d| d.month.clone())
+                                        .series("Desktop", |d| d.desktop as f32)
+                                        .color(cx.theme().chart_1)
+                                        .series("Mobile", |d| d.mobile as f32)
+                                        .color(cx.theme().chart_2)
+                                        .background(true)
+                                        .center_label("2 series", "Visitors")
+                                        .id("radial-chart"),
+                                ),
+                            )
+                            .child(ChartLegend::new(config.clone())),
+                        true,
+                        cx,
+                    ))
+                    .child(chart_container(
+                        "Radial Chart - Stacked",
+                        v_flex()
+                            .size_full()
+                            .child(
+                                div().flex_1().child(
+                                    RadialChart::new(
+                                        self.radar_devices
+                                            .iter()
+                                            .take(1)
+                                            .cloned()
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .label(|d| d.month.clone())
+                                    .series("Desktop", |d| d.desktop as f32)
+                                    .color(cx.theme().chart_1)
+                                    .series("Mobile", |d| d.mobile as f32)
+                                    .color(cx.theme().chart_2)
+                                    .angles(0., std::f32::consts::PI)
+                                    .stacked(true)
+                                    .background(true)
+                                    .center_label("Stacked", "Visitors")
+                                    .id("radial-chart-stacked"),
+                                ),
+                            )
+                            .child(ChartLegend::new(config)),
+                        true,
+                        cx,
+                    ))
+            })
             .child(Separator::horizontal())
             .child(
                 h_flex()
@@ -417,6 +496,8 @@ impl Render for ChartStory {
                             .fill(gpui::transparent_black())
                             .max_value(400.)
                             .grid_levels(5)
+                            .grid_shape(RadarGridShape::Circle)
+                            .spokes(false)
                             .id("radar-chart-lines-only"),
                         true,
                         cx,
@@ -449,10 +530,38 @@ impl Render for ChartStory {
                         cx,
                     ))
                     .child({
-                        let data = self.daily_devices.iter().take(8).cloned().collect();
+                        let data: Vec<DailyDevice> =
+                            self.daily_devices.iter().take(8).cloned().collect();
                         chart_container(
                             "Bar Chart - Stacked",
-                            StackedBarChart::new(data),
+                            BarChart::new(data)
+                                .id("bar-chart-stacked")
+                                .name("Desktop")
+                                .band(|d| d.date.clone())
+                                .value(|d| d.desktop)
+                                .series("Mobile", |d| d.mobile)
+                                .series_color(cx.theme().chart_2)
+                                .series("Tablet", |d| d.tablet)
+                                .series_color(cx.theme().chart_3)
+                                .series("Watch", |d| d.watch)
+                                .series_color(cx.theme().chart_4)
+                                .stacked(),
+                            false,
+                            cx,
+                        )
+                    })
+                    .child({
+                        let data: Vec<DailyDevice> =
+                            self.daily_devices.iter().take(8).cloned().collect();
+                        chart_container(
+                            "Bar Chart - Multiple",
+                            BarChart::new(data)
+                                .id("bar-chart-multiple")
+                                .name("Desktop")
+                                .band(|d| d.date.clone())
+                                .value(|d| d.desktop)
+                                .series("Mobile", |d| d.mobile)
+                                .series_color(cx.theme().chart_2),
                             false,
                             cx,
                         )
@@ -716,6 +825,19 @@ impl Render for ChartStory {
                             .id("line-chart-dots"),
                         false,
                         cx,
+                    ))
+                    .child(chart_container(
+                        "Line Chart - Multiple",
+                        LineChart::new(self.radar_devices.clone())
+                            .x(|d| d.month.clone())
+                            .series("Desktop", |d| d.desktop)
+                            .stroke(cx.theme().chart_1)
+                            .series("Mobile", |d| d.mobile)
+                            .stroke(cx.theme().chart_2)
+                            .dot()
+                            .id("line-chart-multiple"),
+                        false,
+                        cx,
                     )),
             )
             .child(Separator::horizontal())
@@ -775,6 +897,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Candlestick Chart",
                         CandlestickChart::new(self.stock_prices.clone())
+                            .id("candlestick-chart")
                             .x(|d| d.date.clone())
                             .open(|d| d.open)
                             .high(|d| d.high)
@@ -786,6 +909,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Candlestick Chart - Narrow",
                         CandlestickChart::new(self.stock_prices.clone())
+                            .id("candlestick-chart-narrow")
                             .x(|d| d.date.clone())
                             .open(|d| d.open)
                             .high(|d| d.high)
@@ -798,6 +922,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Candlestick Chart - Wide",
                         CandlestickChart::new(self.stock_prices.clone())
+                            .id("candlestick-chart-wide")
                             .x(|d| d.date.clone())
                             .open(|d| d.open)
                             .high(|d| d.high)
@@ -810,6 +935,7 @@ impl Render for ChartStory {
                     .child(chart_container(
                         "Candlestick Chart - Tick Margin",
                         CandlestickChart::new(self.stock_prices.clone())
+                            .id("candlestick-chart-ticks")
                             .x(|d| d.date.clone())
                             .open(|d| d.open)
                             .high(|d| d.high)
@@ -830,6 +956,7 @@ impl Render for ChartStory {
                             // Sqrt value scale keeps the huge revenue flow from
                             // dwarfing the small profit/expense ones.
                             let chart = SankeyChart::new(nodes.clone(), links.clone())
+                                .id(("sankey-chart", index))
                                 .node_align(SankeyAlign::Center)
                                 .node_padding(40.)
                                 .value_scale(SankeyValueScale::Sqrt)
