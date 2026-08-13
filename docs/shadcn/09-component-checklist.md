@@ -26,6 +26,7 @@ This checklist tracks component-level shadcn alignment and GPUI-specific optimiz
 - [x] NumberInput — GPUI-native optimization and Style Preset integration
 - [x] OtpInput
 - [x] Select
+- [x] NativeSelect — native platform option menu with Vega trigger alignment
 - [x] Combobox
 - [x] Tooltip
 - [x] Dialog (`9381cbde`)
@@ -131,7 +132,6 @@ GPUI-native optimization batch is completed.
 - [ ] Item
 - [ ] Marker
 - [ ] Message and MessageScroller
-- [ ] NativeSelect
 - [ ] NavigationMenu
 
 Backlog items remain outside the current release criterion. Checking one requires a separate product

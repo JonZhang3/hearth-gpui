@@ -512,6 +512,7 @@ impl StoryState {
             "CalendarStory" => story!(CalendarStory),
             "CommandStory" => story!(CommandStory),
             "SelectStory" => story!(SelectStory),
+            "NativeSelectStory" => story!(NativeSelectStory),
             "IconStory" => story!(IconStory),
             "ImageStory" => story!(ImageStory),
             "InputStory" => story!(InputStory),

@@ -54,6 +54,7 @@ pub(super) fn show(
     items: Vec<NativeMenuItem>,
     asset_source: Arc<dyn AssetSource>,
     position: Point<Pixels>,
+    selected_item_index: Option<usize>,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -65,7 +66,13 @@ pub(super) fn show(
     let handle = Window::window_handle(window);
 
     cx.spawn(async move |cx| {
-        let action = run_menu(view_ptr, &items, asset_source.as_ref(), position);
+        let action = run_menu(
+            view_ptr,
+            &items,
+            asset_source.as_ref(),
+            position,
+            selected_item_index,
+        );
         let _ = cx.update(move |app| {
             let _ = handle.update(app, move |_, window, app| {
                 if let Some(action) = action {
@@ -90,6 +97,7 @@ fn run_menu(
     items: &[NativeMenuItem],
     asset_source: &dyn AssetSource,
     position: Point<Pixels>,
+    selected_item_index: Option<usize>,
 ) -> Option<Box<dyn Action>> {
     let mtm = MainThreadMarker::new()?;
     // SAFETY: `view_ptr` came from the window's AppKit handle, and the window
@@ -107,7 +115,16 @@ fn run_menu(
         f32::from(position.x) as f64,
         height - f32::from(position.y) as f64,
     );
-    ns_menu.popUpMenuPositioningItem_atLocation_inView(None, location, Some(view));
+    let positioning_item = selected_item_index.and_then(|index| {
+        (index < ns_menu.numberOfItems() as usize)
+            .then(|| ns_menu.itemAtIndex(index as isize))
+            .flatten()
+    });
+    ns_menu.popUpMenuPositioningItem_atLocation_inView(
+        positioning_item.as_deref(),
+        location,
+        Some(view),
+    );
 
     let tag = target.ivars().selected.get();
     if tag >= 0 {

@@ -102,6 +102,22 @@ impl NativeMenu {
         self.menu_with(label, false, checked, None, Some(action))
     }
 
+    /// Append a selectable item with explicit checked and disabled states.
+    pub fn menu_with_check_and_disabled(
+        self,
+        label: impl Into<SharedString>,
+        checked: bool,
+        disabled: bool,
+        action: Box<dyn Action>,
+    ) -> Self {
+        self.menu_with(label, disabled, checked, None, Some(action))
+    }
+
+    /// Append a non-interactive section label.
+    pub fn label(self, label: impl Into<SharedString>) -> Self {
+        self.menu_with(label, true, false, None, None)
+    }
+
     /// Append an item showing `icon` next to its label.
     ///
     /// Native platform menus render file-backed icons from their filesystem path
@@ -195,16 +211,48 @@ impl NativeMenu {
     /// off GPUI's call stack, so GPUI is not borrowed while it is open. When an
     /// item is selected, its action is dispatched via [`Window::dispatch_action`].
     pub fn show(self, position: Point<Pixels>, window: &mut Window, cx: &mut App) {
+        self.show_with_selected_item(position, None, window, cx);
+    }
+
+    /// Pop up the menu with `selected_item_index` aligned to `position` on macOS.
+    ///
+    /// AppKit provides native selected-item anchoring for select-like controls.
+    /// Other platforms intentionally keep the regular top-left popup positioning.
+    pub fn show_selected_at(
+        self,
+        position: Point<Pixels>,
+        selected_item_index: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.show_with_selected_item(position, Some(selected_item_index), window, cx);
+    }
+
+    fn show_with_selected_item(
+        self,
+        position: Point<Pixels>,
+        selected_item_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         if self.items.is_empty() {
             return;
         }
 
         #[cfg(target_os = "macos")]
         {
-            macos::show(self.items, cx.asset_source().clone(), position, window, cx);
+            macos::show(
+                self.items,
+                cx.asset_source().clone(),
+                position,
+                selected_item_index,
+                window,
+                cx,
+            );
         }
         #[cfg(target_os = "windows")]
         {
+            let _ = selected_item_index;
             windows::show(
                 self.items,
                 cx.asset_source().clone(),
@@ -215,7 +263,10 @@ impl NativeMenu {
             );
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        fallback::show(self.items, position, window, cx);
+        {
+            let _ = selected_item_index;
+            fallback::show(self.items, position, window, cx);
+        }
     }
 }
 
@@ -397,6 +448,47 @@ mod tests {
         assert!(disabled);
         assert!(!checked);
         assert!(icon.path_ref().ends_with("inbox.svg"));
+    }
+
+    #[test]
+    fn test_native_menu_builder_accepts_checked_disabled_items() {
+        let menu = NativeMenu::new().menu_with_check_and_disabled(
+            "Unavailable",
+            true,
+            true,
+            Box::new(TestAction),
+        );
+
+        let NativeMenuItem::Item {
+            disabled,
+            checked,
+            action: Some(_),
+            ..
+        } = &menu.items[0]
+        else {
+            panic!("expected a checked disabled item");
+        };
+        assert!(*disabled);
+        assert!(*checked);
+    }
+
+    #[test]
+    fn test_native_menu_builder_accepts_non_interactive_labels() {
+        let menu = NativeMenu::new().label("Languages");
+
+        let NativeMenuItem::Item {
+            label,
+            disabled,
+            checked,
+            action: None,
+            ..
+        } = &menu.items[0]
+        else {
+            panic!("expected a non-interactive label");
+        };
+        assert_eq!(label, "Languages");
+        assert!(*disabled);
+        assert!(!checked);
     }
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

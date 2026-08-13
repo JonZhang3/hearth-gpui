@@ -56,6 +56,7 @@ pub mod link;
 pub mod list;
 pub mod menu;
 pub mod native_menu;
+pub mod native_select;
 pub mod notification;
 pub mod pagination;
 pub mod plot;
@@ -124,6 +125,7 @@ pub fn init(cx: &mut App) {
     sheet::init(cx);
     combobox::init(cx);
     select::init(cx);
+    native_select::init(cx);
     input::init(cx);
     list::init(cx);
     dialog::init(cx);

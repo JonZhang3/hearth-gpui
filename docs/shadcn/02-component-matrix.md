@@ -27,6 +27,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 | NumberInput | `input`, `input-group` | Apply the control contract without losing numeric step behavior | Keyboard stepping and buttons share focus treatment |
 | OtpInput | `input-otp` | Align cells, active ring, caret, invalid state, and grouping | Paste, focus movement, selection, disabled, invalid |
 | Select | `select` | Align trigger, value, caret, menu surface, item states, and overlay motion | Keyboard navigation, focus restore, close lifecycle |
+| NativeSelect | `native-select` | Align trigger geometry and states while delegating option presentation to the native platform menu | Controlled and uncontrolled values, disabled options, groups, keyboard navigation |
 | Combobox | `combobox`, `command` | Align trigger, search field, result rows, empty state, and overlay motion | Async content, filtering, selection, escape, focus restore |
 | Tooltip | `tooltip` | Align compact typography, arrow, surface, side-aware entry, delay, and exit | No flicker at window edges; reduced motion; action hints |
 | Dialog and AlertDialog | `dialog`, `alert-dialog` | Align overlay, surface radius, spacing, typography, close controls, and preset geometry; retain the documented standard Dialog desktop motion | Focus trap, initial focus, Escape/Enter policy, outside click rules, cancellation veto, exit lifecycle, focus restore |
@@ -103,7 +104,6 @@ The following shadcn components have no necessary one-to-one existing target. Ad
 - Item
 - Marker
 - Message and MessageScroller
-- NativeSelect
 - NavigationMenu
 
 Component parity is not a release criterion for the alignment project.

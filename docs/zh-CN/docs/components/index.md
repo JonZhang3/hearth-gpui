@@ -28,6 +28,7 @@ collapsed: false
 
 - [Input](input) - 文本输入与类输入控件
 - [Select](select) - 选项选择器
+- [NativeSelect](native-select) - 使用操作系统菜单的紧凑选项选择器
 - [Combobox](combobox) - 可搜索的单选或多选下拉组件
 - [NumberInput](number-input) - 数字输入
 - [DatePicker](date-picker) - 日期选择器
