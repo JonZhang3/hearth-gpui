@@ -328,3 +328,13 @@ preserving sibling measurement, text truncation, hit testing, and rapid collapse
 component therefore applies the correct final geometry immediately and keeps caret rotation
 deterministic. Revisit exact parity after the motion runtime can interpolate layout properties from
 the currently painted value without restarting or producing stale frames.
+
+## Empty balanced wrapping and title tracking
+
+**Status:** Deferred GPUI text-layout capability; constrained wrapping implemented
+
+The pinned Empty source uses `text-wrap: balance` on the root and content regions and
+`tracking-tight` on the title. GPUI currently exposes neither balanced line breaking nor per-element
+letter spacing through its public styling API. Empty therefore uses normal constrained wrapping and
+the standard theme title typography. Revisit exact parity when GPUI provides these text-layout
+controls without requiring custom text painting.

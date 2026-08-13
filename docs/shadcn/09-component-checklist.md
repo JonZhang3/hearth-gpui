@@ -127,7 +127,7 @@ GPUI-native optimization batch is completed.
 - [ ] Command as a standalone public component
 - [ ] Direction provider
 - [ ] Drawer distinct from Sheet
-- [ ] Empty
+- [x] Empty
 - [ ] Item
 - [ ] Marker
 - [ ] Message and MessageScroller

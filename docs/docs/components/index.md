@@ -19,6 +19,7 @@ collapsed: false
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content
 - [DropdownButton](dropdown_button) - Button with dropdown menu
+- [Empty](empty) - Empty and no-result states
 - [Icon](icon) - Icon display component
 - [Image](image) - Image display with fallbacks
 - [Kbd](kbd) - Keyboard shortcut display
