@@ -118,6 +118,19 @@ impl Render for StepperStory {
                     ),
             )
             .child(
+                section("Read-only Progress").max_w_md().v_flex().child(
+                    Stepper::new("read-only-stepper")
+                        .w_full()
+                        .with_size(self.size)
+                        .selected_index(1)
+                        .items([
+                            StepperItem::new().label("Account details"),
+                            StepperItem::new().label("Review information"),
+                            StepperItem::new().label("Complete"),
+                        ]),
+                ),
+            )
+            .child(
                 section("Horizontal Stepper").max_w_md().v_flex().child(
                     Stepper::new("stepper0")
                         .w_full()
@@ -125,14 +138,27 @@ impl Render for StepperStory {
                         .disabled(self.disabled)
                         .selected_index(self.stepper0_step)
                         .items([
-                            StepperItem::new().child("Step 1"),
-                            StepperItem::new().child("Step 2"),
-                            StepperItem::new().child("Step 3"),
+                            StepperItem::new().label("Step 1"),
+                            StepperItem::new().label("Step 2"),
+                            StepperItem::new().label("Step 3"),
                         ])
                         .on_click(cx.listener(|this, step, _, cx| {
                             this.stepper0_step = *step;
                             cx.notify();
                         })),
+                ),
+            )
+            .child(
+                section("Long Labels").max_w_md().v_flex().child(
+                    Stepper::new("long-label-stepper")
+                        .w_full()
+                        .with_size(self.size)
+                        .selected_index(1)
+                        .items([
+                            StepperItem::new().label("Create workspace"),
+                            StepperItem::new().label("Configure team permissions"),
+                            StepperItem::new().label("Invite collaborators"),
+                        ]),
                 ),
             )
             .child(
@@ -145,10 +171,13 @@ impl Render for StepperStory {
                         .items([
                             StepperItem::new()
                                 .icon(IconName::Calendar)
-                                .child("Order Details"),
-                            StepperItem::new().icon(IconName::Inbox).child("Shipping"),
-                            StepperItem::new().icon(IconName::Frame).child("Preview"),
-                            StepperItem::new().icon(IconName::Info).child("Finish"),
+                                .label("Order Details"),
+                            StepperItem::new()
+                                .icon(IconName::Inbox)
+                                .label("Shipping")
+                                .disabled(true),
+                            StepperItem::new().icon(IconName::Frame).label("Preview"),
+                            StepperItem::new().icon(IconName::Info).label("Finish"),
                         ])
                         .on_click(cx.listener(|this, step, _, cx| {
                             this.stepper1_step = *step;

@@ -2,31 +2,112 @@ use std::{cell::Cell, ops::Deref, panic::Location, rc::Rc};
 
 use instant::{Duration, Instant};
 
-use crate::{ActiveTheme, AxisExt};
+use crate::{ActiveTheme, AxisExt, MotionEasing, StylePreset};
 use gpui::{
-    Anchor, App, Axis, Background, BorderStyle, Bounds, ContentMask, CursorStyle, Edges, Element,
-    ElementId, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement,
-    IsZero, LayoutId, ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PaintQuad, Pixels,
-    Point, Position, ScrollHandle, ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window,
-    fill, point, px, relative, size,
+    Anchor, App, Axis, Background, Bounds, ContentMask, CursorStyle, Element, ElementId,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, ListState,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Position, ScrollHandle,
+    ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window, fill, point, px, relative,
+    size,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The width of the scrollbar (THUMB_ACTIVE_INSET * 2 + THUMB_ACTIVE_WIDTH)
+/// Desktop-sized pointer target used by the overlaid scrollbar layer.
 const WIDTH: Pixels = px(4. * 2. + 8.);
-const MIN_THUMB_SIZE: f32 = 48.;
-
+const TRACK_WIDTH: Pixels = px(10.);
+const MIN_THUMB_SIZE: Pixels = px(48.);
 const THUMB_WIDTH: Pixels = px(6.);
-const THUMB_RADIUS: Pixels = px(6. / 2.);
-const THUMB_INSET: Pixels = px(4.);
-
 const THUMB_ACTIVE_WIDTH: Pixels = px(8.);
-const THUMB_ACTIVE_RADIUS: Pixels = px(8. / 2.);
-const THUMB_ACTIVE_INSET: Pixels = px(4.);
+const AUTO_HIDE_DELAY: Duration = Duration::from_secs(2);
 
-const FADE_OUT_DURATION: f32 = 3.0;
-const FADE_OUT_DELAY: f32 = 2.0;
+/// Component-local presentation resolved from semantic Style Preset metrics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScrollbarMetrics {
+    hit_width: Pixels,
+    track_width: Pixels,
+    min_thumb_size: Pixels,
+    thumb_width: Pixels,
+    active_thumb_width: Pixels,
+    thumb_end_inset: Pixels,
+    thumb_radius: Pixels,
+    track_radius: Pixels,
+    fade_delay: Duration,
+    fade_duration: Duration,
+    fade_easing: MotionEasing,
+}
+
+impl ScrollbarMetrics {
+    /// Resolves scrollbar paint metrics while preserving a generous desktop hit target.
+    fn resolve(style: &StylePreset) -> Self {
+        Self {
+            hit_width: WIDTH,
+            track_width: TRACK_WIDTH,
+            min_thumb_size: MIN_THUMB_SIZE,
+            thumb_width: THUMB_WIDTH,
+            active_thumb_width: THUMB_ACTIVE_WIDTH,
+            thumb_end_inset: px(1.),
+            thumb_radius: style.radii.sm,
+            track_radius: style.radii.sm,
+            fade_delay: AUTO_HIDE_DELAY,
+            fade_duration: style.motion.slow(),
+            fade_easing: style.motion.exit_easing,
+        }
+    }
+
+    /// Returns the centered cross-axis inset for a visual inside the hit target.
+    fn cross_inset(self, visual_width: Pixels) -> Pixels {
+        ((self.hit_width - visual_width) / 2.).max(px(0.))
+    }
+
+    /// Returns the total time for which an auto-hidden scrollbar remains mounted.
+    fn visible_duration(self) -> Duration {
+        self.fade_delay + self.fade_duration
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ScrollbarPaintStyle {
+    thumb: Background,
+    track: Background,
+    thumb_width: Pixels,
+    thumb_radius: Pixels,
+}
+
+/// Stable one-axis geometry shared by prepaint and regression tests.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ScrollbarAxisGeometry {
+    available_length: Pixels,
+    thumb_length: Pixels,
+    thumb_start: Pixels,
+}
+
+/// Resolves thumb geometry and rejects non-scrollable or degenerate layouts.
+fn scrollbar_axis_geometry(
+    container_size: Pixels,
+    scroll_area_size: Pixels,
+    scroll_position: Pixels,
+    margin_end: Pixels,
+    min_thumb_size: Pixels,
+) -> Option<ScrollbarAxisGeometry> {
+    let available_length = (container_size - margin_end).max(px(0.));
+    let scroll_range = scroll_area_size - container_size;
+    if available_length <= px(0.) || scroll_range <= px(0.) || scroll_area_size <= px(0.) {
+        return None;
+    }
+
+    let thumb_length = (container_size / scroll_area_size * available_length)
+        .max(min_thumb_size.min(available_length))
+        .min(available_length);
+    let scroll_progress = (-scroll_position / scroll_range).clamp(0., 1.);
+    let thumb_start = scroll_progress * (available_length - thumb_length);
+
+    Some(ScrollbarAxisGeometry {
+        available_length,
+        thumb_length,
+        thumb_start,
+    })
+}
 
 /// Scrollbar show mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Default, JsonSchema)]
@@ -184,13 +265,12 @@ impl ScrollbarStateInner {
         state
     }
 
-    fn with_hovered_on_thumb(&self, axis: Option<Axis>) -> Self {
+    fn with_hovered_on_thumb(&self, axis: Option<Axis>, visible_duration: Duration) -> Self {
         let mut state = *self;
         state.hovered_on_thumb = axis;
-        if self.is_scrollbar_visible() {
-            if axis.is_some() {
-                state.last_scroll_time = Some(Instant::now());
-            }
+        // A hidden scrolling-only scrollbar must not become visible from pointer hover.
+        if axis.is_some() && self.is_scrollbar_visible(visible_duration) {
+            state.last_scroll_time = Some(Instant::now());
         }
         state
     }
@@ -224,15 +304,14 @@ impl ScrollbarStateInner {
         state
     }
 
-    fn is_scrollbar_visible(&self) -> bool {
+    fn is_scrollbar_visible(&self, visible_duration: Duration) -> bool {
         // On drag
         if self.dragged_axis.is_some() {
             return true;
         }
 
         if let Some(last_time) = self.last_scroll_time {
-            let elapsed = Instant::now().duration_since(last_time).as_secs_f32();
-            elapsed < FADE_OUT_DURATION
+            Instant::now().duration_since(last_time) < visible_duration
         } else {
             false
         }
@@ -388,71 +467,56 @@ impl Scrollbar {
         WIDTH
     }
 
-    fn style_for_active(cx: &App) -> (Background, Hsla, Hsla, Pixels, Pixels, Pixels) {
-        (
-            cx.theme().tokens.scrollbar_thumb_hover.into(),
-            cx.theme().scrollbar,
-            cx.theme().border,
-            THUMB_ACTIVE_WIDTH,
-            THUMB_ACTIVE_INSET,
-            THUMB_ACTIVE_RADIUS,
-        )
+    fn style_for_active(cx: &App, metrics: ScrollbarMetrics) -> ScrollbarPaintStyle {
+        ScrollbarPaintStyle {
+            thumb: cx.theme().tokens.scrollbar_thumb_hover.into(),
+            track: cx.theme().tokens.scrollbar.into(),
+            thumb_width: metrics.active_thumb_width,
+            thumb_radius: metrics.thumb_radius.min(metrics.active_thumb_width / 2.),
+        }
     }
 
-    fn style_for_hovered_thumb(cx: &App) -> (Background, Hsla, Hsla, Pixels, Pixels, Pixels) {
-        (
-            cx.theme().tokens.scrollbar_thumb_hover.into(),
-            cx.theme().scrollbar,
-            cx.theme().border,
-            THUMB_ACTIVE_WIDTH,
-            THUMB_ACTIVE_INSET,
-            THUMB_ACTIVE_RADIUS,
-        )
+    fn style_for_hovered_thumb(cx: &App, metrics: ScrollbarMetrics) -> ScrollbarPaintStyle {
+        Self::style_for_active(cx, metrics)
     }
 
-    fn style_for_hovered_bar(cx: &App) -> (Background, Hsla, Hsla, Pixels, Pixels, Pixels) {
-        (
-            cx.theme().tokens.scrollbar_thumb.into(),
-            cx.theme().scrollbar,
-            gpui::transparent_black(),
-            THUMB_ACTIVE_WIDTH,
-            THUMB_ACTIVE_INSET,
-            THUMB_ACTIVE_RADIUS,
-        )
+    fn style_for_hovered_bar(cx: &App, metrics: ScrollbarMetrics) -> ScrollbarPaintStyle {
+        ScrollbarPaintStyle {
+            thumb: cx.theme().tokens.scrollbar_thumb.into(),
+            track: cx.theme().tokens.scrollbar.into(),
+            thumb_width: metrics.active_thumb_width,
+            thumb_radius: metrics.thumb_radius.min(metrics.active_thumb_width / 2.),
+        }
     }
 
-    fn style_for_normal(&self, cx: &App) -> (Background, Hsla, Hsla, Pixels, Pixels, Pixels) {
+    fn style_for_normal(&self, cx: &App, metrics: ScrollbarMetrics) -> ScrollbarPaintStyle {
         let scrollbar_show = self.scrollbar_show.unwrap_or(cx.theme().scrollbar_show);
-        let (width, inset, radius) = match scrollbar_show {
-            ScrollbarShow::Scrolling => (THUMB_WIDTH, THUMB_INSET, THUMB_RADIUS),
-            _ => (THUMB_ACTIVE_WIDTH, THUMB_ACTIVE_INSET, THUMB_ACTIVE_RADIUS),
+        let thumb_width = match scrollbar_show {
+            ScrollbarShow::Scrolling => metrics.thumb_width,
+            _ => metrics.active_thumb_width,
         };
 
-        (
-            cx.theme().tokens.scrollbar_thumb.into(),
-            cx.theme().scrollbar,
-            gpui::transparent_black(),
-            width,
-            inset,
-            radius,
-        )
+        ScrollbarPaintStyle {
+            thumb: cx.theme().tokens.scrollbar_thumb.into(),
+            track: gpui::transparent_black().into(),
+            thumb_width,
+            thumb_radius: metrics.thumb_radius.min(thumb_width / 2.),
+        }
     }
 
-    fn style_for_idle(&self, cx: &App) -> (Background, Hsla, Hsla, Pixels, Pixels, Pixels) {
+    fn style_for_idle(&self, cx: &App, metrics: ScrollbarMetrics) -> ScrollbarPaintStyle {
         let scrollbar_show = self.scrollbar_show.unwrap_or(cx.theme().scrollbar_show);
-        let (width, inset, radius) = match scrollbar_show {
-            ScrollbarShow::Scrolling => (THUMB_WIDTH, THUMB_INSET, THUMB_RADIUS),
-            _ => (THUMB_ACTIVE_WIDTH, THUMB_ACTIVE_INSET, THUMB_ACTIVE_RADIUS),
+        let thumb_width = match scrollbar_show {
+            ScrollbarShow::Scrolling => metrics.thumb_width,
+            _ => metrics.active_thumb_width,
         };
 
-        (
-            gpui::transparent_black().into(),
-            gpui::transparent_black(),
-            gpui::transparent_black(),
-            width,
-            inset,
-            radius,
-        )
+        ScrollbarPaintStyle {
+            thumb: gpui::transparent_black().into(),
+            track: gpui::transparent_black().into(),
+            thumb_width,
+            thumb_radius: metrics.thumb_radius.min(thumb_width / 2.),
+        }
     }
 }
 
@@ -476,9 +540,10 @@ pub struct AxisPrepaintState {
     axis: Axis,
     bar_hitbox: Hitbox,
     bounds: Bounds<Pixels>,
-    radius: Pixels,
-    bg: Hsla,
-    border: Hsla,
+    track_bounds: Bounds<Pixels>,
+    track_radius: Pixels,
+    track_bg: Background,
+    thumb_radius: Pixels,
     thumb_bounds: Bounds<Pixels>,
     // Bounds of thumb to be rendered.
     thumb_fill_bounds: Bounds<Pixels>,
@@ -486,7 +551,6 @@ pub struct AxisPrepaintState {
     scroll_size: Pixels,
     container_size: Pixels,
     thumb_size: Pixels,
-    margin_end: Pixels,
 }
 
 impl Element for Scrollbar {
@@ -537,10 +601,14 @@ impl Element for Scrollbar {
             .clone();
 
         let mut states = vec![];
-        let mut has_both = self.axis.is_both();
+        let metrics = ScrollbarMetrics::resolve(&cx.theme().style);
         let scroll_size = self
             .scroll_size
             .unwrap_or(self.scroll_handle.content_size());
+        let horizontal_overflows =
+            self.axis.has_horizontal() && scroll_size.width > hitbox.size.width;
+        let vertical_overflows =
+            self.axis.has_vertical() && scroll_size.height > hitbox.size.height;
 
         for axis in self.axis.all().into_iter() {
             let is_vertical = axis.is_vertical();
@@ -558,46 +626,73 @@ impl Element for Scrollbar {
                 )
             };
 
-            // The horizontal scrollbar is set avoid overlapping with the vertical scrollbar, if the vertical scrollbar is visible.
-            let margin_end = if has_both && !is_vertical {
-                WIDTH
+            let axis_overflows = if is_vertical {
+                vertical_overflows
             } else {
-                px(0.)
+                horizontal_overflows
             };
-
-            // Hide scrollbar, if the scroll area is smaller than the container.
-            if scroll_area_size <= container_size {
-                has_both = false;
+            if !axis_overflows {
                 continue;
             }
 
-            let thumb_length =
-                (container_size / scroll_area_size * container_size).max(px(MIN_THUMB_SIZE));
-            let thumb_start = -(scroll_position / (scroll_area_size - container_size)
-                * (container_size - margin_end - thumb_length));
-            let thumb_end = (thumb_start + thumb_length).min(container_size - margin_end);
+            // Keep the two tracks out of the shared corner only when both axes overflow.
+            let margin_end = if horizontal_overflows && vertical_overflows {
+                metrics.hit_width
+            } else {
+                px(0.)
+            };
+            let Some(geometry) = scrollbar_axis_geometry(
+                container_size,
+                scroll_area_size,
+                scroll_position,
+                margin_end,
+                metrics.min_thumb_size,
+            ) else {
+                continue;
+            };
+            let available_length = geometry.available_length;
+            let thumb_length = geometry.thumb_length;
+            let thumb_start = geometry.thumb_start;
 
             let bounds = Bounds {
                 origin: if is_vertical {
-                    point(hitbox.origin.x + hitbox.size.width - WIDTH, hitbox.origin.y)
+                    point(
+                        hitbox.origin.x + hitbox.size.width - metrics.hit_width,
+                        hitbox.origin.y,
+                    )
                 } else {
                     point(
                         hitbox.origin.x,
-                        hitbox.origin.y + hitbox.size.height - WIDTH,
+                        hitbox.origin.y + hitbox.size.height - metrics.hit_width,
                     )
                 },
                 size: gpui::Size {
                     width: if is_vertical {
-                        WIDTH
+                        metrics.hit_width
                     } else {
-                        hitbox.size.width
+                        available_length
                     },
                     height: if is_vertical {
-                        hitbox.size.height
+                        available_length
                     } else {
-                        WIDTH
+                        metrics.hit_width
                     },
                 },
+            };
+
+            let track_cross_inset = metrics.cross_inset(metrics.track_width);
+            let track_bounds = if is_vertical {
+                Bounds::from_anchor_and_size(
+                    Anchor::TopRight,
+                    bounds.top_right() + point(-track_cross_inset, px(0.)),
+                    size(metrics.track_width, bounds.size.height),
+                )
+            } else {
+                Bounds::from_anchor_and_size(
+                    Anchor::BottomLeft,
+                    bounds.bottom_left() + point(px(0.), -track_cross_inset),
+                    size(bounds.size.width, metrics.track_width),
+                )
             };
 
             let scrollbar_show = self.scrollbar_show.unwrap_or(cx.theme().scrollbar_show);
@@ -607,95 +702,91 @@ impl Element for Scrollbar {
             let is_hovered_on_thumb = state.get().hovered_on_thumb == Some(axis);
             let is_offset_changed = state.get().last_scroll_offset != self.scroll_handle.offset();
 
-            let (thumb_bg, bar_bg, bar_border, thumb_width, inset, radius) =
-                if state.get().dragged_axis == Some(axis) {
-                    Self::style_for_active(cx)
-                } else if is_hover_to_show && (is_hovered_on_bar || is_hovered_on_thumb) {
-                    if is_hovered_on_thumb {
-                        Self::style_for_hovered_thumb(cx)
-                    } else {
-                        Self::style_for_hovered_bar(cx)
-                    }
-                } else if is_offset_changed {
-                    self.style_for_normal(cx)
-                } else if is_always_to_show {
-                    if is_hovered_on_thumb {
-                        Self::style_for_hovered_thumb(cx)
-                    } else {
-                        Self::style_for_hovered_bar(cx)
-                    }
+            let paint_style = if state.get().dragged_axis == Some(axis) {
+                Self::style_for_active(cx, metrics)
+            } else if is_hover_to_show && (is_hovered_on_bar || is_hovered_on_thumb) {
+                if is_hovered_on_thumb {
+                    Self::style_for_hovered_thumb(cx, metrics)
                 } else {
-                    let mut idle_state = self.style_for_idle(cx);
-                    // Delay 2s to fade out the scrollbar thumb (in 1s)
-                    if let Some(last_time) = state.get().last_scroll_time {
-                        let elapsed = Instant::now().duration_since(last_time).as_secs_f32();
-                        if is_hovered_on_bar {
-                            state.set(state.get().with_last_scroll_time(Some(Instant::now())));
-                            idle_state = if is_hovered_on_thumb {
-                                Self::style_for_hovered_thumb(cx)
-                            } else {
-                                Self::style_for_hovered_bar(cx)
-                            };
-                        } else if elapsed < FADE_OUT_DELAY {
-                            idle_state.0 = cx.theme().tokens.scrollbar_thumb.into();
+                    Self::style_for_hovered_bar(cx, metrics)
+                }
+            } else if is_offset_changed {
+                self.style_for_normal(cx, metrics)
+            } else if is_always_to_show {
+                if is_hovered_on_thumb {
+                    Self::style_for_hovered_thumb(cx, metrics)
+                } else {
+                    Self::style_for_hovered_bar(cx, metrics)
+                }
+            } else {
+                let mut idle_state = self.style_for_idle(cx, metrics);
+                if let Some(last_time) = state.get().last_scroll_time {
+                    let elapsed = Instant::now().duration_since(last_time);
+                    if is_hovered_on_bar {
+                        state.set(state.get().with_last_scroll_time(Some(Instant::now())));
+                        idle_state = if is_hovered_on_thumb {
+                            Self::style_for_hovered_thumb(cx, metrics)
+                        } else {
+                            Self::style_for_hovered_bar(cx, metrics)
+                        };
+                    } else if elapsed < metrics.fade_delay {
+                        idle_state.thumb = cx.theme().tokens.scrollbar_thumb.into();
 
-                            if !state.get().idle_timer_scheduled {
-                                let state = state.clone();
-                                state.set(state.get().with_idle_timer_scheduled(true));
-                                let current_view = window.current_view();
-                                let next_delay = Duration::from_secs_f32(FADE_OUT_DELAY - elapsed);
-                                window
-                                    .spawn(cx, async move |cx| {
-                                        cx.background_executor().timer(next_delay).await;
-                                        state.set(state.get().with_idle_timer_scheduled(false));
-                                        cx.update(|_, cx| cx.notify(current_view)).ok();
-                                    })
-                                    .detach();
-                            }
-                        } else if elapsed < FADE_OUT_DURATION {
-                            let opacity = 1.0 - (elapsed - FADE_OUT_DELAY).powi(10);
-                            idle_state.0 = cx
-                                .theme()
-                                .tokens
-                                .scrollbar_thumb
-                                .background
-                                .opacity(opacity);
-
-                            window.request_animation_frame();
+                        if !state.get().idle_timer_scheduled {
+                            let state = state.clone();
+                            state.set(state.get().with_idle_timer_scheduled(true));
+                            let current_view = window.current_view();
+                            let next_delay = metrics.fade_delay - elapsed;
+                            window
+                                .spawn(cx, async move |cx| {
+                                    cx.background_executor().timer(next_delay).await;
+                                    state.set(state.get().with_idle_timer_scheduled(false));
+                                    cx.update(|_, cx| cx.notify(current_view)).ok();
+                                })
+                                .detach();
                         }
+                    } else if elapsed < metrics.visible_duration() {
+                        let progress = (elapsed - metrics.fade_delay).as_secs_f32()
+                            / metrics.fade_duration.as_secs_f32();
+                        let opacity = 1. - metrics.fade_easing.sample(progress);
+                        let thumb: Background = cx.theme().tokens.scrollbar_thumb.into();
+                        idle_state.thumb = thumb.opacity(opacity);
+
+                        window.request_animation_frame();
                     }
+                }
 
-                    idle_state
-                };
+                idle_state
+            };
 
-            // The clickable area of the thumb
-            let thumb_length = thumb_end - thumb_start - inset * 2;
+            let thumb_cross_inset = metrics.cross_inset(paint_style.thumb_width);
             let thumb_bounds = if is_vertical {
                 Bounds::from_anchor_and_size(
                     Anchor::TopRight,
-                    bounds.top_right() + point(-inset, inset + thumb_start),
-                    size(WIDTH, thumb_length),
+                    bounds.top_right() + point(px(0.), thumb_start),
+                    size(metrics.hit_width, thumb_length),
                 )
             } else {
                 Bounds::from_anchor_and_size(
                     Anchor::BottomLeft,
-                    bounds.bottom_left() + point(inset + thumb_start, -inset),
-                    size(thumb_length, WIDTH),
+                    bounds.bottom_left() + point(thumb_start, px(0.)),
+                    size(thumb_length, metrics.hit_width),
                 )
             };
 
-            // The actual render area of the thumb
+            let end_inset = metrics.thumb_end_inset.min(thumb_length / 2.);
+            let thumb_fill_length = (thumb_length - end_inset * 2.).max(px(0.));
             let thumb_fill_bounds = if is_vertical {
                 Bounds::from_anchor_and_size(
                     Anchor::TopRight,
-                    bounds.top_right() + point(-inset, inset + thumb_start),
-                    size(thumb_width, thumb_length),
+                    bounds.top_right() + point(-thumb_cross_inset, thumb_start + end_inset),
+                    size(paint_style.thumb_width, thumb_fill_length),
                 )
             } else {
                 Bounds::from_anchor_and_size(
                     Anchor::BottomLeft,
-                    bounds.bottom_left() + point(inset + thumb_start, -inset),
-                    size(thumb_length, thumb_width),
+                    bounds.bottom_left() + point(thumb_start + end_inset, -thumb_cross_inset),
+                    size(thumb_fill_length, paint_style.thumb_width),
                 )
             };
 
@@ -707,16 +798,16 @@ impl Element for Scrollbar {
                 axis,
                 bar_hitbox,
                 bounds,
-                radius,
-                bg: bar_bg,
-                border: bar_border,
+                track_bounds,
+                track_radius: metrics.track_radius.min(metrics.track_width / 2.),
+                track_bg: paint_style.track,
+                thumb_radius: paint_style.thumb_radius,
                 thumb_bounds,
                 thumb_fill_bounds,
-                thumb_bg,
+                thumb_bg: paint_style.thumb,
                 scroll_size: scroll_area_size,
                 container_size,
                 thumb_size: thumb_length,
-                margin_end,
             })
         }
 
@@ -739,9 +830,13 @@ impl Element for Scrollbar {
     ) {
         let scrollbar_state = &prepaint.scrollbar_state;
         let scrollbar_show = self.scrollbar_show.unwrap_or(cx.theme().scrollbar_show);
+        let metrics = ScrollbarMetrics::resolve(&cx.theme().style);
         let view_id = window.current_view();
         let hitbox_bounds = prepaint.hitbox.bounds;
-        let is_visible = scrollbar_state.get().is_scrollbar_visible() || scrollbar_show.is_always();
+        let is_visible = scrollbar_state
+            .get()
+            .is_scrollbar_visible(metrics.visible_duration())
+            || scrollbar_show.is_always();
         let is_hover_to_show = scrollbar_show.is_hover();
 
         // Update last_scroll_time when offset is changed.
@@ -761,48 +856,23 @@ impl Element for Scrollbar {
             |window| {
                 for state in prepaint.states.iter() {
                     let axis = state.axis;
-                    let mut radius = state.radius;
-                    if cx.theme().radius.is_zero() {
-                        radius = px(0.);
-                    }
                     let bounds = state.bounds;
                     let thumb_bounds = state.thumb_bounds;
                     let scroll_area_size = state.scroll_size;
                     let container_size = state.container_size;
                     let thumb_size = state.thumb_size;
-                    let margin_end = state.margin_end;
                     let is_vertical = axis.is_vertical();
 
                     window.set_cursor_style(CursorStyle::default(), &state.bar_hitbox);
 
                     window.paint_layer(hitbox_bounds, |cx| {
-                        cx.paint_quad(fill(state.bounds, state.bg));
-
-                        cx.paint_quad(PaintQuad {
-                            bounds,
-                            corner_radii: (0.).into(),
-                            background: gpui::transparent_black().into(),
-                            border_widths: if is_vertical {
-                                Edges {
-                                    top: px(0.),
-                                    right: px(0.),
-                                    bottom: px(0.),
-                                    left: px(0.),
-                                }
-                            } else {
-                                Edges {
-                                    top: px(0.),
-                                    right: px(0.),
-                                    bottom: px(0.),
-                                    left: px(0.),
-                                }
-                            },
-                            border_color: state.border,
-                            border_style: BorderStyle::default(),
-                        });
-
                         cx.paint_quad(
-                            fill(state.thumb_fill_bounds, state.thumb_bg).corner_radii(radius),
+                            fill(state.track_bounds, state.track_bg)
+                                .corner_radii(state.track_radius),
+                        );
+                        cx.paint_quad(
+                            fill(state.thumb_fill_bounds, state.thumb_bg)
+                                .corner_radii(state.thumb_radius),
                         );
                     });
 
@@ -846,24 +916,30 @@ impl Element for Scrollbar {
                                         // click on the scrollbar, jump to the position
                                         // Set the thumb bar center to the click position
                                         let offset = scroll_handle.offset();
-                                        let percentage = if is_vertical {
-                                            (event.position.y - thumb_size / 2. - bounds.origin.y)
-                                                / (bounds.size.height - thumb_size)
+                                        let thumb_travel = if is_vertical {
+                                            bounds.size.height - thumb_size
                                         } else {
-                                            (event.position.x - thumb_size / 2. - bounds.origin.x)
-                                                / (bounds.size.width - thumb_size)
+                                            bounds.size.width - thumb_size
+                                        };
+                                        if thumb_travel <= px(0.) {
+                                            return;
                                         }
-                                        .min(1.);
+                                        let percentage = (if is_vertical {
+                                            event.position.y - thumb_size / 2. - bounds.origin.y
+                                        } else {
+                                            event.position.x - thumb_size / 2. - bounds.origin.x
+                                        } / thumb_travel)
+                                            .clamp(0., 1.);
 
                                         if is_vertical {
                                             scroll_handle.set_offset(point(
                                                 offset.x,
-                                                (-scroll_area_size * percentage)
+                                                (-(scroll_area_size - container_size) * percentage)
                                                     .clamp(safe_range.start, safe_range.end),
                                             ));
                                         } else {
                                             scroll_handle.set_offset(point(
-                                                (-scroll_area_size * percentage)
+                                                (-(scroll_area_size - container_size) * percentage)
                                                     .clamp(safe_range.start, safe_range.end),
                                                 offset.y,
                                             ));
@@ -886,29 +962,32 @@ impl Element for Scrollbar {
                             let need_hover_to_update = is_hover_to_show || is_visible;
                             // Update hovered state for scrollbar
                             if bounds.contains(&event.position) && need_hover_to_update {
-                                state.set(state.get().with_hovered(Some(axis)));
-
                                 if state.get().hovered_axis != Some(axis) {
+                                    state.set(state.get().with_hovered(Some(axis)));
                                     notify = true;
                                 }
-                            } else {
-                                if state.get().hovered_axis == Some(axis) {
-                                    if state.get().hovered_axis.is_some() {
-                                        state.set(state.get().with_hovered(None));
-                                        notify = true;
-                                    }
-                                }
+                            } else if state.get().hovered_axis == Some(axis) {
+                                state.set(state.get().with_hovered(None));
+                                notify = true;
                             }
 
                             // Update hovered state for scrollbar thumb
                             if thumb_bounds.contains(&event.position) {
                                 if state.get().hovered_on_thumb != Some(axis) {
-                                    state.set(state.get().with_hovered_on_thumb(Some(axis)));
+                                    state.set(state.get().with_hovered_on_thumb(
+                                        Some(axis),
+                                        metrics.visible_duration(),
+                                    ));
                                     notify = true;
                                 }
                             } else {
                                 if state.get().hovered_on_thumb == Some(axis) {
-                                    state.set(state.get().with_hovered_on_thumb(None));
+                                    state.set(
+                                        state.get().with_hovered_on_thumb(
+                                            None,
+                                            metrics.visible_duration(),
+                                        ),
+                                    );
                                     notify = true;
                                 }
                             }
@@ -921,13 +1000,19 @@ impl Element for Scrollbar {
                                 // drag_pos is the position of the mouse down event
                                 // We need to keep the thumb bar still at the origin down position
                                 let drag_pos = state.get().drag_pos;
+                                let thumb_travel = if is_vertical {
+                                    bounds.size.height - thumb_size
+                                } else {
+                                    bounds.size.width - thumb_size
+                                };
+                                if thumb_travel <= px(0.) {
+                                    return;
+                                }
 
                                 let percentage = (if is_vertical {
-                                    (event.position.y - drag_pos.y - bounds.origin.y)
-                                        / (bounds.size.height - thumb_size)
+                                    (event.position.y - drag_pos.y - bounds.origin.y) / thumb_travel
                                 } else {
-                                    (event.position.x - drag_pos.x - bounds.origin.x)
-                                        / (bounds.size.width - thumb_size - margin_end)
+                                    (event.position.x - drag_pos.x - bounds.origin.x) / thumb_travel
                                 })
                                 .clamp(0., 1.);
 
@@ -968,7 +1053,7 @@ impl Element for Scrollbar {
                         let scroll_handle = self.scroll_handle.clone();
 
                         move |_event: &MouseUpEvent, phase, _, cx| {
-                            if phase.bubble() {
+                            if phase.bubble() && state.get().dragged_axis == Some(axis) {
                                 scroll_handle.end_drag();
                                 state.set(state.get().with_unset_drag_pos());
                                 cx.notify(view_id);
@@ -978,5 +1063,81 @@ impl Element for Scrollbar {
                 }
             },
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_follow_semantic_style_presets() {
+        for style in [
+            StylePreset::vega(),
+            StylePreset::nova(),
+            StylePreset::maia(),
+        ] {
+            let metrics = ScrollbarMetrics::resolve(&style);
+
+            assert_eq!(metrics.thumb_radius, style.radii.sm);
+            assert_eq!(metrics.track_radius, style.radii.sm);
+            assert_eq!(metrics.fade_duration, style.motion.slow());
+            assert_eq!(metrics.fade_easing, style.motion.exit_easing);
+            assert!(metrics.hit_width >= metrics.track_width);
+        }
+    }
+
+    #[test]
+    fn geometry_rejects_non_overflowing_content() {
+        assert_eq!(
+            scrollbar_axis_geometry(px(100.), px(100.), px(0.), px(0.), MIN_THUMB_SIZE),
+            None
+        );
+    }
+
+    #[test]
+    fn geometry_stays_inside_tiny_containers() {
+        let geometry =
+            scrollbar_axis_geometry(px(12.), px(120.), px(-108.), px(8.), MIN_THUMB_SIZE)
+                .expect("overflowing content should produce geometry");
+
+        assert_eq!(geometry.available_length, px(4.));
+        assert_eq!(geometry.thumb_length, px(4.));
+        assert_eq!(geometry.thumb_start, px(0.));
+    }
+
+    #[test]
+    fn geometry_clamps_out_of_range_offsets() {
+        let start =
+            scrollbar_axis_geometry(px(100.), px(400.), px(50.), px(0.), MIN_THUMB_SIZE).unwrap();
+        let end =
+            scrollbar_axis_geometry(px(100.), px(400.), px(-500.), px(0.), MIN_THUMB_SIZE).unwrap();
+
+        assert_eq!(start.thumb_start, px(0.));
+        assert_eq!(end.thumb_start, end.available_length - end.thumb_length);
+    }
+
+    #[test]
+    fn hidden_thumb_hover_does_not_refresh_scroll_activity() {
+        let visible_duration = Duration::from_secs(3);
+        let state = ScrollbarState::default().get();
+        let hovered = state.with_hovered_on_thumb(Some(Axis::Vertical), visible_duration);
+
+        assert_eq!(hovered.hovered_on_thumb, Some(Axis::Vertical));
+        assert_eq!(hovered.last_scroll_time, None);
+        assert!(!hovered.is_scrollbar_visible(visible_duration));
+    }
+
+    #[test]
+    fn visible_thumb_hover_keeps_scrollbar_active() {
+        let visible_duration = Duration::from_secs(3);
+        let active = ScrollbarState::default()
+            .get()
+            .with_last_scroll_time(Some(Instant::now()));
+        let hovered = active.with_hovered_on_thumb(Some(Axis::Vertical), visible_duration);
+
+        assert_eq!(hovered.hovered_on_thumb, Some(Axis::Vertical));
+        assert!(hovered.last_scroll_time.is_some());
+        assert!(hovered.is_scrollbar_visible(visible_duration));
     }
 }

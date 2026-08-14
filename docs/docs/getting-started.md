@@ -34,7 +34,11 @@ Here's a simple example to get you started:
 
 ```rust
 use gpui::*;
-use gpui_component::{button::*, *};
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    button::*,
+    *,
+};
 
 pub struct HelloWorld;
 
@@ -99,7 +103,7 @@ impl Render for MyView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .child(Button::new("btn").label("Click Me"))
-            .child(Tag::secondary().child("Secondary"))
+            .child(Badge::new().secondary().child("Secondary"))
     }
 }
 ```

@@ -1,333 +1,87 @@
 ---
 title: Button
-description: Displays a button or a component that looks like a button.
+description: Displays an action using the shadcn Vega visual baseline.
 ---
 
 # Button
 
-The [Button] element with multiple variants, sizes, and states. Supports icons, loading states, and can be grouped together.
+`Button` follows the shadcn Vega baseline for geometry, variants, interaction states, and composition.
 
-## Import
+## Variants
 
 ```rust
-use gpui_component::button::{Button, ButtonGroup};
+Button::new("default").label("Default");
+Button::new("outline").outline().label("Outline");
+Button::new("secondary").secondary().label("Secondary");
+Button::new("ghost").ghost().label("Ghost");
+Button::new("destructive").destructive().label("Destructive");
+Button::new("link").link().label("Link");
 ```
 
-## Usage
+`Default` is the primary action style. Navigation should use the `Link` component instead of changing a button's accessibility role.
 
-### Basic Button
+Persistent toggle actions can use `.pressed(bool)`. This keeps Button keyboard behavior and exposes the state as `aria-pressed`; use `Toggle` or `ToggleGroup` for ordinary option sets.
+
+## Sizes
 
 ```rust
-Button::new("my-button")
-    .label("Click me")
-    .on_click(|_, _, _| {
-        println!("Button clicked!");
-    })
+Button::new("xs").xsmall().label("Extra Small");
+Button::new("sm").small().label("Small");
+Button::new("md").label("Default");
+Button::new("lg").large().label("Large");
 ```
 
-### Variants
+Icon-only buttons use the same height and width. Always provide `aria_label`.
 
 ```rust
-// Primary button
-Button::new("btn-primary").primary().label("Primary")
-
-// Secondary button (default)
-Button::new("btn-secondary").label("Secondary")
-
-// Danger button
-Button::new("btn-danger").danger().label("Delete")
-
-// Warning button
-Button::new("btn-warning").warning().label("Warning")
-
-// Success button
-Button::new("btn-success").success().label("Success")
-
-// Info button
-Button::new("btn-info").info().label("Info")
-
-// Ghost button
-Button::new("btn-ghost").ghost().label("Ghost")
-
-// Link button
-Button::new("btn-link").link().label("Link")
-
-// Text button
-Button::new("btn-text").text().label("Text")
+Button::new("move-up")
+    .outline()
+    .icon(IconName::ArrowUp)
+    .aria_label("Move up");
 ```
 
-### Outline Buttons
+## Icons and loading
 
-Outline style is not a variant itself, but can be combined with other variants.
-
-```rust
-Button::new("btn").primary().outline().label("Primary Outline")
-Button::new("btn").danger().outline().label("Danger Outline")
-```
-
-### Compact Button
-
-The `compact` method reduces the padding of the button for a more condensed appearance.
+Use `icon` for the leading slot and `trailing_icon` for the trailing slot. Loading is explicit composition with `Spinner`; disable the action while work is pending.
 
 ```rust
-// Compact (reduced padding)
-Button::new("btn")
-    .label("Compact")
-    .compact()
-```
+Button::new("branch")
+    .outline()
+    .icon(IconName::Github)
+    .label("New Branch");
 
-### Sizeable
-
-The Button supports the [Sizable] trait for different sizes.
-
-```rust
-Button::new("btn").xsmall().label("Extra Small")
-Button::new("btn").small().label("Small")
-Button::new("btn").label("Medium") // default
-Button::new("btn").large().label("Large")
-```
-
-### With Icons
-
-The `icon` method supports multiple types, allowing you to use different visual indicators:
-
-- **[Icon] / [IconName]** - Static icons for actions and visual cues
-- **[Spinner]** - Animated loading indicator for async operations
-- **[ProgressCircle]** - Circular progress indicator showing completion percentage
-
-All icon types automatically adapt to the button's size and can be customized with colors and other properties.
-
-#### Icon Types
-
-```rust
-use gpui_component::{Icon, IconName};
-
-// Using IconName (simplest)
-Button::new("btn")
-    .icon(IconName::Check)
-    .label("Confirm")
-
-// Using Icon with custom size
-Button::new("btn")
-    .icon(Icon::new(IconName::Heart))
-    .label("Like")
-
-// Icon only (no label)
-Button::new("btn")
-    .icon(IconName::Search)
-```
-
-#### Spinner Icon
-
-Use a [Spinner] to indicate loading or processing state:
-
-```rust
-use gpui_component::spinner::Spinner;
-
-// Basic spinner
-Button::new("btn")
+Button::new("generating")
+    .outline()
     .icon(Spinner::new())
-    .label("Loading...")
-
-// Spinner with custom color
-Button::new("btn")
-    .icon(Spinner::new().color(cx.theme().blue))
-    .label("Processing")
-
-// Spinner with icon
-Button::new("btn")
-    .icon(Spinner::new().icon(IconName::LoaderCircle))
-    .label("Syncing")
+    .label("Generating")
+    .disabled(true);
 ```
 
-#### ProgressCircle Icon
+## Rounded
 
-Use a [ProgressCircle] to show progress percentage:
+`rounded_full` derives a pill radius from the final control height. `rounded(px(...))` applies an explicit override.
 
 ```rust
-use gpui_component::progress::ProgressCircle;
+Button::new("round")
+    .outline()
+    .rounded_full()
+    .icon(IconName::ArrowUp)
+    .aria_label("Move up");
+```
 
-// Basic progress circle
-Button::new("btn")
-    .icon(ProgressCircle::new("install-progress").value(45.0))
-    .label("Installing...")
+## Button group
 
-// Progress circle with custom color
-Button::new("btn")
-    .primary()
-    .icon(
-        ProgressCircle::new("download-progress")
-            .value(75.0)
-            .color(cx.theme().primary_foreground)
+`ButtonGroup` composes actions and preserves each button's callback. It supports nested groups, text, separators, orientation, and an accessible group label. Selection belongs to `Toggle` or `ToggleGroup`.
+
+```rust
+ButtonGroup::new("message-actions")
+    .aria_label("Message actions")
+    .child(Button::new("back").outline().icon(IconName::ArrowLeft).aria_label("Back"))
+    .group(
+        ButtonGroup::new("archive-report")
+            .child(Button::new("archive").outline().label("Archive"))
+            .child(Button::new("report").outline().label("Report")),
     )
-    .label("Downloading")
-
-// Different sizes
-Button::new("btn")
-    .small()
-    .icon(ProgressCircle::new("progress-1").value(60.0))
-    .label("Installing...")
-
-Button::new("btn")
-    .large()
-    .icon(ProgressCircle::new("progress-2").value(80.0))
-    .label("Installing...")
+    .separator(ButtonGroupSeparator::new())
+    .text(ButtonGroupText::new("More"));
 ```
-
-#### Dynamic Icon Updates
-
-Icons can be updated dynamically based on component state:
-
-```rust
-struct InstallButton {
-    progress: f32,
-    is_installing: bool,
-}
-
-impl InstallButton {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let button = Button::new("install-btn")
-            .label(if self.is_installing {
-                "Installing..."
-            } else {
-                "Install"
-            });
-
-        if self.is_installing {
-            button.icon(
-                ProgressCircle::new("install-progress")
-                    .value(self.progress)
-            )
-        } else {
-            button.icon(IconName::Download)
-        }
-    }
-}
-```
-
-#### Loading State with Icons
-
-When a button is in loading state, it automatically handles icon transitions:
-
-```rust
-// If icon is already a Spinner or ProgressCircle, it will be shown during loading
-Button::new("btn")
-    .icon(Spinner::new())
-    .label("Processing")
-    .loading(true) // Spinner will continue to show
-
-// If icon is a regular Icon, it will be replaced with a Spinner during loading
-Button::new("btn")
-    .icon(IconName::Save)
-    .label("Saving")
-    .loading(true) // Icon will be replaced with Spinner
-```
-
-### With a dropdown caret icon
-
-The `.dropdown_caret` method can allows adding a dropdown caret icon to end of the button.
-
-```rust
-Button::new("btn")
-    .label("Options")
-    .dropdown_caret(true)
-```
-
-### Button States
-
-There have `disabled`, `loading`, `selected` state for buttons to indicate different statuses.
-
-```rust
-// Disabled
-Button::new("btn")
-    .label("Disabled")
-    .disabled(true)
-
-// Loading
-Button::new("btn")
-    .label("Loading")
-    .loading(true)
-
-// Selected
-Button::new("btn")
-    .label("Selected")
-    .selected(true)
-```
-
-## Button Group
-
-```rust
-ButtonGroup::new("btn-group")
-    .child(Button::new("btn1").label("One"))
-    .child(Button::new("btn2").label("Two"))
-    .child(Button::new("btn3").label("Three"))
-```
-
-### Toggle Button Group
-
-```rust
-ButtonGroup::new("toggle-group")
-    .multiple(true) // Allow multiple selections
-    .child(Button::new("btn1").label("Option 1").selected(true))
-    .child(Button::new("btn2").label("Option 2"))
-    .child(Button::new("btn3").label("Option 3"))
-    .on_click(|selected_indices, _, _| {
-        println!("Selected: {:?}", selected_indices);
-    })
-```
-
-## Custom Variant
-
-```rust
-use gpui_component::button::ButtonCustomVariant;
-
-let custom = ButtonCustomVariant::new(cx)
-    .color(cx.theme().magenta)
-    .foreground(cx.theme().primary_foreground)
-    .border(cx.theme().magenta)
-    .hover(cx.theme().magenta.opacity(0.1))
-    .active(cx.theme().magenta);
-
-Button::new("custom-btn")
-    .custom(custom)
-    .label("Custom Button")
-```
-
-## API Reference
-
-- [Button]
-- [ButtonGroup]
-- [ButtonCustomVariant]
-
-## Examples
-
-### With Tooltip
-
-```rust
-Button::new("btn")
-    .label("Hover me")
-    .tooltip("This is a helpful tooltip")
-```
-
-### Custom Children
-
-```rust
-Button::new("btn")
-    .child(
-        h_flex()
-            .items_center()
-            .gap_2()
-            .child("Custom Content")
-            .child(IconName::ChevronDown)
-            .child(IconName::Eye)
-    )
-```
-
-[Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
-[ButtonGroup]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.ButtonGroup.html
-[ButtonCustomVariant]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.ButtonCustomVariant.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
-[Spinner]: https://docs.rs/gpui-component/latest/gpui_component/spinner/struct.Spinner.html
-[ProgressCircle]: https://docs.rs/gpui-component/latest/gpui_component/progress/struct.ProgressCircle.html
-[Icon]: https://docs.rs/gpui-component/latest/gpui_component/icon/struct.Icon.html
-[IconName]: https://docs.rs/gpui-component/latest/gpui_component/icon/enum.IconName.html

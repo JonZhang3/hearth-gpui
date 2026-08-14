@@ -208,13 +208,14 @@ CI runs full test suite on each platform.
 
 ## Skills Reference
 
-This project has custom Claude Code skills to assist with common development tasks:
+This project has custom skills for Claude Code, Codex, and downstream users:
 
 - **gpui** (`skills/`) - GPUI framework knowledge: actions/keybindings, async, context, custom elements, entity state, events, focus, global state, layout/styling, testing
 - **gpui-component** (`skills/`) - How to use gpui-component: setup, stateless/stateful patterns, common component APIs, theming
 - **gpui-component-dev** (`.claude/skills/`) - Contributing to gpui-component: creating new components, writing stories, writing documentation, writing PR descriptions
+- **align-shadcn-component** (`.agents/skills/`) - Codex workflow for comparing an existing GPUI component with the pinned local shadcn/ui sources, producing a Vega alignment plan, then immediately implementing and verifying it unless the user requests planning only
 
-When working on tasks related to these areas, Claude Code will automatically use the appropriate skill to provide specialized guidance and patterns.
+Each supported agent discovers the skills from its corresponding directory.
 
 ## Testing Guidelines
 

@@ -7,6 +7,8 @@ description: 一个用于直接渲染表格数据的基础表格组件。
 
 Table 是一个简单、无状态、可组合的表格组件，用于渲染表格型数据。与 [DataTable] 不同，它不包含虚拟滚动、排序或列管理能力，更适合直接用声明式 API 展示较小且静态的数据。
 
+默认视觉遵循 shadcn Vega：透明 Header、中等字重表头、带 muted hover 表面的分隔行、`muted/50` Footer、不换行单元格，以及列宽超过容器时的横向滚动。Maia 和 Nova 通过语义 Data Metrics 调整密度，不按 preset 名称分支。
+
 ## 导入
 
 ```rust
@@ -84,15 +86,33 @@ TableHead::new().text_center().child("Status")
 TableCell::new().text_right().child("$1,000.00")
 ```
 
-### 去掉边框
+### 选中行
+
+通过 `Selectable` 同时设置选中视觉和 `aria-selected`：
+
+```rust
+use gpui_component::Selectable as _;
+
+TableRow::new()
+    .selected(true)
+    .child(TableCell::new().child("Selected invoice"))
+```
+
+Table 本身无状态，选择状态及鼠标、键盘交互由调用方管理。需要组件管理交互式选择时应使用 [DataTable]。
+
+### 横向溢出
+
+Table 默认保持单元格不换行；列的最小宽度超过可用宽度时可横向滚动。组件不会自动截断单元格内容，需要时可在单独的 Cell 上设置明确宽度或溢出样式。
+
+### 样式覆盖
 
 所有表格子组件都实现了 `Styled`，可以直接自定义样式：
 
 ```rust
 Table::new()
-    .border_0()
-    .rounded_none()
-    .child(/* ... */)
+    .border_1()
+    .rounded(cx.theme().style.radii.md)
+    .child(TableHeader::new().border_0())
 ```
 
 ### 自定义样式
@@ -111,11 +131,11 @@ TableCell::new()
 
 | 组件 | 说明 |
 | --- | --- |
-| `Table` | 根容器，带边框、圆角和背景 |
-| `TableHeader` | 表头区域 |
+| `Table` | 表格根节点及横向溢出容器 |
+| `TableHeader` | 透明表头区域，包含行分隔线 |
 | `TableBody` | 表体区域 |
 | `TableFooter` | 表尾区域 |
-| `TableRow` | 一行数据 |
+| `TableRow` | 带语义分隔线、hover 和选中状态的数据行 |
 | `TableHead` | 表头单元格 |
 | `TableCell` | 数据单元格 |
 | `TableCaption` | 表格下方说明文字 |
@@ -138,6 +158,8 @@ TableCell::new()
 
 - `new()` - 创建实例
 - 实现了 `Styled`、`ParentElement`、`RenderOnce`
+
+`TableRow` 还实现了 `Selectable`，用于声明式选中状态和无障碍元数据。
 
 ## Table 和 DataTable 的区别
 

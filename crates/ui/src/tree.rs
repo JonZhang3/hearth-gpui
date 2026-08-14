@@ -1,18 +1,21 @@
-use std::{cell::RefCell, ops::Range, rc::Rc};
+use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use gpui::{
     App, Context, ElementId, Entity, EventEmitter, FocusHandle, InteractiveElement as _,
-    IntoElement, KeyBinding, ListSizingBehavior, MouseButton, ParentElement, Render, RenderOnce,
-    SharedString, StyleRefinement, Styled, UniformListScrollHandle, Window, div,
-    prelude::FluentBuilder as _, uniform_list,
+    IntoElement, KeyBinding, ListSizingBehavior, MouseButton, ParentElement, Pixels, Render,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    UniformListScrollHandle, Window, div, prelude::FluentBuilder as _, px, uniform_list,
 };
+use rust_i18n::t;
 
 use crate::{
-    Selectable as _, StyledExt,
+    ActiveTheme as _, Selectable as _, Sizable, Size, StyledExt,
+    accessibility::accessibility_state,
     actions::{Confirm, SelectDown, SelectLeft, SelectRight, SelectUp},
     list::ListItem,
     menu::{ContextMenuExt as _, PopupMenu},
     scroll::ScrollableElement,
+    styled::FocusableExt as _,
 };
 
 const CONTEXT: &str = "Tree";
@@ -33,18 +36,20 @@ pub(crate) fn init(cx: &mut App) {
 /// * `render_item` - A closure to render each tree item.
 ///
 /// ```ignore
-/// let state = cx.new(|_| {
-///     TreeState::new().items(vec![
-///         TreeItem::new("src")
-///             .child(TreeItem::new("lib.rs"),
-///         TreeItem::new("Cargo.toml"),
-///         TreeItem::new("README.md"),
+/// let state = cx.new(|cx| {
+///     TreeState::new(cx).items(vec![
+///         TreeItem::new("src", "src")
+///             .child(TreeItem::new("src/lib.rs", "lib.rs")),
+///         TreeItem::new("Cargo.toml", "Cargo.toml"),
+///         TreeItem::new("README.md", "README.md"),
 ///     ])
 /// });
 ///
 /// tree(&state, |ix, entry, selected, window, cx| {
 ///     let item = entry.item();
-///     ListItem::new(ix).pl(px(16.) * entry.depth()).child(item.label.clone())
+///     ListItem::new(ix)
+///         .pl(entry.content_inset(cx))
+///         .child(item.label.clone())
 /// })
 /// ```
 pub fn tree<R>(state: &Entity<TreeState>, render_item: R) -> Tree
@@ -73,6 +78,10 @@ pub struct TreeItem {
 pub struct TreeEntry {
     item: TreeItem,
     depth: usize,
+    parent_id: Option<SharedString>,
+    position_in_set: usize,
+    size_of_set: usize,
+    size: Size,
 }
 
 impl TreeEntry {
@@ -86,6 +95,20 @@ impl TreeEntry {
     #[inline]
     pub fn depth(&self) -> usize {
         self.depth
+    }
+
+    /// Returns the semantic left inset for this hierarchy level.
+    ///
+    /// The inset follows the active Style Preset's control geometry without
+    /// branching on a preset identifier.
+    pub fn content_inset(&self, cx: &App) -> Pixels {
+        let metrics = cx.theme().style.controls.for_size(self.size);
+        metrics.padding_x + (metrics.icon_size + metrics.gap) * self.depth as f32
+    }
+
+    /// Returns the semantic gap used between row content elements.
+    pub fn content_gap(&self, cx: &App) -> Pixels {
+        cx.theme().style.controls.for_size(self.size).gap
     }
 
     #[inline]
@@ -206,11 +229,14 @@ pub struct TreeState {
     entries: Vec<TreeEntry>,
     scroll_handle: UniformListScrollHandle,
     selected_ix: Option<usize>,
+    selected_id: Option<SharedString>,
     right_clicked_ix: Option<usize>,
     render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
     context_menu_builder: Option<
         Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
     >,
+    owner_id: ElementId,
+    size: Size,
 }
 
 impl EventEmitter<TreeEvent> for TreeState {}
@@ -220,12 +246,15 @@ impl TreeState {
     pub fn new(cx: &mut App) -> Self {
         Self {
             selected_ix: None,
+            selected_id: None,
             right_clicked_ix: None,
             focus_handle: cx.focus_handle(),
             scroll_handle: UniformListScrollHandle::default(),
             entries: Vec::new(),
             render_item: Rc::new(|_, _, _, _, _| ListItem::new(0)),
             context_menu_builder: None,
+            owner_id: "tree".into(),
+            size: Size::default(),
         }
     }
 
@@ -233,9 +262,7 @@ impl TreeState {
     pub fn items(mut self, items: impl Into<Vec<TreeItem>>) -> Self {
         let items = items.into();
         self.entries.clear();
-        for item in items.into_iter() {
-            self.add_entry(item, 0);
-        }
+        self.add_entries(&items, 0, None);
         self
     }
 
@@ -243,10 +270,9 @@ impl TreeState {
     pub fn set_items(&mut self, items: impl Into<Vec<TreeItem>>, cx: &mut Context<Self>) {
         let items = items.into();
         self.entries.clear();
-        for item in items.into_iter() {
-            self.add_entry(item, 0);
-        }
+        self.add_entries(&items, 0, None);
         self.selected_ix = None;
+        self.selected_id = None;
         self.right_clicked_ix = None;
         cx.notify();
     }
@@ -258,7 +284,7 @@ impl TreeState {
 
     /// Set the selected index, or `None` to clear selection.
     pub fn set_selected_index(&mut self, ix: Option<usize>, cx: &mut Context<Self>) {
-        self.selected_ix = ix;
+        self.select_index(ix);
         cx.notify();
     }
 
@@ -270,16 +296,17 @@ impl TreeState {
                 .iter()
                 .position(|entry| entry.item.id == item.id);
             if ix.is_some() {
-                self.selected_ix = ix;
+                self.select_index(ix);
             } else {
                 self.expand_ancestors(item.id.clone(), cx);
-                self.selected_ix = self
+                let ix = self
                     .entries
                     .iter()
                     .position(|entry| entry.item.id == item.id);
+                self.select_index(ix);
             }
         } else {
-            self.selected_ix = None;
+            self.select_index(None);
         }
         cx.notify();
     }
@@ -339,17 +366,23 @@ impl TreeState {
             }
         }
 
-        self.rebuild_entries();
+        self.rebuild_entries(None);
     }
 
-    fn add_entry(&mut self, item: TreeItem, depth: usize) {
-        self.entries.push(TreeEntry {
-            item: item.clone(),
-            depth,
-        });
-        if item.is_expanded() {
-            for child in &item.children {
-                self.add_entry(child.clone(), depth + 1);
+    /// Adds visible siblings while retaining hierarchy metadata.
+    fn add_entries(&mut self, items: &[TreeItem], depth: usize, parent_id: Option<SharedString>) {
+        let size_of_set = items.len();
+        for (position, item) in items.iter().enumerate() {
+            self.entries.push(TreeEntry {
+                item: item.clone(),
+                depth,
+                parent_id: parent_id.clone(),
+                position_in_set: position + 1,
+                size_of_set,
+                size: self.size,
+            });
+            if item.is_expanded() {
+                self.add_entries(&item.children, depth + 1, Some(item.id.clone()));
             }
         }
     }
@@ -367,16 +400,17 @@ impl TreeState {
         entry.item.state.borrow_mut().expanded = expanded;
 
         if expanded {
-            cx.emit(TreeEvent::Expanded(id));
+            cx.emit(TreeEvent::Expanded(id.clone()));
         } else {
-            cx.emit(TreeEvent::Collapsed(id));
+            cx.emit(TreeEvent::Collapsed(id.clone()));
         }
 
         self.right_clicked_ix = None;
-        self.rebuild_entries();
+        self.rebuild_entries((!expanded).then_some(id));
     }
 
-    fn rebuild_entries(&mut self) {
+    /// Rebuilds visible entries and restores selection by stable item ID.
+    fn rebuild_entries(&mut self, hidden_selection_fallback: Option<SharedString>) {
         let root_items: Vec<TreeItem> = self
             .entries
             .iter()
@@ -384,8 +418,68 @@ impl TreeState {
             .map(|e| e.item.clone())
             .collect();
         self.entries.clear();
-        for item in root_items.into_iter() {
-            self.add_entry(item, 0);
+        self.add_entries(&root_items, 0, None);
+
+        let selected_ix = self.selected_id.as_ref().and_then(|id| self.index_of(id));
+        if selected_ix.is_some() {
+            self.selected_ix = selected_ix;
+        } else if let Some(fallback_id) = hidden_selection_fallback {
+            self.select_index(self.index_of(&fallback_id));
+        } else {
+            self.select_index(None);
+        }
+    }
+
+    /// Updates index and stable-ID selection as a single invariant.
+    fn select_index(&mut self, ix: Option<usize>) {
+        let ix = ix.filter(|ix| {
+            self.entries
+                .get(*ix)
+                .is_some_and(|entry| !entry.is_disabled())
+        });
+        self.selected_id = ix.map(|ix| self.entries[ix].item.id.clone());
+        self.selected_ix = ix;
+    }
+
+    /// Finds the next enabled visible node, wrapping at the list boundary.
+    fn adjacent_enabled_index(&self, direction: isize) -> Option<usize> {
+        let len = self.entries.len();
+        if len == 0 {
+            return None;
+        }
+
+        let start = match (self.selected_ix, direction.is_positive()) {
+            (Some(ix), _) => ix,
+            (None, true) => len - 1,
+            (None, false) => 0,
+        };
+        for offset in 1..=len {
+            let ix =
+                (start as isize + direction * offset as isize).rem_euclid(len as isize) as usize;
+            if !self.entries[ix].is_disabled() {
+                return Some(ix);
+            }
+        }
+        None
+    }
+
+    /// Selects an enabled node and keeps it visible in the virtualized list.
+    fn select_and_scroll(&mut self, ix: usize, strategy: gpui::ScrollStrategy) {
+        self.select_index(Some(ix));
+        if self.selected_ix == Some(ix) {
+            self.scroll_handle.scroll_to_item(ix, strategy);
+        }
+    }
+
+    /// Propagates the composite Tree size to every entry's render metrics.
+    fn set_size(&mut self, size: Size) {
+        if self.size == size {
+            return;
+        }
+
+        self.size = size;
+        for entry in &mut self.entries {
+            entry.size = size;
         }
     }
 
@@ -405,58 +499,60 @@ impl TreeState {
     }
 
     fn on_action_left(&mut self, _: &SelectLeft, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(selected_ix) = self.selected_ix {
-            if let Some(entry) = self.entries.get(selected_ix) {
-                if entry.is_folder() && entry.is_expanded() {
-                    self.toggle_expand(selected_ix, cx);
-                    cx.notify();
-                }
-            }
+        let Some(selected_ix) = self.selected_ix else {
+            return;
+        };
+        let Some(entry) = self.entries.get(selected_ix) else {
+            return;
+        };
+        if entry.is_folder() && entry.is_expanded() {
+            self.toggle_expand(selected_ix, cx);
+        } else if let Some(parent_id) = entry.parent_id.clone()
+            && let Some(parent_ix) = self.index_of(&parent_id)
+            && !self.entries[parent_ix].is_disabled()
+        {
+            self.select_and_scroll(parent_ix, gpui::ScrollStrategy::Center);
         }
+        cx.notify();
     }
 
     fn on_action_right(&mut self, _: &SelectRight, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(selected_ix) = self.selected_ix {
-            if let Some(entry) = self.entries.get(selected_ix) {
-                if entry.is_folder() && !entry.is_expanded() {
-                    self.toggle_expand(selected_ix, cx);
-                    cx.notify();
-                }
+        let Some(selected_ix) = self.selected_ix else {
+            return;
+        };
+        let Some(entry) = self.entries.get(selected_ix) else {
+            return;
+        };
+        if entry.is_folder() && !entry.is_expanded() {
+            self.toggle_expand(selected_ix, cx);
+        } else if entry.is_folder() {
+            let parent_id = entry.item.id.clone();
+            if let Some(child_ix) = self.entries.iter().position(|entry| {
+                entry.parent_id.as_ref() == Some(&parent_id) && !entry.is_disabled()
+            }) {
+                self.select_and_scroll(child_ix, gpui::ScrollStrategy::Center);
             }
         }
+        cx.notify();
     }
 
     fn on_action_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
-        let mut selected_ix = self.selected_ix.unwrap_or(0);
-
-        if selected_ix > 0 {
-            selected_ix = selected_ix - 1;
-        } else {
-            selected_ix = self.entries.len().saturating_sub(1);
+        if let Some(selected_ix) = self.adjacent_enabled_index(-1) {
+            self.select_and_scroll(selected_ix, gpui::ScrollStrategy::Top);
+            cx.notify();
         }
-
-        self.selected_ix = Some(selected_ix);
-        self.scroll_handle
-            .scroll_to_item(selected_ix, gpui::ScrollStrategy::Top);
-        cx.notify();
     }
 
     fn on_action_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
-        let mut selected_ix = self.selected_ix.unwrap_or(0);
-        if selected_ix + 1 < self.entries.len() {
-            selected_ix = selected_ix + 1;
-        } else {
-            selected_ix = 0;
+        if let Some(selected_ix) = self.adjacent_enabled_index(1) {
+            self.select_and_scroll(selected_ix, gpui::ScrollStrategy::Bottom);
+            cx.notify();
         }
-
-        self.selected_ix = Some(selected_ix);
-        self.scroll_handle
-            .scroll_to_item(selected_ix, gpui::ScrollStrategy::Bottom);
-        cx.notify();
     }
 
-    fn on_entry_click(&mut self, ix: usize, _: &mut Window, cx: &mut Context<Self>) {
-        self.selected_ix = Some(ix);
+    fn on_entry_click(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.focus_handle.focus(window, cx);
+        self.select_index(Some(ix));
         self.toggle_expand(ix, cx);
         cx.notify();
     }
@@ -507,10 +603,28 @@ impl Render for TreeState {
                             let entry = &state.entries[ix];
                             let selected = Some(ix) == state.selected_ix;
                             let right_clicked = Some(ix) == state.right_clicked_ix;
-                            let item = (render_item)(ix, entry, selected, window, cx);
+                            let item = (render_item)(ix, entry, selected, window, cx)
+                                .with_size(state.size);
+                            let entry_id = ElementId::NamedChild(
+                                Arc::new(state.owner_id.clone()),
+                                entry.item.id.clone(),
+                            );
 
                             let el = div()
-                                .id(ix)
+                                .id(entry_id)
+                                .role(Role::TreeItem)
+                                .aria_label(entry.item.label.clone())
+                                .aria_level(entry.depth + 1)
+                                .aria_position_in_set(entry.position_in_set)
+                                .aria_size_of_set(entry.size_of_set)
+                                .aria_selected(selected)
+                                .when(entry.is_folder(), |this| {
+                                    this.aria_expanded(entry.is_expanded())
+                                })
+                                .when(selected, |this| this.aria_active_descendant())
+                                .w_full()
+                                .relative()
+                                .overflow_hidden()
                                 .child(
                                     item.disabled(entry.item().is_disabled())
                                         .selected(selected)
@@ -527,14 +641,20 @@ impl Render for TreeState {
                                     )
                                     .on_mouse_down(
                                         MouseButton::Right,
-                                        cx.listener(move |this, _, _, cx| {
+                                        cx.listener(move |this, _, window, cx| {
+                                            this.focus_handle.focus(window, cx);
                                             this.right_clicked_ix = Some(ix);
                                             cx.notify();
                                         }),
                                     )
                                 });
 
-                            items.push(el)
+                            items.push(accessibility_state(
+                                el,
+                                false,
+                                false,
+                                entry.item().is_disabled(),
+                            ))
                         }
 
                         items
@@ -555,6 +675,8 @@ pub struct Tree {
     id: ElementId,
     state: Entity<TreeState>,
     style: StyleRefinement,
+    size: Size,
+    aria_label: Option<SharedString>,
     render_item: Rc<dyn Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem>,
     context_menu_builder: Option<
         Rc<dyn Fn(usize, &TreeEntry, PopupMenu, &mut Window, &mut Context<TreeState>) -> PopupMenu>,
@@ -570,6 +692,8 @@ impl Tree {
             id: ElementId::Name(format!("tree-{}", state.entity_id()).into()),
             state: state.clone(),
             style: StyleRefinement::default(),
+            size: Size::default(),
+            aria_label: None,
             render_item: Rc::new(move |ix, item, selected, window, app| {
                 render_item(ix, item, selected, window, app)
             }),
@@ -591,6 +715,19 @@ impl Tree {
         self.context_menu_builder = Some(Rc::new(f));
         self
     }
+
+    /// Sets the accessible name announced for the composite tree widget.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+}
+
+impl Sizable for Tree {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
 }
 
 impl Styled for Tree {
@@ -603,14 +740,25 @@ impl RenderOnce for Tree {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let focus_handle = self.state.read(cx).focus_handle.clone();
         let scroll_handle = self.state.read(cx).scroll_handle.clone();
+        let focus_visible = focus_handle.is_focused(window) && window.last_input_was_keyboard();
+        let owner_id = self.id.clone();
+        let render_item = self.render_item.clone();
+        let context_menu_builder = self.context_menu_builder.clone();
 
         self.state.update(cx, |state, _| {
-            state.render_item = self.render_item;
-            state.context_menu_builder = self.context_menu_builder;
+            state.render_item = render_item;
+            state.context_menu_builder = context_menu_builder;
+            state.owner_id = owner_id;
+            state.set_size(self.size);
         });
 
         div()
             .id(self.id)
+            .role(Role::Tree)
+            .aria_label(
+                self.aria_label
+                    .unwrap_or_else(|| t!("Tree.label").to_string().into()),
+            )
             .key_context(CONTEXT)
             .track_focus(&focus_handle)
             .on_action(window.listener_for(&self.state, TreeState::on_action_confirm))
@@ -618,9 +766,11 @@ impl RenderOnce for Tree {
             .on_action(window.listener_for(&self.state, TreeState::on_action_right))
             .on_action(window.listener_for(&self.state, TreeState::on_action_up))
             .on_action(window.listener_for(&self.state, TreeState::on_action_down))
+            .relative()
             .size_full()
             .child(self.state)
             .refine_style(&self.style)
+            .focus_ring(focus_visible, px(0.), window, cx)
             .vertical_scrollbar(&scroll_handle)
     }
 }
@@ -632,7 +782,7 @@ mod tests {
 
     use indoc::indoc;
 
-    use super::{TreeEvent, TreeState};
+    use super::{Tree, TreeEvent, TreeItem, TreeState};
     use gpui::{AppContext as _, Render, Subscription};
 
     struct TestCollector {
@@ -681,9 +831,115 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_tree_entry(cx: &mut gpui::TestAppContext) {
-        use super::TreeItem;
+    fn test_tree_builder(cx: &mut gpui::TestAppContext) {
+        use crate::{Sizable as _, Size};
 
+        let state = cx.new(|cx| TreeState::new(cx));
+        let tree = Tree::new(&state, |ix, _, _, _, _| crate::list::ListItem::new(ix))
+            .small()
+            .aria_label("Project files");
+
+        assert_eq!(tree.size, Size::Small);
+        assert_eq!(tree.aria_label.as_deref(), Some("Project files"));
+    }
+
+    #[gpui::test]
+    fn test_selection_rejects_empty_disabled_and_out_of_bounds(cx: &mut gpui::TestAppContext) {
+        let empty = cx.new(|cx| TreeState::new(cx));
+        empty.update(cx, |state, _| {
+            state.select_index(Some(0));
+            assert_eq!(state.selected_index(), None);
+            assert_eq!(state.adjacent_enabled_index(1), None);
+            assert_eq!(state.adjacent_enabled_index(-1), None);
+        });
+
+        let state = cx.new(|cx| {
+            TreeState::new(cx).items(vec![
+                TreeItem::new("disabled-a", "Disabled A").disabled(true),
+                TreeItem::new("enabled", "Enabled"),
+                TreeItem::new("disabled-b", "Disabled B").disabled(true),
+            ])
+        });
+        state.update(cx, |state, _| {
+            state.select_index(Some(99));
+            assert_eq!(state.selected_index(), None);
+            state.select_index(Some(0));
+            assert_eq!(state.selected_index(), None);
+            assert_eq!(state.adjacent_enabled_index(1), Some(1));
+            assert_eq!(state.adjacent_enabled_index(-1), Some(1));
+        });
+
+        let all_disabled = cx.new(|cx| {
+            TreeState::new(cx).items(vec![
+                TreeItem::new("disabled-a", "Disabled A").disabled(true),
+                TreeItem::new("disabled-b", "Disabled B").disabled(true),
+            ])
+        });
+        all_disabled.read_with(cx, |state, _| {
+            assert_eq!(state.adjacent_enabled_index(1), None);
+            assert_eq!(state.adjacent_enabled_index(-1), None);
+        });
+    }
+
+    #[gpui::test]
+    fn test_collapsing_selected_descendant_selects_parent(cx: &mut gpui::TestAppContext) {
+        let state = cx.new(|cx| {
+            TreeState::new(cx).items(vec![
+                TreeItem::new("src", "src")
+                    .expanded(true)
+                    .child(TreeItem::new("src/lib.rs", "lib.rs")),
+            ])
+        });
+
+        state.update(cx, |state, cx| {
+            state.select_index(Some(1));
+            state.toggle_expand(0, cx);
+
+            assert_eq!(state.selected_index(), Some(0));
+            assert_eq!(
+                state.selected_item().map(|item| item.id.as_ref()),
+                Some("src")
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn test_entries_retain_hierarchy_metadata(cx: &mut gpui::TestAppContext) {
+        let state = cx.new(|cx| {
+            TreeState::new(cx).items(vec![
+                TreeItem::new("src", "src").expanded(true).children([
+                    TreeItem::new("src/a.rs", "a.rs"),
+                    TreeItem::new("src/b.rs", "b.rs"),
+                ]),
+                TreeItem::new("README.md", "README.md"),
+            ])
+        });
+
+        state.read_with(cx, |state, _| {
+            let child = &state.entries[1];
+            assert_eq!(child.parent_id.as_deref(), Some("src"));
+            assert_eq!(child.depth, 1);
+            assert_eq!(child.position_in_set, 1);
+            assert_eq!(child.size_of_set, 2);
+            assert_eq!(state.entries[3].position_in_set, 2);
+            assert_eq!(state.entries[3].size_of_set, 2);
+        });
+    }
+
+    #[gpui::test]
+    fn test_tree_size_propagates_to_entry_metrics(cx: &mut gpui::TestAppContext) {
+        use crate::Size;
+
+        let state = cx.new(|cx| TreeState::new(cx).items(vec![TreeItem::new("src", "src")]));
+        state.update(cx, |state, _| {
+            state.set_size(Size::Small);
+            assert_eq!(state.size, Size::Small);
+            assert_eq!(state.entries[0].size, Size::Small);
+        });
+    }
+
+    #[gpui::test]
+    fn test_tree_entry(cx: &mut gpui::TestAppContext) {
         let items = vec![
             TreeItem::new("src", "src")
                 .expanded(true)

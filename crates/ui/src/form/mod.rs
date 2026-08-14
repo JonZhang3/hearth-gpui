@@ -14,7 +14,7 @@ pub fn h_form() -> Form {
     Form::horizontal()
 }
 
-/// Create a new [`Field`].
-pub fn field() -> Field {
-    Field::new()
+/// Creates a new [`Field`] with a stable element ID.
+pub fn field(id: impl Into<gpui::ElementId>) -> Field {
+    Field::new(id)
 }

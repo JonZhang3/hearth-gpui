@@ -10,7 +10,7 @@ use rust_i18n::t;
 
 use crate::{
     ActiveTheme, AxisExt, IconName, Placement, Selectable, Sizable,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     dock::PanelInfo,
     h_flex,
     menu::{DropdownMenu, PopupMenu},
@@ -56,7 +56,7 @@ impl Render for DragPanel {
             .whitespace_nowrap()
             .border_1()
             .border_color(cx.theme().border)
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .text_color(cx.theme().tab_foreground)
             .bg(cx.theme().tokens.tab_active)
             .opacity(0.75)
@@ -537,7 +537,7 @@ impl TabPanel {
                             .ghost()
                             .tab_stop(false)
                             .tooltip_with_action(tooltip, &ToggleZoom, None)
-                            .selected(zoomed)
+                            .pressed(zoomed)
                             .on_click(cx.listener(|view, _, window, cx| {
                                 view.on_action_toggle_zoom(&ToggleZoom, window, cx)
                             })),

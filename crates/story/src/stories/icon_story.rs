@@ -1,23 +1,27 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window,
+    Styled, Window, radians,
 };
 use gpui_component::{
+    ActiveTheme as _, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariant, ButtonVariants},
     dock::PanelControl,
-    h_flex, neutral_500, v_flex, ActiveTheme as _, Icon, IconName, Sizable,
+    h_flex, neutral_500, v_flex,
 };
 
 use crate::section;
 
 pub struct IconStory {
     focus_handle: gpui::FocusHandle,
+    entity_icon: Entity<Icon>,
 }
 
 impl IconStory {
     fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
+            entity_icon: cx
+                .new(|_| Icon::new(IconName::ArrowUp).rotate(radians(std::f32::consts::FRAC_PI_4))),
         }
     }
 
@@ -66,7 +70,29 @@ impl Render for IconStory {
                     .child(IconName::Heart),
             )
             .child(
-                section("Color Icon")
+                section("Sizes")
+                    .sub_title("Inherited, extra small, small, medium, large, and custom")
+                    .text_lg()
+                    .child(Icon::new(IconName::CircleCheck))
+                    .child(Icon::new(IconName::CircleCheck).xsmall())
+                    .child(Icon::new(IconName::CircleCheck).small())
+                    .child(Icon::new(IconName::CircleCheck).with_size(Size::Medium))
+                    .child(Icon::new(IconName::CircleCheck).large())
+                    .child(Icon::new(IconName::CircleCheck).size_8()),
+            )
+            .child(
+                section("Color and Transform")
+                    .sub_title("Direct and Entity Icons inherit the surrounding color")
+                    .text_lg()
+                    .text_color(cx.theme().primary)
+                    .child(Icon::new(IconName::ArrowUp))
+                    .child(
+                        Icon::new(IconName::ArrowUp).rotate(radians(std::f32::consts::FRAC_PI_2)),
+                    )
+                    .child(self.entity_icon.clone()),
+            )
+            .child(
+                section("Explicit Color")
                     .child(
                         Icon::new(IconName::Maximize)
                             .size_6()
@@ -77,6 +103,13 @@ impl Render for IconStory {
                             .size_6()
                             .text_color(cx.theme().red),
                     ),
+            )
+            .child(
+                section("Informative Icon").child(
+                    Icon::informative("icon-story-ready", IconName::CircleCheck, "Ready")
+                        .large()
+                        .text_color(cx.theme().green),
+                ),
             )
             .child(
                 section("Icon Button").child(

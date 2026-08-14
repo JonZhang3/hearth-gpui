@@ -10,7 +10,7 @@ Progress components visually represent the completion percentage of a task. The 
 - **[Progress](#progress)** - A linear horizontal progress bar
 - **[ProgressCircle](#progresscircle)** - A circular progress indicator
 
-Both components feature smooth transition animations when the value changes, a loading (indeterminate) animation mode, customizable colors, and automatic styling that adapts to the current theme.
+Both components feature smooth transition animations when the value changes, a loading (indeterminate) animation mode, customizable colors, and automatic styling that adapts to the current theme. Linear `Progress` follows the pinned shadcn geometry and semantic track/fill colors.
 
 ## Progress
 
@@ -22,6 +22,7 @@ use gpui_component::progress::Progress;
 
 ```rust
 Progress::new("my-progress")
+    .aria_label("Upload progress")
     .value(75.0) // 75% complete
 ```
 
@@ -48,16 +49,28 @@ Progress::new("my-progress")
     .value(self.progress)
 ```
 
+Indeterminate progress omits numeric accessibility values. Add `.aria_label(...)` and,
+when useful, `.aria_value(...)` so assistive technology can announce the task and status.
+Reduced Motion displays a stable indeterminate segment instead of a repeating animation.
+
 ### Sizes
 
 `Progress` implements the `Sizable` trait:
 
 ```rust
-Progress::new("xs").value(50.0).xsmall()  // 4px height
-Progress::new("sm").value(50.0).small()   // 6px height
-Progress::new("md").value(50.0)           // 8px height (default)
-Progress::new("lg").value(50.0).large()   // 10px height
+Progress::new("xs").value(50.0).xsmall()
+Progress::new("sm").value(50.0).small()
+Progress::new("md").value(50.0)           // Vega: 6px (default)
+Progress::new("lg").value(50.0).large()
 ```
+
+The default Medium height follows the active Style Preset: Nova 4px, Vega 6px, and
+Maia 12px. Other named sizes preserve a monotonic compact-to-large scale. Custom
+`Size::Size(height)` values remain exact.
+
+The track uses `tokens.muted`; the indicator uses `tokens.progress_bar`, which falls
+back to Primary. Value changes use the semantic normal motion duration and move easing.
+Rapid reversals continue from the currently sampled width without jumping.
 
 ### Custom Style
 
@@ -98,8 +111,9 @@ impl Render for MyView {
                             })),
                     )
                     .child(Button::new("inc").icon(IconName::Plus).on_click(
-                        cx.listener(|this, _, _, _| {
+                        cx.listener(|this, _, _, cx| {
                             this.value = (this.value + 10.).min(100.);
+                            cx.notify();
                         }),
                     )),
             )
@@ -119,7 +133,9 @@ impl Render for MyView {
 | `new(id)` | `ElementId` | Create a new progress bar |
 | `value(v)` | `f32` | Set progress value (0–100), clamped automatically |
 | `loading(v)` | `bool` | Enable indeterminate loading animation; ignores `value` when `true` |
-| `color(c)` | `impl Into<Hsla>` | Override the fill color (defaults to `theme.progress_bar`) |
+| `color(c)` | `impl Into<Hsla>` | Override the fill color (defaults to `theme.tokens.progress_bar`) |
+| `aria_label(text)` | `SharedString` | Set the accessible name |
+| `aria_value(text)` | `SharedString` | Set a human-readable accessible value |
 | `xsmall()` / `small()` / `large()` | — | Set predefined height via `Sizable` |
 | `Styled` trait methods | — | Custom height, border radius, border, etc. |
 

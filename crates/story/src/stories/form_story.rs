@@ -3,14 +3,17 @@ use gpui::{
     IntoElement, ParentElement as _, Render, Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
-    ActiveTheme, AxisExt, IndexPath, Selectable, Sizable, Size,
+    ActiveTheme as _, AxisExt, Disableable as _, IndexPath, Selectable, Sizable, Size,
     button::{Button, ButtonGroup},
     checkbox::Checkbox,
     color_picker::{ColorPicker, ColorPickerState},
     date_picker::{DatePicker, DatePickerState},
-    form::{field, v_form},
+    form::{
+        FieldBody, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend,
+        FieldSet, FieldTitle, field, v_form,
+    },
     h_flex,
-    input::{Input, InputState},
+    input::{Input, InputGroup, InputGroupAddon, InputState},
     select::{Select, SelectState},
     separator::Separator,
     switch::Switch,
@@ -107,7 +110,28 @@ impl Focusable for FormStory {
 impl Render for FormStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_multi_column = self.columns > 1;
-        let is_horizontal = self.layout.is_horizontal();
+        let label_width = px(if is_multi_column { 100. } else { 140. });
+        let name_prefix_state = self.name_prefix_state.clone();
+        let name_input = self.name_input.clone();
+        let email_input = self.email_input.clone();
+        let bio_input = self.bio_input.clone();
+        let date = self.date.clone();
+        let color_state = self.color_state.clone();
+        let border = cx.theme().border;
+        let subscribe_email = self.subscribe_email;
+        let vertical_layout = self.layout.is_vertical();
+        let on_subscribe = cx.listener(|this, checked: &bool, _, cx| {
+            this.subscribe_email = *checked;
+            cx.notify();
+        });
+        let on_vertical_layout = cx.listener(|this, checked: &bool, _, cx| {
+            this.layout = if *checked {
+                Axis::Vertical
+            } else {
+                Axis::Horizontal
+            };
+            cx.notify();
+        });
 
         v_flex()
             .id("form-story")
@@ -187,102 +211,212 @@ impl Render for FormStory {
                     .layout(self.layout)
                     .with_size(self.size)
                     .columns(self.columns)
-                    .label_width(px(if is_multi_column { 100. } else { 140. }))
-                    .child(
-                        field().label_fn(|_, _| "Name").child(
-                            h_flex()
-                                .gap_2()
-                                .border_1()
-                                .border_color(cx.theme().input)
-                                .bg(cx.theme().input_background())
-                                .rounded(cx.theme().radius)
-                                .child(
-                                    div().w(px(90.)).child(
-                                        Select::new(&self.name_prefix_state)
-                                            .pr_0()
-                                            .appearance(false),
-                                    ),
-                                )
-                                .child(
-                                    div().flex_1().child(
-                                        Input::new(&self.name_input).pl_0().appearance(false),
-                                    ),
+                    .child(field("form-name").aria_label("Name").content(move |state| {
+                        FieldBody::new()
+                            .child(
+                                FieldLabel::new("Name")
+                                    .disabled(state.disabled())
+                                    .w(label_width)
+                                    .flex_shrink_0(),
+                            )
+                            .child(
+                                FieldContent::new().child(
+                                    InputGroup::new("form-name-input-group")
+                                        .aria_label("Full name")
+                                        .disabled(state.disabled())
+                                        .invalid(state.invalid())
+                                        .addon(
+                                            InputGroupAddon::new().p_0().w(px(120.)).child(
+                                                h_flex()
+                                                    .w_full()
+                                                    .items_center()
+                                                    .on_mouse_down(
+                                                        gpui::MouseButton::Left,
+                                                        |_, _, cx| cx.stop_propagation(),
+                                                    )
+                                                    .child(
+                                                        div().flex_1().min_w_0().child(
+                                                            Select::new(&name_prefix_state)
+                                                                .appearance(false)
+                                                                .disabled(state.disabled())
+                                                                .w_full(),
+                                                        ),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .w(px(1.))
+                                                            .h_5()
+                                                            .flex_none()
+                                                            .bg(border),
+                                                    ),
+                                            ),
+                                        )
+                                        .input(
+                                            Input::new(&name_input)
+                                                .aria_label("Full name")
+                                                .disabled(state.disabled())
+                                                .invalid(state.invalid()),
+                                        ),
                                 ),
-                        ),
-                    )
+                            )
+                    }))
                     .child(
-                        field()
-                            .label("Email")
-                            .child(Input::new(&self.email_input))
-                            .required(true),
-                    )
-                    .child(
-                        field()
-                            .label("Bio")
-                            .when(self.layout.is_vertical(), |this| this.items_start())
-                            .child(Input::new(&self.bio_input))
-                            .description_fn(|_, _| {
-                                div().child("Use at most 100 words to describe yourself.")
+                        field("form-email")
+                            .aria_label("Email")
+                            .required(true)
+                            .content(move |state| {
+                                FieldBody::new()
+                                    .child(
+                                        FieldLabel::new("Email")
+                                            .disabled(state.disabled())
+                                            .required(state.required())
+                                            .w(label_width)
+                                            .flex_shrink_0(),
+                                    )
+                                    .child(
+                                        FieldContent::new().child(
+                                            Input::new(&email_input)
+                                                .disabled(state.disabled())
+                                                .invalid(state.invalid()),
+                                        ),
+                                    )
                             }),
                     )
                     .child(
-                        field()
-                            .label_indent(false)
+                        field("form-bio")
+                            .aria_label("Bio")
+                            .aria_description("Use at most 100 words to describe yourself.")
+                            .when(self.layout.is_vertical(), |this| this.items_start())
+                            .content(move |state| {
+                                FieldBody::new()
+                                    .child(
+                                        FieldLabel::new("Bio")
+                                            .disabled(state.disabled())
+                                            .w(label_width)
+                                            .flex_shrink_0(),
+                                    )
+                                    .child(
+                                        FieldContent::new()
+                                            .child(
+                                                Input::new(&bio_input)
+                                                    .disabled(state.disabled())
+                                                    .invalid(state.invalid()),
+                                            )
+                                            .child(FieldDescription::new(
+                                                "Use at most 100 words to describe yourself.",
+                                            )),
+                                    )
+                            }),
+                    )
+                    .child(
+                        field("form-full-width")
                             .when(is_multi_column, |this| this.col_span(2))
-                            .child("This is a full width form field."),
+                            .content(|_| {
+                                FieldBody::new().child("This is a full width form field.")
+                            }),
                     )
                     .child(
-                        field()
-                            .label("Please select your birthday")
-                            .description("Select your birthday, we will send you a gift.")
-                            .child(DatePicker::new(&self.date)),
+                        field("form-birthday")
+                            .aria_label("Please select your birthday")
+                            .aria_description("Select your birthday, we will send you a gift.")
+                            .content(move |state| {
+                                FieldBody::new()
+                                    .child(
+                                        FieldLabel::new("Please select your birthday")
+                                            .disabled(state.disabled())
+                                            .w(label_width)
+                                            .flex_shrink_0(),
+                                    )
+                                    .child(
+                                        FieldContent::new()
+                                            .child(
+                                                DatePicker::new(&date).disabled(state.disabled()),
+                                            )
+                                            .child(FieldDescription::new(
+                                                "Select your birthday, we will send you a gift.",
+                                            )),
+                                    )
+                            }),
                     )
                     .child(
-                        field()
-                            .when(is_horizontal && is_multi_column, |this| {
-                                this.label_indent(false)
-                            })
+                        field("form-newsletter")
+                            .items_start()
                             .when(is_multi_column, |this| this.col_start(1))
-                            .child(
-                                Switch::new("subscribe-newsletter")
-                                    .label("Subscribe our newsletter")
-                                    .checked(self.subscribe_email)
-                                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                                        this.subscribe_email = *checked;
-                                        cx.notify();
-                                    })),
-                            ),
+                            .content(move |state| {
+                                FieldBody::new().child(
+                                    Switch::new("subscribe-newsletter")
+                                        .label("Subscribe our newsletter")
+                                        .checked(subscribe_email)
+                                        .disabled(state.disabled())
+                                        .invalid(state.invalid())
+                                        .on_click(on_subscribe),
+                                )
+                            }),
+                    )
+                    .child(field("form-theme-color").items_start().content(move |_| {
+                        FieldBody::new()
+                            .child(ColorPicker::new(&color_state).small().label("Theme color"))
+                    }))
+                    .child(
+                        field("form-layout-checkbox")
+                            .items_start()
+                            .content(move |state| {
+                                FieldBody::new().child(
+                                    Checkbox::new("use-vertical-layout")
+                                        .label("Vertical layout")
+                                        .checked(vertical_layout)
+                                        .disabled(state.disabled())
+                                        .invalid(state.invalid())
+                                        .on_click(on_vertical_layout),
+                                )
+                            }),
                     )
                     .child(
-                        field()
-                            .when(is_horizontal && is_multi_column, |this| {
-                                this.label_indent(false)
-                            })
-                            .child(
-                                ColorPicker::new(&self.color_state)
-                                    .small()
-                                    .label("Theme color"),
-                            ),
-                    )
-                    .child(
-                        field()
-                            .when(is_horizontal && is_multi_column, |this| {
-                                this.label_indent(false)
-                            })
-                            .child(
-                                Checkbox::new("use-vertical-layout")
-                                    .label("Vertical layout")
-                                    .checked(self.layout.is_vertical())
-                                    .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                                        this.layout = if *checked {
-                                            Axis::Vertical
-                                        } else {
-                                            Axis::Horizontal
-                                        };
-                                        cx.notify();
-                                    })),
-                            ),
+                        field("form-validation-example")
+                            .aria_label("Validation example")
+                            .aria_description("Enter a valid email address.")
+                            .invalid(true)
+                            .when(is_multi_column, |this| this.col_span(2))
+                            .content(move |state| {
+                                FieldBody::new()
+                                    .child(
+                                        FieldLabel::new("Validation example")
+                                            .disabled(state.disabled())
+                                            .w(label_width)
+                                            .flex_shrink_0(),
+                                    )
+                                    .child(
+                                        FieldContent::new()
+                                            .child(FieldTitle::new("Invalid field state"))
+                                            .child(FieldError::new(
+                                                "form-validation-error",
+                                                "Enter a valid email address.",
+                                            )),
+                                    )
+                            }),
                     ),
+            )
+            .child(
+                FieldSet::new("form-preferences")
+                    .aria_label("Preferences")
+                    .content(|state| {
+                        FieldBody::new()
+                            .child(FieldLegend::new("Preferences"))
+                            .child(
+                                FieldGroup::new()
+                                    .selection()
+                                    .child(
+                                        Checkbox::new("preference-email")
+                                            .label("Email updates")
+                                            .disabled(state.disabled()),
+                                    )
+                                    .child(
+                                        Checkbox::new("preference-product")
+                                            .label("Product updates")
+                                            .disabled(state.disabled()),
+                                    ),
+                            )
+                    }),
             )
     }
 }

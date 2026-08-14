@@ -53,6 +53,7 @@ impl MyView {
                     this.current_value = value.start();
                     cx.notify();
                 }
+                SliderEvent::Release(_) => {}
             }
         });
 
@@ -85,6 +86,25 @@ let range_slider = cx.new(|_| {
 });
 
 Slider::new(&range_slider)
+```
+
+Each range thumb is independently focusable and exposes its own value and allowed range to
+assistive technology.
+
+### Keyboard and Accessibility
+
+- `ArrowLeft` / `ArrowDown`: decrease the focused thumb by one step.
+- `ArrowRight` / `ArrowUp`: increase the focused thumb by one step.
+- `Home` / `End`: move the focused thumb to its allowed minimum or maximum.
+- Range sliders expose two Tab stops, one for each thumb.
+
+Provide a domain-specific accessible name when the surrounding UI does not already describe the
+control:
+
+```rust
+Slider::new(&slider_state)
+    .aria_label("Playback volume")
+    .aria_description("Adjusts the preview volume")
 ```
 
 ### Vertical Slider
@@ -206,16 +226,20 @@ let range_value: SliderValue = (10.0..90.0).into();
 | Event                  | Description                                                     |
 | ---------------------- | --------------------------------------------------------------- |
 | `Change(SliderValue)`  | Emitted continuously while the slider value is being changed    |
-| `Release(SliderValue)` | Emitted once when the user releases the slider after interaction |
+| `Release(SliderValue)` | Emitted once when pointer, keyboard, or accessibility interaction commits a value |
 
 ### Styling
 
 The slider component implements `Styled` trait and supports:
 
-- Background color for track and thumb
-- Text color for thumb
+- Background color for the active range; the inactive track derives a lower-opacity surface
+- Text color as the Thumb surface color
 - Border radius
 - Size customization
+
+Track thickness, Thumb geometry, shadow, hit target, and focus-ring motion are resolved from the
+active semantic Style Preset. Vega is the default visual baseline; Nova and Maia retain their
+pinned density and motion differences.
 
 ## Examples
 

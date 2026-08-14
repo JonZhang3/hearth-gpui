@@ -177,7 +177,7 @@ impl BrushStory {
         div()
             .w(px(40.))
             .h(px(40.))
-            .rounded(theme.radius)
+            .rounded(theme.style.radii.md)
             .bg(color)
             .border_2()
             .when(is_selected, |this| {

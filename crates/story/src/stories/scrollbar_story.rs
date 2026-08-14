@@ -1,8 +1,6 @@
-use std::rc::Rc;
-
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Pixels,
-    Render, Size, Styled, UniformListScrollHandle, Window, div, px, size, uniform_list,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Render, Styled, UniformListScrollHandle, Window, div, px, uniform_list,
 };
 use gpui_component::{
     ActiveTheme as _, Selectable,
@@ -14,9 +12,7 @@ use gpui_component::{
 
 pub struct ScrollbarStory {
     focus_handle: FocusHandle,
-    items: Rc<Vec<String>>,
-    item_sizes: Rc<Vec<Size<Pixels>>>,
-    test_width: Pixels,
+    item_count: usize,
     size_mode: usize,
     scroll_handle: UniformListScrollHandle,
 }
@@ -25,18 +21,9 @@ const ITEM_HEIGHT: Pixels = px(50.);
 
 impl ScrollbarStory {
     fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
-        let items: Rc<Vec<String>> = Rc::new((0..5000).map(|i| format!("Item {}", i)).collect());
-        let test_width = px(3000.);
-        let item_sizes = items
-            .iter()
-            .map(|_| size(test_width, ITEM_HEIGHT))
-            .collect::<Vec<_>>();
-
         Self {
             focus_handle: cx.focus_handle(),
-            items,
-            item_sizes: Rc::new(item_sizes),
-            test_width,
+            item_count: 5_000,
             size_mode: 0,
             scroll_handle: UniformListScrollHandle::new(),
         }
@@ -48,26 +35,12 @@ impl ScrollbarStory {
 
     pub fn change_test_cases(&mut self, n: usize, cx: &mut Context<Self>) {
         self.size_mode = n;
-        if n == 0 {
-            self.items = Rc::new((0..5000).map(|i| format!("Item {}", i)).collect());
-            self.test_width = px(3000.);
-        } else if n == 1 {
-            self.items = Rc::new((0..100).map(|i| format!("Item {}", i)).collect());
-            self.test_width = px(10000.);
-        } else if n == 2 {
-            self.items = Rc::new((0..500000).map(|i| format!("Item {}", i)).collect());
-            self.test_width = px(10000.);
-        } else {
-            self.items = Rc::new((0..5).map(|i| format!("Item {}", i)).collect());
-            self.test_width = px(10000.);
-        }
-
-        self.item_sizes = self
-            .items
-            .iter()
-            .map(|_| size(self.test_width, ITEM_HEIGHT))
-            .collect::<Vec<_>>()
-            .into();
+        self.item_count = match n {
+            0 => 5_000,
+            1 => 100,
+            2 => 500_000,
+            _ => 5,
+        };
         cx.notify();
     }
 
@@ -79,22 +52,22 @@ impl ScrollbarStory {
                     .compact()
                     .child(
                         Button::new("test-0")
-                            .label("Size 0")
+                            .label("5K items")
                             .selected(self.size_mode == 0),
                     )
                     .child(
                         Button::new("test-1")
-                            .label("Size 1")
+                            .label("100 items")
                             .selected(self.size_mode == 1),
                     )
                     .child(
                         Button::new("test-2")
-                            .label("Size 2")
+                            .label("500K items")
                             .selected(self.size_mode == 2),
                     )
                     .child(
                         Button::new("test-3")
-                            .label("Size 3")
+                            .label("5 items")
                             .selected(self.size_mode == 3),
                     )
                     .on_click(cx.listener(|view, clicks: &Vec<usize>, _, cx| {
@@ -150,12 +123,10 @@ impl Render for ScrollbarStory {
                     .border_color(cx.theme().border)
                     .flex_1()
                     .child(
-                        uniform_list("list", self.items.len(), {
-                            let items = self.items.clone();
+                        uniform_list("list", self.item_count, {
                             move |visible_range, _, cx| {
                                 let mut elements = Vec::with_capacity(visible_range.len());
                                 for ix in visible_range {
-                                    let item = &items[ix];
                                     elements.push(
                                         div()
                                             .h(ITEM_HEIGHT)
@@ -167,7 +138,7 @@ impl Render for ScrollbarStory {
                                                 div()
                                                     .p_2()
                                                     .bg(cx.theme().secondary)
-                                                    .child(item.to_string()),
+                                                    .child(format!("Item {ix}")),
                                             ),
                                     );
                                 }
@@ -181,5 +152,51 @@ impl Render for ScrollbarStory {
                     )
                     .vertical_scrollbar(&self.scroll_handle)
             })
+            .child(
+                h_flex()
+                    .gap_4()
+                    .h(px(140.))
+                    .child(
+                        h_flex()
+                            .id("horizontal-scrollbar-example")
+                            .flex_1()
+                            .h_full()
+                            .gap_2()
+                            .p_3()
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded(cx.theme().style.radii.md)
+                            .overflow_x_scrollbar()
+                            .children((0..12).map(|ix| {
+                                div()
+                                    .min_w(px(120.))
+                                    .h_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(cx.theme().style.radii.sm)
+                                    .bg(cx.theme().secondary)
+                                    .child(format!("Card {ix}"))
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("both-axis-scrollbar-example")
+                            .flex_1()
+                            .h_full()
+                            .border_1()
+                            .border_color(cx.theme().border)
+                            .rounded(cx.theme().style.radii.md)
+                            .overflow_scrollbar()
+                            .child(
+                                div()
+                                    .w(px(900.))
+                                    .h(px(360.))
+                                    .p_4()
+                                    .bg(cx.theme().secondary)
+                                    .child("Two-axis scroll area"),
+                            ),
+                    ),
+            )
     }
 }

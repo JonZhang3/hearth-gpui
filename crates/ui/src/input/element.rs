@@ -15,8 +15,8 @@ use smallvec::SmallVec;
 use std::{ops::Range, rc::Rc};
 
 use crate::{
-    ActiveTheme as _, Colorize, IconName, Root, Selectable, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize, IconName, Root, Sizable as _,
+    button::Button,
     input::{RopeExt as _, blink_cursor::CURSOR_WIDTH, display_map::LineLayout},
     scroll::Scrollbar,
 };
@@ -1176,7 +1176,6 @@ impl TextElement {
                 .xsmall()
                 .rounded_xs()
                 .size(FOLD_ICON_WIDTH)
-                .selected(info.is_folded)
                 .on_mouse_down(MouseButton::Left, {
                     let state = self.state.clone();
                     let buffer_line = info.buffer_line;

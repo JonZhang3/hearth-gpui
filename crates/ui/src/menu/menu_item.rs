@@ -1,4 +1,4 @@
-use crate::{ActiveTheme, Disableable, StyledExt, h_flex};
+use crate::{ActiveTheme, Disableable, StyledExt, accessibility::accessibility_state, h_flex};
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
@@ -11,6 +11,7 @@ pub(crate) struct MenuItemElement {
     id: ElementId,
     group_name: SharedString,
     aria_label: Option<SharedString>,
+    role: Option<Role>,
     style: StyleRefinement,
     disabled: bool,
     selected: bool,
@@ -27,6 +28,7 @@ impl MenuItemElement {
             id: id.clone(),
             group_name: group_name.into(),
             aria_label: None,
+            role: Some(Role::MenuItem),
             style: StyleRefinement::default(),
             disabled: false,
             selected: false,
@@ -45,6 +47,12 @@ impl MenuItemElement {
     /// Set the accessible label for the menu item.
     pub(crate) fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
         self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Sets the accessibility role, or removes the item from the accessibility tree.
+    pub(crate) fn accessibility_role(mut self, role: Option<Role>) -> Self {
+        self.role = role;
         self
     }
 
@@ -92,11 +100,12 @@ impl ParentElement for MenuItemElement {
 
 impl RenderOnce for MenuItemElement {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        h_flex()
+        let exposes_selection = self.role == Some(Role::MenuItem);
+        let element = h_flex()
             .id(self.id)
-            .role(Role::MenuItem)
+            .when_some(self.role, |this, role| this.role(role))
             .when_some(self.aria_label, |this, label| this.aria_label(label))
-            .aria_selected(self.selected)
+            .when(exposes_selection, |this| this.aria_selected(self.selected))
             .group(&self.group_name)
             .gap_x_1()
             .py_1()
@@ -129,7 +138,9 @@ impl RenderOnce for MenuItemElement {
             .when(self.disabled, |this| {
                 this.text_color(cx.theme().muted_foreground)
             })
-            .children(self.children)
+            .children(self.children);
+
+        accessibility_state(element, false, false, self.disabled)
     }
 }
 

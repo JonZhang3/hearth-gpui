@@ -1,9 +1,6 @@
 use crate::{
-    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
-    h_flex,
-    scroll::ScrollableElement,
-    v_flex,
+    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt, button::Button, h_flex,
+    scroll::ScrollableElement, v_flex,
 };
 use gpui::{
     AbsoluteLength, AnyElement, App, ClickEvent, DefiniteLength, EdgesRefinement, ElementId,
@@ -11,9 +8,9 @@ use gpui::{
     RenderOnce, SharedString, StyleRefinement, Styled, Window, div, list, prelude::FluentBuilder,
     px,
 };
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
-use crate::animation::{Transition, ease_in_out_cubic};
+use crate::animation::{Transition, effective_motion_duration};
 
 mod footer;
 mod group;
@@ -26,7 +23,6 @@ pub use menu::*;
 
 const DEFAULT_WIDTH: Pixels = px(255.);
 const COLLAPSED_WIDTH: Pixels = px(48.);
-const SIDEBAR_TRANSITION_DURATION: Duration = Duration::from_millis(200);
 
 /// The way a [`Sidebar`] behaves when it is collapsed.
 ///
@@ -504,6 +500,9 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             SidebarAnimationState::new(target_width, !layout.offcanvas_collapsed)
         });
 
+        let transition_duration = cx.theme().style.motion.slow();
+        let timer_duration = effective_motion_duration(transition_duration, cx);
+        let move_easing = cx.theme().style.motion.move_easing;
         let hide_request = if animation_state
             .read(cx)
             .needs_update(target_width, layout.offcanvas_collapsed)
@@ -518,9 +517,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             cx.spawn({
                 let animation_state = animation_state.clone();
                 async move |cx| {
-                    cx.background_executor()
-                        .timer(SIDEBAR_TRANSITION_DURATION)
-                        .await;
+                    cx.background_executor().timer(timer_duration).await;
                     _ = animation_state.update(cx, |state, cx| {
                         if state.finish_hide(hide_request) {
                             cx.notify();
@@ -537,8 +534,8 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let wrapper = sidebar_wrapper(format!("{}-anim", id), layout.align_child_to_end)
             .when(animation_state.render_child, |this| this.child(sidebar));
 
-        Transition::new(SIDEBAR_TRANSITION_DURATION)
-            .ease(ease_in_out_cubic)
+        Transition::new(transition_duration)
+            .ease_token(move_easing)
             .width(from_w, to_w)
             .apply(wrapper, sidebar_animation_id(&id, from_w, to_w))
             .into_any_element()

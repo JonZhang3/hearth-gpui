@@ -212,23 +212,23 @@ impl StockTableDelegate {
             clicked_row: None,
             columns: vec![
                 Column::new("id", "ID")
-                    .width(60.)
+                    .w(60.)
                     .fixed(ColumnFixed::Left)
                     .resizable(true)
-                    .min_width(40.)
-                    .max_width(100.)
+                    .min_w(40.)
+                    .max_w(100.)
                     .text_center(),
                 Column::new("market", "Market")
-                    .width(60.)
+                    .w(60.)
                     .fixed(ColumnFixed::Left)
                     .resizable(true)
-                    .min_width(50.),
+                    .min_w(50.),
                 Column::new("name", "Name")
-                    .width(180.)
+                    .w(180.)
                     .fixed(ColumnFixed::Left)
-                    .max_width(300.),
+                    .max_w(300.),
                 Column::new("symbol", "Symbol")
-                    .width(100.)
+                    .w(100.)
                     .fixed(ColumnFixed::Left)
                     .sortable(),
                 Column::new("price", "Price").sortable().text_right().p_0(),
@@ -311,7 +311,7 @@ impl StockTableDelegate {
 
         div()
             .h_full()
-            .table_cell_size(self.size)
+            .table_cell_size(self.size, cx)
             .when(col.align == TextAlign::Right, |this| {
                 this.h_flex().justify_end()
             })
@@ -333,7 +333,7 @@ impl StockTableDelegate {
     fn render_value_cell(&self, col: &Column, val: f64, cx: &mut App) -> AnyElement {
         let this = div()
             .h_full()
-            .table_cell_size(self.size)
+            .table_cell_size(self.size, cx)
             .child(format!("{:.3}", val));
         // Val is a 0.0 .. n.0
         // 30% to red, 30% to green, others to default
@@ -420,7 +420,7 @@ impl TableDelegate for StockTableDelegate {
         div()
             .child(col.name.clone())
             .when(col_ix >= 3 && col_ix <= 10, |this| {
-                this.table_cell_size(self.size)
+                this.table_cell_size(self.size, cx)
             })
             .when(col.align == TextAlign::Center, |this| {
                 this.h_flex().w_full().justify_center()
@@ -741,6 +741,7 @@ pub struct DataTableStory {
     num_stocks_input: Entity<InputState>,
     num_extra_cols_input: Entity<InputState>,
     stripe: bool,
+    bordered: bool,
     refresh_data: bool,
     size: Size,
 
@@ -840,6 +841,7 @@ impl DataTableStory {
             num_stocks_input,
             num_extra_cols_input,
             stripe: false,
+            bordered: true,
             refresh_data: false,
             size: Size::default(),
             _subscriptions,
@@ -961,6 +963,11 @@ impl DataTableStory {
 
     fn toggle_stripe(&mut self, checked: &bool, _: &mut Window, cx: &mut Context<Self>) {
         self.stripe = *checked;
+        cx.notify();
+    }
+
+    fn toggle_bordered(&mut self, checked: &bool, _: &mut Window, cx: &mut Context<Self>) {
+        self.bordered = *checked;
         cx.notify();
     }
 
@@ -1145,6 +1152,12 @@ impl Render for DataTableStory {
                             .on_click(cx.listener(Self::toggle_stripe)),
                     )
                     .child(
+                        Checkbox::new("bordered")
+                            .label("Bordered")
+                            .selected(self.bordered)
+                            .on_click(cx.listener(Self::toggle_bordered)),
+                    )
+                    .child(
                         Checkbox::new("loading")
                             .label("Loading")
                             .checked(self.table.read(cx).delegate().full_loading)
@@ -1324,8 +1337,10 @@ impl Render for DataTableStory {
             )
             .child(
                 DataTable::new(&self.table)
+                    .aria_label("Stocks")
                     .with_size(self.size)
-                    .stripe(self.stripe),
+                    .stripe(self.stripe)
+                    .bordered(self.bordered),
             )
     }
 }

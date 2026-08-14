@@ -19,6 +19,7 @@ use gpui_component::switch::Switch;
 
 ```rust
 Switch::new("my-switch")
+    .aria_label("Airplane mode")
     .checked(false)
     .on_click(|checked, _, _| {
         println!("Switch is now: {}", checked);
@@ -35,6 +36,7 @@ struct MyView {
 impl Render for MyView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         Switch::new("switch")
+            .aria_label("Enable feature")
             .checked(self.is_enabled)
             .on_click(cx.listener(|view, checked, _, cx| {
                 view.is_enabled = *checked;
@@ -89,6 +91,20 @@ Switch::new("disabled-on")
     .checked(true)
 ```
 
+### Invalid and Accessible Name
+
+```rust
+Switch::new("required-setting")
+    .aria_label("Enable required setting")
+    .invalid(true)
+    .checked(false)
+```
+
+Enabled switches with an `on_click` handler are keyboard focusable. Press `Space` to toggle the
+value. A Switch without an activation handler is presented as read-only and does not create a dead
+Tab stop. The focus ring is shown for keyboard focus, while pointer activation does not add a
+keyboard focus-visible ring.
+
 ### Custom Color
 
 Use `.color()` to override the checked-state background color. The disabled alpha is applied automatically on top of the custom color.
@@ -132,7 +148,11 @@ Switch::new("switch")
 | `new(id)`          | Create a new switch with the given ID                       |
 | `checked(bool)`    | Set the checked/toggled state                               |
 | `label(text)`      | Set label text for the switch                               |
+| `aria_label(text)` | Set an accessible name independently from the visible label |
 | `label_side(side)` | Position label (Side::Left or Side::Right)                  |
+| `invalid(bool)`    | Set the destructive invalid presentation and semantics      |
+| `tab_stop(bool)`   | Include or exclude the switch from sequential focus          |
+| `tab_index(index)` | Set the keyboard tab index                                   |
 | `disabled(bool)`   | Set disabled state                                          |
 | `tooltip(text)`    | Add tooltip text                                            |
 | `color(color)`     | Set background color when checked (default: `theme.primary`) |
@@ -142,8 +162,8 @@ Switch::new("switch")
 
 Implements `Sizable` and `Disableable` traits:
 
-- `small()` - Small switch size (28x16px toggle area)
-- `medium()` - Medium switch size (36x20px toggle area, default)
+- `small()` - shadcn small switch size (`24x14px`, `12px` thumb)
+- `medium()` - shadcn default switch size (`32x18.4px`, `16px` thumb)
 - `with_size(size)` - Set explicit size
 - `disabled(bool)` - Disabled state
 
@@ -300,9 +320,11 @@ Switch::new("custom")
 
 ## Animation
 
-The switch features smooth animations:
+The switch uses the active Style Preset motion tokens:
 
-- **Toggle animation**: 150ms duration when switching states
-- **Background color transition**: Changes from switch color to primary color
-- **Position animation**: Smooth movement of the toggle indicator
-- **Disabled state**: Animations are disabled when the switch is disabled
+- Track background, border, focus ring, disabled opacity, and Thumb position share one sampled
+  150ms normal transition so their frames remain synchronized.
+- The Thumb translates between its checked and unchecked positions without conditional mounting.
+- Rapid reversal resumes from the currently sampled value instead of restarting from an endpoint.
+- Reduced motion resolves immediately to the final state.
+- Renderable gradient backgrounds switch atomically because GPUI cannot interpolate arbitrary fills.

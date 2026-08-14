@@ -7,6 +7,10 @@ description: Context menus and popup menus with support for icons, shortcuts, su
 
 The Menu component provides both context menus (right-click menus) and popup menus with comprehensive features including icons, keyboard shortcuts, submenus, separators, checkable items, and custom elements. Built with accessibility and keyboard navigation in mind.
 
+Popup menus consume the active Style Preset for item density, radius, padding, icon size, and
+surface width. Dropdown triggers expose their expanded state, disabled items are skipped by pointer
+and keyboard navigation, and labels and separators remain non-interactive.
+
 ## Import
 
 ```rust
@@ -34,6 +38,23 @@ div()
             .menu("Paste", Box::new(Paste))
             .separator()
             .menu("Delete", Box::new(Delete))
+    })
+```
+
+Context menus complete an intrinsic layout pass without painting or exposing content to
+accessibility APIs before the enter transition begins. The visible menu keeps PopupMenu's natural
+content-driven width instead of imposing an outer fixed-width constraint. It remains mounted through
+the exit transition and is released only after the matching close generation completes. Repeated
+right-clicks reposition and rebuild the open menu without producing an intermediate close/open cycle.
+Empty builders do not create an invisible open overlay.
+
+Use `on_open_change` when the owner needs the effective lifecycle state:
+
+```rust
+div()
+    .context_menu(|menu, _, _| menu.menu("Copy", Box::new(Copy)))
+    .on_open_change(|open, _, _| {
+        println!("Context menu open: {open}");
     })
 ```
 

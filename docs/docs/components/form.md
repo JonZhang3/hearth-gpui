@@ -1,543 +1,128 @@
 ---
-title: Form
-description: Flexible form container with support for field layout, validation, and multi-column layouts.
+title: Form and Field
+description: Composable form-field primitives with GPUI-native grid layout and validation semantics.
 ---
 
-# Form
+# Form and Field
 
-A comprehensive form component that provides structured layout for form fields with support for vertical/horizontal layouts, validation, field groups, and responsive multi-column layouts.
+`Field` follows shadcn's compositional model. `Form` is the GPUI-native layout layer for arranging Fields in rows or grids; validation and submitted values remain application state.
 
 ## Import
 
 ```rust
-use gpui_component::form::{field, v_form, h_form, Form, Field};
+use gpui_component::form::{
+    field, v_form, FieldBody, FieldContent, FieldDescription, FieldError,
+    FieldGroup, FieldLabel, FieldLegend, FieldSet,
+};
 ```
 
-## Usage
+## Basic field
 
-### Basic Form
-
-```rust
-v_form()
-    .child(
-        field()
-            .label("Name")
-            .child(Input::new(&name_input))
-    )
-    .child(
-        field()
-            .label("Email")
-            .child(Input::new(&email_input))
-            .required(true)
-    )
-```
-
-### Horizontal Form Layout
+Every Field requires a stable ID. Use semantic text on the control itself and an explicit Field accessibility label because GPUI does not currently expose a complete `labelled-by` relationship.
 
 ```rust
-h_form()
-    .label_width(px(120.))
-    .child(
-        field()
-            .label("First Name")
-            .child(Input::new(&first_name))
-    )
-    .child(
-        field()
-            .label("Last Name")
-            .child(Input::new(&last_name))
-    )
-```
-
-### Multi-Column Form
-
-```rust
-v_form()
-    .columns(2) // Two-column layout
-    .child(
-        field()
-            .label("First Name")
-            .child(Input::new(&first_name))
-    )
-    .child(
-        field()
-            .label("Last Name")
-            .child(Input::new(&last_name))
-    )
-    .child(
-        field()
-            .label("Bio")
-            .col_span(2) // Span across both columns
-            .child(Input::new(&bio_input))
-    )
-```
-
-## Form Container and Layout
-
-### Vertical Layout (Default)
-
-```rust
-v_form()
-    .gap(px(12.))
-    .child(field().label("Name").child(input))
-    .child(field().label("Email").child(email_input))
-```
-
-### Horizontal Layout
-
-```rust
-h_form()
-    .label_width(px(100.))
-    .child(field().label("Name").child(input))
-    .child(field().label("Email").child(email_input))
-```
-
-### Custom Sizing
-
-```rust
-v_form()
-    .large() // Large form size
-    .label_text_size(rems(1.2))
-    .child(field().label("Title").child(input))
-
-v_form()
-    .small() // Small form size
-    .child(field().label("Code").child(input))
-```
-
-## Form Validation
-
-### Required Fields
-
-```rust
-field()
-    .label("Email")
-    .required(true) // Shows asterisk (*) next to label
-    .child(Input::new(&email_input))
-```
-
-### Field Descriptions
-
-```rust
-field()
-    .label("Password")
-    .description("Must be at least 8 characters long")
-    .child(Input::new(&password_input))
-```
-
-### Dynamic Descriptions
-
-```rust
-field()
-    .label("Bio")
-    .description_fn(|_, _| {
-        div().child("Use at most 100 words to describe yourself.")
+field("account-email")
+    .aria_label("Email")
+    .required(true)
+    .content(move |state| {
+        FieldBody::new()
+            .child(FieldLabel::new("Email").required(state.required()))
+            .child(
+                FieldContent::new()
+                    .child(Input::new(&email).aria_label("Email").disabled(state.disabled()))
+                    .child(FieldDescription::new("Used for account notifications.")),
+            )
     })
-    .child(Input::new(&bio_input))
 ```
 
-### Field Visibility
+`FieldLabel::for_focus(&focus_handle)` gives the label native pointer-to-focus behavior. The target control must still provide its own accessible name.
+
+## Validation
 
 ```rust
-field()
-    .label("Admin Settings")
-    .visible(user.is_admin()) // Conditionally show field
-    .child(Switch::new("admin-mode"))
-```
-
-## Submit Handling
-
-### Basic Submit Pattern
-
-```rust
-struct FormView {
-    name_input: Entity<InputState>,
-    email_input: Entity<InputState>,
-}
-
-impl FormView {
-    fn submit(&mut self, cx: &mut Context<Self>) {
-        let name = self.name_input.read(cx).value();
-        let email = self.email_input.read(cx).value();
-
-        // Validate inputs
-        if name.is_empty() || email.is_empty() {
-            // Show validation error
-            return;
-        }
-
-        // Submit form data
-        self.handle_submit(name, email, cx);
-    }
-}
-
-// Form with submit button
-v_form()
-    .child(field().label("Name").child(Input::new(&self.name_input)))
-    .child(field().label("Email").child(Input::new(&self.email_input)))
-    .child(
-        field()
-            .label_indent(false)
+field("account-email")
+    .aria_label("Email")
+    .aria_description("Enter a valid email address.")
+    .required(true)
+    .invalid(true)
+    .content(move |state| {
+        FieldBody::new()
+            .child(FieldLabel::new("Email").required(state.required()))
             .child(
-                Button::new("submit")
-                    .primary()
-                    .child("Submit")
-                    .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
+                FieldContent::new()
+                    .child(Input::new(&email).aria_label("Email").invalid(state.invalid()))
+                    .child(FieldError::new(
+                        "account-email-error",
+                        "Enter a valid email address.",
+                    )),
             )
-    )
+    })
 ```
 
-### Form with Action Buttons
+`FieldError` exposes `Role::Alert`. Its `errors(...)` builder removes duplicate messages while preserving their order. `FieldState` carries the effective Form and Field state into the content builder; controls consume the states they support.
+
+## Field groups
+
+```rust
+FieldSet::new("notification-preferences")
+    .aria_label("Notification preferences")
+    .content(|state| {
+        FieldBody::new()
+            .child(FieldLegend::new("Notification preferences"))
+            .child(
+                FieldGroup::new()
+                    .selection()
+                    .child(Checkbox::new("email-updates").label("Email updates").disabled(state.disabled()))
+                    .child(Checkbox::new("product-updates").label("Product updates").disabled(state.disabled())),
+            )
+    })
+```
+
+The compositional family also includes `FieldTitle` and `FieldSeparator`. `FieldGroup::selection()` selects the tighter spacing used by checkbox and radio collections. `FieldLegendVariant::Label` selects the smaller legend typography.
+
+## Form layout
 
 ```rust
 v_form()
-    .child(field().label("Title").child(Input::new(&title)))
-    .child(field().label("Content").child(Input::new(&content)))
+    .columns(2)
     .child(
-        field()
-            .label_indent(false)
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(Button::new("save").primary().child("Save"))
-                    .child(Button::new("cancel").child("Cancel"))
-                    .child(Button::new("preview").outline().child("Preview"))
-            )
-    )
-```
-
-## Field Groups
-
-### Related Fields
-
-```rust
-v_form()
-    .child(
-        field()
-            .label("Name")
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(div().flex_1().child(Input::new(&first_name)))
-                    .child(div().flex_1().child(Input::new(&last_name)))
-            )
+        field("first-name")
+            .aria_label("First name")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("First name"))
+                .child(FieldContent::new().child(Input::new(&first_name)))),
     )
     .child(
-        field()
-            .label("Address")
-            .items_start() // Align to start for multi-line content
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(Input::new(&street))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(div().flex_1().child(Input::new(&city)))
-                            .child(div().w(px(100.)).child(Input::new(&zip)))
-                    )
-            )
-    )
-```
-
-### Custom Field Components
-
-```rust
-field()
-    .label("Theme Color")
-    .child(ColorPicker::new(&color_state).small())
-
-field()
-    .label("Birth Date")
-    .description("We'll send you a birthday gift!")
-    .child(DatePicker::new(&date_state))
-
-field()
-    .label("Notifications")
-    .child(
-        v_flex()
-            .gap_2()
-            .child(Switch::new("email").label("Email notifications"))
-            .child(Switch::new("push").label("Push notifications"))
-            .child(Switch::new("sms").label("SMS notifications"))
-    )
-```
-
-### Conditional Fields
-
-```rust
-v_form()
-    .child(
-        field()
-            .label("Account Type")
-            .child(Select::new(&account_type))
+        field("last-name")
+            .aria_label("Last name")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("Last name"))
+                .child(FieldContent::new().child(Input::new(&last_name)))),
     )
     .child(
-        field()
-            .label("Company Name")
-            .visible(is_business_account) // Show only for business accounts
-            .child(Input::new(&company_name))
-    )
-    .child(
-        field()
-            .label("Tax ID")
-            .visible(is_business_account)
-            .required(is_business_account)
-            .child(Input::new(&tax_id))
-    )
-```
-
-## Grid Layout and Positioning
-
-### Column Spanning
-
-```rust
-v_form()
-    .columns(3) // Three-column grid
-    .child(field().label("First").child(input1))
-    .child(field().label("Second").child(input2))
-    .child(field().label("Third").child(input3))
-    .child(
-        field()
-            .label("Full Width")
-            .col_span(3) // Spans all three columns
-            .child(Input::new(&full_width))
-    )
-```
-
-### Column Positioning
-
-```rust
-v_form()
-    .columns(4)
-    .child(field().label("A").child(input_a))
-    .child(field().label("B").child(input_b))
-    .child(
-        field()
-            .label("Positioned")
-            .col_start(1) // Start at column 1
-            .col_span(2)  // Span 2 columns
-            .child(input_positioned)
-    )
-```
-
-### Responsive Layout
-
-```rust
-v_form()
-    .columns(if is_mobile { 1 } else { 2 })
-    .child(field().label("Name").child(name_input))
-    .child(field().label("Email").child(email_input))
-    .child(
-        field()
-            .label("Bio")
-            .when(!is_mobile, |field| field.col_span(2))
-            .child(bio_input)
-    )
-```
-
-## Examples
-
-### User Registration Form
-
-```rust
-struct RegistrationForm {
-    first_name: Entity<InputState>,
-    last_name: Entity<InputState>,
-    email: Entity<InputState>,
-    password: Entity<InputState>,
-    confirm_password: Entity<InputState>,
-    terms_accepted: bool,
-}
-
-impl Render for RegistrationForm {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_form()
-            .large()
-            .child(
-                field()
-                    .label("Personal Information")
-                    .label_indent(false)
-                    .child(
-                        h_flex()
-                            .gap_3()
-                            .child(
-                                div().flex_1().child(
-                                    Input::new(&self.first_name)
-                                        .placeholder("First name")
-                                )
-                            )
-                            .child(
-                                div().flex_1().child(
-                                    Input::new(&self.last_name)
-                                        .placeholder("Last name")
-                                )
-                            )
-                    )
-            )
-            .child(
-                field()
-                    .label("Email")
-                    .required(true)
-                    .child(Input::new(&self.email))
-            )
-            .child(
-                field()
-                    .label("Password")
-                    .required(true)
-                    .description("Must be at least 8 characters")
-                    .child(Input::new(&self.password))
-            )
-            .child(
-                field()
-                    .label("Confirm Password")
-                    .required(true)
-                    .child(Input::new(&self.confirm_password))
-            )
-            .child(
-                field()
-                    .label_indent(false)
-                    .child(
-                        Checkbox::new("terms")
-                            .label("I agree to the Terms of Service")
-                            .checked(self.terms_accepted)
-                            .on_click(cx.listener(|this, checked, _, cx| {
-                                this.terms_accepted = *checked;
-                                cx.notify();
-                            }))
-                    )
-            )
-            .child(
-                field()
-                    .label_indent(false)
-                    .child(
-                        Button::new("register")
-                            .primary()
-                            .large()
-                            .w_full()
-                            .child("Create Account")
-                    )
-            )
-    }
-}
-```
-
-### Settings Form with Sections
-
-```rust
-v_form()
-    .column(2)
-    .child(
-        field()
-            .label("Profile")
-            .label_indent(false)
+        field("biography")
             .col_span(2)
-            .child(Separator::horizontal())
-    )
-    .child(
-        field()
-            .label("Display Name")
-            .child(Input::new(&display_name))
-    )
-    .child(
-        field()
-            .label("Email")
-            .child(Input::new(&email))
-    )
-    .child(
-        field()
-            .label("Bio")
-            .col_span(2)
-            .items_start()
-            .child(Input::new(&bio))
-    )
-    .child(
-        field()
-            .label("Preferences")
-            .label_indent(false)
-            .col_span(2)
-            .child(Separator::horizontal())
-    )
-    .child(
-        field()
-            .label("Theme")
-            .child(Select::new(&theme_state))
-    )
-    .child(
-        field()
-            .label("Language")
-            .child(Select::new(&language_state))
-    )
-    .child(
-        field()
-            .label_indent(false)
-            .child(Switch::new("notifications").label("Enable notifications"))
-    )
-    .child(
-        field()
-            .label_indent(false)
-            .child(Switch::new("marketing").label("Marketing emails"))
+            .aria_label("Biography")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("Biography"))
+                .child(FieldContent::new().child(Input::new(&biography)))),
     )
 ```
 
-### Contact Form
+Use `h_form()` for horizontal Fields. Give `FieldLabel` an explicit width when several horizontal fields must align:
 
 ```rust
-v_form()
-    .child(
-        field()
-            .label("Contact Information")
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(
-                        Select::new(&prefix_state)
-                            .w(px(80.))
-                    )
-                    .child(
-                        div().flex_1().child(
-                            Input::new(&name_input)
-                                .placeholder("Your name")
-                        )
-                    )
-            )
-    )
-    .child(
-        field()
-            .label("Email")
-            .required(true)
-            .child(Input::new(&email_input))
-    )
-    .child(
-        field()
-            .label("Subject")
-            .child(Select::new(&subject_state))
-    )
-    .child(
-        field()
-            .label("Message")
-            .required(true)
-            .items_start()
-            .description("Please describe your inquiry in detail")
-            .child(Input::new(&message_input))
-    )
-    .child(
-        field()
-            .label_indent(false)
-            .child(
-                h_flex()
-                    .gap_2()
-                    .justify_between()
-                    .child(
-                        Checkbox::new("copy")
-                            .label("Send me a copy")
-                    )
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(Button::new("cancel").child("Cancel"))
-                            .child(Button::new("send").primary().child("Send Message"))
-                    )
-            )
-    )
+h_form().child(
+    field("username")
+        .aria_label("Username")
+        .content(move |_| FieldBody::new()
+            .child(FieldLabel::new("Username").w(px(120.)).flex_shrink_0())
+            .child(FieldContent::new().child(Input::new(&username)))),
+)
 ```
+
+`Form` supports `Sizable`, `Styled`, `Disableable`, `columns`, and Field grid positioning. `Form::disabled(true)` is included in every child Field's effective state. A zero column count is normalized to one. `Field::visible(false)` removes the Field from layout and the accessibility tree.
+
+## Style Presets
+
+The family resolves spacing from semantic Style Preset density. Vega is the default baseline; Nova is compact and Maia is comfortable. The pinned shadcn Field sources define no transition, so these components do not add state animation.

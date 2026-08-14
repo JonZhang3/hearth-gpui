@@ -218,26 +218,13 @@ impl Render for MenuStory {
                                         menu.link("Crates", "https://crates.io")
                                             .link("Rust Docs", "https://docs.rs")
                                             .separator()
-                                            .submenu(
-                                                "Nested",
-                                                window,
-                                                cx,
-                                                |menu, window, cx| {
-                                                    menu.link("Docs.rs", "https://docs.rs")
-                                                        .separator()
-                                                        .submenu(
-                                                            "Deeper",
-                                                            window,
-                                                            cx,
-                                                            |menu, _, _| {
-                                                                menu.link(
-                                                                    "GPUI",
-                                                                    "https://gpui.rs",
-                                                                )
-                                                            },
-                                                        )
-                                                },
-                                            )
+                                            .submenu("Nested", window, cx, |menu, window, cx| {
+                                                menu.link("Docs.rs", "https://docs.rs")
+                                                    .separator()
+                                                    .submenu("Deeper", window, cx, |menu, _, _| {
+                                                        menu.link("GPUI", "https://gpui.rs")
+                                                    })
+                                            })
                                     })
                             }),
                     )
@@ -254,7 +241,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)
@@ -271,6 +258,16 @@ impl Render for MenuStory {
                                         .menu("Cut", Box::new(Cut))
                                         .menu("Copy", Box::new(Copy))
                                         .menu("Paste", Box::new(Paste))
+                                        .menu_with_icon(
+                                            "Search",
+                                            IconName::Search,
+                                            Box::new(SearchAll),
+                                        )
+                                        .menu_with_disabled(
+                                            "Unavailable Action",
+                                            Box::new(Info(0)),
+                                            true,
+                                        )
                                         .separator()
                                         .label("This is a label")
                                         .menu_with_check(
@@ -354,7 +351,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)
@@ -379,7 +376,7 @@ impl Render for MenuStory {
                             .items_center()
                             .justify_center()
                             .min_h_20()
-                            .rounded(cx.theme().radius_lg)
+                            .rounded(cx.theme().style.radii.lg)
                             .border_2()
                             .border_dashed()
                             .border_color(cx.theme().border)

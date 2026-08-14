@@ -37,7 +37,11 @@ impl TitleBar {
         }
     }
 
-    /// Returns the default title bar options for compatible with the [`crate::TitleBar`].
+    /// Returns the native title bar appearance used by [`crate::TitleBar`].
+    ///
+    /// The containing [`gpui::WindowOptions`] must also set
+    /// `app_owns_titlebar_drag` to `true` because this component implements
+    /// window dragging itself.
     pub fn title_bar_options() -> TitlebarOptions {
         TitlebarOptions {
             title: None,

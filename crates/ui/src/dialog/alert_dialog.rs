@@ -1,314 +1,551 @@
+use std::rc::Rc;
+
 use gpui::{
-    AnyElement, App, ClickEvent, InteractiveElement as _, IntoElement, MouseButton, ParentElement,
-    Pixels, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
+    AnyElement, App, ClickEvent, ElementId, FocusHandle, IntoElement, ParentElement as _,
+    RenderOnce, SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
-    StyledExt as _, WindowExt as _,
-    dialog::{
-        Dialog, DialogButtonProps, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
-    },
+    ActiveTheme as _, Disableable as _, Icon, Root, Sizable as _, Size, StyledExt as _,
+    button::{Button, ButtonVariant, ButtonVariants as _},
+    dialog::{ConfirmDialog, Dialog, DialogCallbacks},
     h_flex, v_flex,
 };
 
-/// AlertDialog is a modal dialog that interrupts the user with important content
-/// and expects a response.
-///
-/// It is built on top of the Dialog component with opinionated defaults:
-/// - Footer buttons are center-aligned (vs right-aligned in Dialog)
-/// - Icon is optional (disabled by default, enable with `.show_icon(true)`)
-/// - Simplified API for common alert scenarios
-/// - Uses declarative DialogHeader, DialogTitle, DialogDescription, and DialogFooter components
-/// - Supports both imperative and declarative API styles
-///
-/// # Examples
-///
-/// ## Imperative API (using WindowExt)
-///
-/// ```ignore
-/// use gpui_component::{AlertDialog, alert::AlertVariant};
-///
-/// // Using WindowExt trait
-/// window.open_alert_dialog(cx, |alert, _, _| {
-///     alert
-///         .title("Unsaved Changes")
-///         .description("You have unsaved changes. Are you sure you want to leave?")
-///         .show_cancel(true)
-/// });
-/// ```
-///
-/// ## Declarative API (using trigger and content)
-///
-/// ```ignore
-/// use gpui_component::{AlertDialog, DialogHeader, DialogTitle, DialogDescription, DialogFooter};
-///
-/// AlertDialog::new(cx)
-///     .trigger(Button::new("delete").label("Delete"))
-///     .content(|content, _, cx| {
-///         content
-///             .child(
-///                 DialogHeader::new()
-///                     .items_center()
-///                     .child(DialogTitle::new().child("Delete File"))
-///                     .child(DialogDescription::new().child("Are you sure?"))
-///             )
-///             .child(
-///                 DialogFooter::new()
-///                     .justify_center()
-///                     .child(Button::new("cancel").label("Cancel"))
-///                     .child(Button::new("confirm").label("Delete"))
-///             )
-///     })
-/// ```
-#[derive(IntoElement)]
-pub struct AlertDialog {
-    base: Dialog,
-    trigger: Option<AnyElement>,
-    icon: Option<AnyElement>,
+/// Semantic content widths supported by an alert dialog.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum AlertDialogSize {
+    #[default]
+    Default,
+    Small,
+}
+
+enum AlertDialogMedia {
+    Icon(Box<Icon>),
+    Element(AnyElement),
+}
+
+/// The affirmative action rendered in an alert dialog footer.
+pub struct AlertDialogAction {
+    id: ElementId,
+    label: SharedString,
+    variant: ButtonVariant,
+    disabled: bool,
+}
+
+impl AlertDialogAction {
+    /// Creates an alert action with a stable element identity and visible label.
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            variant: ButtonVariant::Default,
+            disabled: false,
+        }
+    }
+
+    /// Sets the Button visual variant used for the action.
+    pub fn variant(mut self, variant: ButtonVariant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    /// Sets whether the action is unavailable.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    fn render(self, full_width: bool, focus_handle: Option<FocusHandle>) -> AnyElement {
+        let button = Button::new(self.id)
+            .label(self.label)
+            .with_variant(self.variant)
+            .disabled(self.disabled)
+            .when_some(focus_handle, |this, focus_handle| {
+                this.focus_handle(focus_handle)
+            })
+            .when(full_width, |this| this.w_full())
+            .on_click(move |_, window, cx| window.dispatch_action(Box::new(ConfirmDialog), cx))
+            .into_any_element();
+
+        button
+    }
+}
+
+/// The cancellation action rendered in an alert dialog footer.
+pub struct AlertDialogCancel {
+    id: ElementId,
+    label: SharedString,
+    variant: ButtonVariant,
+    disabled: bool,
+}
+
+impl AlertDialogCancel {
+    /// Creates a cancel action with a stable element identity and visible label.
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            variant: ButtonVariant::Outline,
+            disabled: false,
+        }
+    }
+
+    /// Sets the Button visual variant used for cancellation.
+    pub fn variant(mut self, variant: ButtonVariant) -> Self {
+        self.variant = variant;
+        self
+    }
+
+    /// Sets whether cancellation is unavailable.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    fn render(self, full_width: bool, focus_handle: Option<FocusHandle>) -> AnyElement {
+        let button = Button::new(self.id)
+            .label(self.label)
+            .with_variant(self.variant)
+            .disabled(self.disabled)
+            .when_some(focus_handle, |this, focus_handle| {
+                this.focus_handle(focus_handle)
+            })
+            .when(full_width, |this| this.w_full())
+            .on_click(move |_, window, cx| {
+                window.dispatch_action(Box::new(super::CancelDialog), cx)
+            })
+            .into_any_element();
+
+        button
+    }
+}
+
+/// Semantic slots rendered inside an [`AlertDialog`].
+pub struct AlertDialogContent {
+    size: AlertDialogSize,
+    media: Option<AlertDialogMedia>,
     title: Option<AnyElement>,
+    title_text: Option<SharedString>,
     description: Option<AnyElement>,
-    button_props: DialogButtonProps,
+    description_text: Option<SharedString>,
+    aria_label: Option<SharedString>,
+    aria_description: Option<SharedString>,
+    action: Option<AlertDialogAction>,
+    cancel: Option<AlertDialogCancel>,
     children: Vec<AnyElement>,
 }
 
-impl AlertDialog {
-    /// Create a new AlertDialog.
-    ///
-    /// By default, the dialog is not overlay closable with a OK button.
-    ///
-    /// You can change this with `.overlay_closable(true)`.
-    pub fn new(cx: &mut App) -> Self {
+impl AlertDialogContent {
+    /// Creates empty semantic alert dialog content.
+    pub fn new() -> Self {
         Self {
-            base: Dialog::new(cx).overlay_closable(false).close_button(false),
-            trigger: None,
-            icon: None,
+            size: AlertDialogSize::Default,
+            media: None,
             title: None,
+            title_text: None,
             description: None,
-            button_props: DialogButtonProps::default(),
+            description_text: None,
+            aria_label: None,
+            aria_description: None,
+            action: None,
+            cancel: None,
             children: Vec::new(),
         }
     }
 
-    /// Set to use confirm dialog, with OK and Cancel buttons.
-    ///
-    /// The default of [`AlertDialog`] has OK button.
-    pub fn confirm(mut self) -> Self {
-        self.button_props.show_cancel = true;
+    /// Sets the semantic content width and layout.
+    pub fn size(mut self, size: AlertDialogSize) -> Self {
+        self.size = size;
         self
     }
 
-    /// Sets the trigger element for the alert dialog.
-    ///
-    /// When a trigger is set, the dialog will render as a trigger element that opens the dialog when clicked.
-    ///
-    /// **Note**: When using `.trigger()`, you should also use `.content()` to define the dialog content
-    /// declaratively instead of using `.title()`, `.description()`, etc.
-    ///
-    /// The `title`, `description`, `icon`, and `button_props` will be ignored when used together with `.trigger()`.
-    pub fn trigger(mut self, trigger: impl IntoElement) -> Self {
-        self.trigger = Some(trigger.into_any_element());
+    /// Adds an icon to the header using the active modal metrics.
+    pub fn media(mut self, media: impl Into<Icon>) -> Self {
+        self.media = Some(AlertDialogMedia::Icon(Box::new(media.into())));
         self
     }
 
-    /// Sets the content builder for declarative API.
+    /// Adds custom visual media. The caller owns its internal geometry.
+    pub fn media_element(mut self, media: impl IntoElement) -> Self {
+        self.media = Some(AlertDialogMedia::Element(media.into_any_element()));
+        self
+    }
+
+    /// Sets a text title and uses it as the default accessible name.
+    pub fn title(mut self, title: impl Into<SharedString>) -> Self {
+        let title = title.into();
+        self.title = Some(title.clone().into_any_element());
+        self.title_text = Some(title);
+        self
+    }
+
+    /// Sets a custom title element. Pair this with [`Self::aria_label`].
+    pub fn title_element(mut self, title: impl IntoElement) -> Self {
+        self.title = Some(title.into_any_element());
+        self.title_text = None;
+        self
+    }
+
+    /// Sets text description and exposes it to assistive technology.
+    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
+        let description = description.into();
+        self.description = Some(description.clone().into_any_element());
+        self.description_text = Some(description);
+        self
+    }
+
+    /// Sets a custom description element. Pair this with [`Self::aria_description`].
+    pub fn description_element(mut self, description: impl IntoElement) -> Self {
+        self.description = Some(description.into_any_element());
+        self.description_text = None;
+        self
+    }
+
+    /// Overrides the accessible name derived from a text title.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Overrides the accessible description derived from text content.
+    pub fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
+        self.aria_description = Some(description.into());
+        self
+    }
+
+    /// Sets the affirmative action.
+    pub fn action(mut self, action: AlertDialogAction) -> Self {
+        self.action = Some(action);
+        self
+    }
+
+    /// Sets the cancellation action.
+    pub fn cancel(mut self, cancel: AlertDialogCancel) -> Self {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    fn into_dialog(
+        self,
+        mut dialog: Dialog,
+        callbacks: DialogCallbacks,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Dialog {
+        let metrics = cx.theme().style.modals;
+        let compact =
+            self.size == AlertDialogSize::Small || window.viewport_size().width < gpui::px(640.);
+        let width = match self.size {
+            AlertDialogSize::Default => metrics.default_width,
+            AlertDialogSize::Small => metrics.small_width,
+        };
+        let full_width_actions = self.size == AlertDialogSize::Small;
+        // Disabled buttons do not participate in GPUI focus tracking, so only
+        // create candidates that can safely receive initial modal focus.
+        let cancel_focus = self
+            .cancel
+            .as_ref()
+            .filter(|cancel| !cancel.disabled)
+            .map(|cancel| {
+                window
+                    .use_keyed_state(cancel.id.clone(), cx, |_, cx| cx.focus_handle())
+                    .read(cx)
+                    .clone()
+            });
+        let action_focus = self
+            .action
+            .as_ref()
+            .filter(|action| !action.disabled)
+            .map(|action| {
+                window
+                    .use_keyed_state(action.id.clone(), cx, |_, cx| cx.focus_handle())
+                    .read(cx)
+                    .clone()
+            });
+        let initial_focus = cancel_focus.clone().or_else(|| action_focus.clone());
+
+        let title = self.title;
+        let description = self.description;
+        let media = self.media.map(|media| match media {
+            AlertDialogMedia::Icon(icon) => icon
+                .with_size(Size::Size(metrics.media_icon_size))
+                .into_any_element(),
+            AlertDialogMedia::Element(element) => element,
+        });
+        let children = self.children;
+
+        // Give text slots a definite width so GPUI measures long content against
+        // the padded dialog column instead of its unconstrained intrinsic width.
+        let text = v_flex()
+            .w_full()
+            .min_w_0()
+            .gap(metrics.header_gap)
+            .when(compact, |this| this.items_center().text_center())
+            .when_some(title, |this, title| {
+                this.child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .whitespace_normal()
+                        .text_size(metrics.title_font_size)
+                        .font_medium()
+                        .child(title),
+                )
+            })
+            .when_some(description, |this, description| {
+                this.child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .whitespace_normal()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(description),
+                )
+            });
+
+        let header = if let Some(media) = media {
+            let media = div()
+                .flex()
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .size(metrics.media_size)
+                .bg(cx.theme().muted)
+                .rounded(if metrics.media_round {
+                    metrics.media_size / 2.
+                } else {
+                    cx.theme().style.radii.md
+                })
+                .when(compact, |this| this.mb_2())
+                .child(media);
+
+            if compact {
+                v_flex()
+                    .w_full()
+                    .min_w_0()
+                    .items_center()
+                    .gap(metrics.header_gap)
+                    .child(media)
+                    .child(text)
+                    .into_any_element()
+            } else {
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .items_start()
+                    .gap(metrics.gap)
+                    .child(media)
+                    .child(text.flex_1())
+                    .into_any_element()
+            }
+        } else {
+            text.into_any_element()
+        };
+
+        let footer = if full_width_actions {
+            div()
+                .grid()
+                .grid_cols(2)
+                .gap_2()
+                .when_some(self.cancel, |this, cancel| {
+                    this.child(cancel.render(true, cancel_focus.clone()))
+                })
+                .when_some(self.action, |this, action| {
+                    this.child(action.render(true, action_focus.clone()))
+                })
+        } else {
+            h_flex()
+                .justify_end()
+                .gap_2()
+                .when_some(self.cancel, |this, cancel| {
+                    this.child(cancel.render(false, cancel_focus.clone()))
+                })
+                .when_some(self.action, |this, action| {
+                    this.child(action.render(false, action_focus.clone()))
+                })
+        }
+        .when(metrics.footer_separated, |this| {
+            this.ml(-metrics.padding)
+                .mr(-metrics.padding)
+                .mb(-metrics.padding)
+                .p(metrics.footer_padding)
+                .border_t_1()
+                .border_color(cx.theme().border)
+        })
+        .when(metrics.footer_tinted, |this| {
+            this.bg(cx.theme().muted.opacity(0.5))
+                .rounded_b(cx.theme().style.radii.xl)
+        });
+
+        dialog = dialog
+            .alert_dialog_role()
+            .w(width)
+            .show_close_button(false)
+            .dismiss_on_overlay_click(false)
+            .callbacks(callbacks)
+            .when_some(initial_focus, |this, focus_handle| {
+                this.initial_focus(focus_handle)
+            })
+            .header(header)
+            .footer_element(footer)
+            .children(children);
+
+        if let Some(label) = self.aria_label.or(self.title_text) {
+            dialog = dialog.aria_label(label);
+        }
+        if let Some(description) = self.aria_description.or(self.description_text) {
+            dialog = dialog.aria_description(description);
+        }
+
+        dialog
+    }
+}
+
+impl Default for AlertDialogContent {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl gpui::ParentElement for AlertDialogContent {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+type ContentBuilder =
+    Rc<dyn Fn(AlertDialogContent, &mut Window, &mut App) -> AlertDialogContent + 'static>;
+type TriggerHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
+type TriggerBuilder = Box<dyn FnOnce(TriggerHandler) -> AnyElement + 'static>;
+
+/// A modal confirmation surface that requires an explicit response.
+#[derive(IntoElement)]
+pub struct AlertDialog {
+    base: Dialog,
+    trigger: Option<TriggerBuilder>,
+    content_builder: Option<ContentBuilder>,
+    callbacks: DialogCallbacks,
+}
+
+impl AlertDialog {
+    /// Creates an alert dialog with non-dismissible overlay and no close button.
+    pub fn new(cx: &mut App) -> Self {
+        Self {
+            base: Dialog::new(cx)
+                .dismiss_on_overlay_click(false)
+                .show_close_button(false)
+                .confirm_on_enter(false),
+            trigger: None,
+            content_builder: None,
+            callbacks: DialogCallbacks::default(),
+        }
+    }
+
+    /// Sets the interactive element that opens this dialog.
     ///
-    /// When using this method, you define the dialog content using declarative components like
-    /// `DialogHeader`, `DialogTitle`, `DialogDescription`, and `DialogFooter`.
-    ///
-    /// This method is typically used together with `.trigger()` for a fully declarative API.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// AlertDialog::new(cx)
-    ///     .trigger(Button::new("delete").label("Delete"))
-    ///     .content(|content, _, cx| {
-    ///         content
-    ///             .child(DialogHeader::new().child(DialogTitle::new().child("Confirm")))
-    ///             .child(DialogFooter::new().child(Button::new("ok").label("OK")))
-    ///     })
-    /// ```
+    /// The open handler is attached to the trigger itself so pointer clicks and
+    /// Enter/Space activation follow the same GPUI interaction path.
+    pub fn trigger(mut self, trigger: Button) -> Self {
+        self.trigger = Some(Box::new(move |handler| {
+            trigger
+                .append_on_click(move |event, window, cx| handler(event, window, cx))
+                .into_any_element()
+        }));
+        self
+    }
+
+    /// Defines the semantic content rendered each time the modal is displayed.
     pub fn content<F>(mut self, builder: F) -> Self
     where
-        F: Fn(crate::dialog::DialogContent, &mut Window, &mut App) -> crate::dialog::DialogContent
-            + 'static,
+        F: Fn(AlertDialogContent, &mut Window, &mut App) -> AlertDialogContent + 'static,
     {
-        self.base = self.base.content(builder);
+        self.content_builder = Some(Rc::new(builder));
         self
     }
 
-    /// Sets the footer builder for declarative API.
-    ///
-    /// This is used to define the footer content using declarative components like `DialogFooter`.
-    ///
-    /// If not set, a default footer with OK and optional Cancel button will be used.
-    pub fn footer(mut self, footer: impl IntoElement) -> Self {
-        self.base = self.base.footer(footer);
+    /// Sets whether Escape may cancel the dialog. The default is `true`.
+    pub fn dismiss_on_escape(mut self, dismiss: bool) -> Self {
+        self.base = self.base.dismiss_on_escape(dismiss);
         self
     }
 
-    #[track_caller]
-    fn debug_assert_no_trigger(&self) {
-        debug_assert!(
-            self.trigger.is_none() && self.base.content_builder.is_none(),
-            "Cannot set this property when trigger is used. Use content() to define dialog content instead."
-        );
-    }
-
-    /// Sets the icon of the alert dialog, default is None.
-    #[track_caller]
-    pub fn icon(mut self, icon: impl IntoElement) -> Self {
-        self.debug_assert_no_trigger();
-        self.icon = Some(icon.into_any_element());
-        self
-    }
-
-    /// Sets the title of the alert dialog.
-    #[track_caller]
-    pub fn title(mut self, title: impl IntoElement) -> Self {
-        self.debug_assert_no_trigger();
-        self.title = Some(title.into_any_element());
-        self
-    }
-
-    /// Sets the description of the alert dialog.
-    #[track_caller]
-    pub fn description(mut self, description: impl IntoElement) -> Self {
-        self.debug_assert_no_trigger();
-        self.description = Some(description.into_any_element());
-        self
-    }
-
-    /// Set the button props of the alert dialog.
-    ///
-    /// Use this to configure button text, variants, and visibility.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// alert.button_props(
-    ///     DialogButtonProps::default()
-    ///         .ok_text("Delete")
-    ///         .ok_variant(ButtonVariant::Danger)
-    ///         .cancel_text("Keep")
-    ///         .show_cancel(true)
-    /// )
-    /// ```
-    #[track_caller]
-    pub fn button_props(mut self, button_props: DialogButtonProps) -> Self {
-        self.debug_assert_no_trigger();
-        self.button_props = button_props;
-        self
-    }
-
-    /// Sets the width of the alert dialog, defaults to 420px.
-    pub fn width(mut self, width: impl Into<Pixels>) -> Self {
-        self.base = self.base.width(width);
-        self
-    }
-
-    /// Show cancel button. Default is false.
-    pub fn show_cancel(mut self, show_cancel: bool) -> Self {
-        self.button_props = self.button_props.show_cancel(show_cancel);
-        self
-    }
-
-    /// Set the overlay closable of the alert dialog, defaults to `false`.
-    ///
-    /// When the overlay is clicked, the dialog will be closed.
-    pub fn overlay_closable(mut self, overlay_closable: bool) -> Self {
-        self.base = self.base.overlay_closable(overlay_closable);
-        self
-    }
-
-    /// Set the close button of the alert dialog, defaults to `false`.
-    pub fn close_button(mut self, close_button: bool) -> Self {
-        self.base = self.base.close_button(close_button);
-        self
-    }
-
-    /// Set whether to support keyboard esc to close the dialog, defaults to `true`.
-    pub fn keyboard(mut self, keyboard: bool) -> Self {
-        self.base = self.base.keyboard(keyboard);
-        self
-    }
-
-    /// Sets the callback for when the alert dialog is closed.
-    ///
-    /// Called after [`Self::on_action`] or [`Self::on_cancel`] callback.
-    pub fn on_close(
+    /// Runs the affirmative action and closes when it returns `true`.
+    pub fn on_action(
         mut self,
-        on_close: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
     ) -> Self {
-        self.base = self.base.on_close(on_close);
+        self.callbacks = self.callbacks.on_ok(handler);
         self
     }
 
-    /// Sets the callback for when the OK/action button is clicked.
-    ///
-    /// The callback should return `true` to close the dialog, if return `false` the dialog will not be closed.
-    pub fn on_ok(
-        mut self,
-        on_ok: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
-    ) -> Self {
-        self.button_props = self.button_props.on_ok(on_ok);
-        self
-    }
-
-    /// Sets the callback for when the alert dialog has been canceled.
-    ///
-    /// The callback should return `true` to close the dialog, if return `false` the dialog will not be closed.
+    /// Runs cancellation and closes when it returns `true`.
     pub fn on_cancel(
         mut self,
-        on_cancel: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) -> bool + 'static,
     ) -> Self {
-        self.button_props = self.button_props.on_cancel(on_cancel);
+        self.callbacks = self.callbacks.on_cancel(handler);
         self
     }
 
-    /// Convert AlertDialog into a configured Dialog.
-    pub(crate) fn into_dialog(self, window: &mut Window, cx: &mut App) -> Dialog {
-        let button_props = self.button_props.clone();
-        let has_title = self.icon.is_some() || self.title.is_some();
-        let has_header = has_title || self.description.is_some();
-        let has_footer = self.base.footer.is_some();
+    /// Runs once after the dialog has accepted a close operation.
+    pub fn on_close(
+        mut self,
+        handler: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.callbacks.on_close = Rc::new(handler);
+        self
+    }
 
-        self.base
-            .button_props(button_props.clone())
-            .alert_dialog_role()
-            .when(has_header, |this| {
-                this.header(
-                    DialogHeader::new().child(
-                        h_flex()
-                            .gap_2()
-                            .items_start()
-                            .when_some(self.icon, |row, icon| row.child(icon))
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap_1()
-                                    .when_some(self.title, |this, title| {
-                                        this.child(DialogTitle::new().child(title))
-                                    })
-                                    .when_some(self.description, |this, desc| {
-                                        this.child(DialogDescription::new().child(desc))
-                                    }),
-                            ),
-                    ),
-                )
-            })
-            .children(self.children)
-            .when(!has_footer, |this| {
-                // Default footer for AlertDialog if user doesn't provide one, with OK and optional Cancel button
-                this.footer(
-                    DialogFooter::new()
-                        .when(button_props.show_cancel, |this| {
-                            this.child(button_props.render_cancel(window, cx))
-                        })
-                        .child(button_props.render_ok(window, cx)),
-                )
-            })
+    /// Converts the semantic alert content into the shared modal renderer.
+    pub(crate) fn into_dialog(self, window: &mut Window, cx: &mut App) -> Dialog {
+        let content = self
+            .content_builder
+            .map(|builder| builder(AlertDialogContent::new(), window, cx))
+            .unwrap_or_default();
+
+        content.into_dialog(self.base, self.callbacks, window, cx)
+    }
+
+    fn render_trigger(self, trigger: TriggerBuilder) -> AnyElement {
+        let style = self.base.style.clone();
+        let props = self.base.props.clone();
+        let content_builder = self.content_builder.clone();
+        let callbacks = self.callbacks.clone();
+
+        let open: TriggerHandler = Rc::new(move |_, window, cx| {
+            let style = style.clone();
+            let props = props.clone();
+            let content_builder = content_builder.clone();
+            let callbacks = callbacks.clone();
+            Root::update(window, cx, move |root, window, cx| {
+                let style = style.clone();
+                let props = props.clone();
+                let content_builder = content_builder.clone();
+                let callbacks = callbacks.clone();
+                root.open_dialog_with_presentation(
+                    super::DialogPresentation::Alert,
+                    move |dialog, window, cx| {
+                        let content = content_builder
+                            .as_ref()
+                            .map(|builder| builder(AlertDialogContent::new(), window, cx))
+                            .unwrap_or_default();
+                        content.into_dialog(
+                            dialog.refine_style(&style).with_props(props.clone()),
+                            callbacks.clone(),
+                            window,
+                            cx,
+                        )
+                    },
+                    window,
+                    cx,
+                );
+            });
+            cx.stop_propagation();
+        });
+
+        trigger(open)
     }
 }
 
@@ -318,51 +555,218 @@ impl Styled for AlertDialog {
     }
 }
 
-impl ParentElement for AlertDialog {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements);
-    }
-}
-
-impl AlertDialog {
-    fn render_trigger(self, trigger: AnyElement, _: &mut Window, _: &mut App) -> AnyElement {
-        let content_builder = self.base.content_builder.clone();
-        let style = self.base.style.clone();
-        let props = self.base.props.clone();
-        let button_props = self.button_props.clone();
-
-        div()
-            .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                let content_builder = content_builder.clone();
-                let style = style.clone();
-                let props = props.clone();
-                let button_props = button_props.clone();
-                window.open_dialog(cx, move |dialog, _, _| {
-                    dialog
-                        .refine_style(&style)
-                        .button_props(button_props.clone())
-                        .with_props(props.clone())
-                        .when_some(content_builder.clone(), |this, content_builder| {
-                            this.content(move |content, window, cx| {
-                                content_builder(content, window, cx)
-                            })
-                        })
-                });
-                cx.stop_propagation();
-            })
-            .child(trigger)
-            .into_any_element()
-    }
-}
-
 impl RenderOnce for AlertDialog {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         if let Some(trigger) = self.trigger.take() {
-            // If a trigger is provided, render the trigger element that opens the dialog
-            self.render_trigger(trigger, window, cx)
+            self.render_trigger(trigger)
         } else {
-            // Otherwise, render the dialog content directly
             self.into_dialog(window, cx).into_any_element()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ElementExt as _, WindowExt as _};
+    use gpui::{
+        AppContext as _, Bounds, Context, InteractiveElement as _, KeyDownEvent, KeyUpEvent,
+        Keystroke, Pixels, Render, TestAppContext, VisualTestContext, px,
+    };
+    use std::{
+        cell::RefCell,
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
+
+    struct TriggerFixture {
+        clicks: Arc<AtomicUsize>,
+    }
+
+    struct BackgroundFixture {
+        focus_handle: FocusHandle,
+    }
+
+    struct DescriptionLayoutFixture {
+        bounds: Arc<Mutex<Option<Bounds<Pixels>>>>,
+    }
+
+    impl Render for TriggerFixture {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let clicks = self.clicks.clone();
+            let dialog_layer = crate::Root::render_dialog_layer(window, cx);
+            div()
+                .child(
+                    AlertDialog::new(cx)
+                        .trigger(
+                            Button::new("keyboard-alert-trigger")
+                                .label("Open alert")
+                                .on_click(move |_, _, _| {
+                                    clicks.fetch_add(1, Ordering::SeqCst);
+                                }),
+                        )
+                        .content(|content, _, _| {
+                            content
+                                .title("Confirm action")
+                                .cancel(AlertDialogCancel::new("keyboard-cancel", "Cancel"))
+                                .action(AlertDialogAction::new("keyboard-action", "Continue"))
+                        }),
+                )
+                .children(dialog_layer)
+        }
+    }
+
+    impl Render for BackgroundFixture {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let dialog_layer = crate::Root::render_dialog_layer(window, cx);
+            div()
+                .track_focus(&self.focus_handle)
+                .child("Background")
+                .children(dialog_layer)
+        }
+    }
+
+    impl Render for DescriptionLayoutFixture {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let bounds = self.bounds.clone();
+
+            AlertDialog::new(cx).content(move |content, _, _| {
+                let bounds = bounds.clone();
+                content
+                    .size(AlertDialogSize::Small)
+                    .title("Delete chat?")
+                    .description_element(
+                        div()
+                            .on_prepaint(move |description_bounds, _, _| {
+                                *bounds.lock().unwrap() = Some(description_bounds);
+                            })
+                            .child("This will permanently delete this chat conversation. Review Settings before continuing."),
+                    )
+                    .aria_description("This will permanently delete this chat conversation.")
+                    .cancel(AlertDialogCancel::new("layout-cancel", "Cancel"))
+                    .action(AlertDialogAction::new("layout-action", "Delete"))
+            })
+        }
+    }
+
+    #[test]
+    fn text_slots_supply_accessibility_fallbacks() {
+        let content = AlertDialogContent::new()
+            .title("Delete chat?")
+            .description("This action cannot be undone.")
+            .size(AlertDialogSize::Small);
+
+        assert_eq!(content.title_text.as_deref(), Some("Delete chat?"));
+        assert_eq!(
+            content.description_text.as_deref(),
+            Some("This action cannot be undone.")
+        );
+        assert_eq!(content.size, AlertDialogSize::Small);
+    }
+
+    #[test]
+    fn alert_actions_use_safe_default_variants() {
+        let action = AlertDialogAction::new("action", "Continue");
+        let cancel = AlertDialogCancel::new("cancel", "Cancel");
+
+        assert_eq!(action.variant, ButtonVariant::Default);
+        assert_eq!(cancel.variant, ButtonVariant::Outline);
+        assert!(!action.disabled);
+        assert!(!cancel.disabled);
+    }
+
+    #[gpui::test]
+    fn trigger_opens_alert_dialog_from_keyboard(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let clicks = Arc::new(AtomicUsize::new(0));
+        let captured = clicks.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let fixture = cx.new(|_| TriggerFixture { clicks });
+            crate::Root::new(fixture, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            window.focus_next(cx);
+            let _ = window.draw(cx);
+        });
+        let enter = Keystroke::parse("enter").expect("enter must be a valid keystroke");
+        cx.simulate_event(KeyDownEvent {
+            keystroke: enter.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        cx.simulate_event(KeyUpEvent { keystroke: enter });
+        cx.run_until_parked();
+
+        assert!(cx.update(|window, cx| crate::WindowExt::has_active_dialog(window, cx)));
+        assert_eq!(captured.load(Ordering::SeqCst), 1);
+    }
+
+    #[gpui::test]
+    fn disabled_cancel_is_skipped_by_initial_focus(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let background_focus = Rc::new(RefCell::new(None));
+        let captured = background_focus.clone();
+        let (root, cx) = cx.add_window_view(move |window, cx| {
+            let focus_handle = cx.focus_handle();
+            *background_focus.borrow_mut() = Some(focus_handle.clone());
+            let fixture = cx.new(|_| BackgroundFixture { focus_handle });
+            crate::Root::new(fixture, window, cx)
+        });
+        let fixture = root.read_with(cx, |root, _| {
+            root.view()
+                .clone()
+                .downcast::<BackgroundFixture>()
+                .expect("background fixture should be mounted")
+        });
+
+        cx.update(|window, cx| {
+            window.open_alert_dialog(cx, |dialog, _, _| {
+                dialog.content(|content, _, _| {
+                    content
+                        .title("Confirm action")
+                        .cancel(AlertDialogCancel::new("disabled-cancel", "Cancel").disabled(true))
+                        .action(AlertDialogAction::new("enabled-action", "Continue"))
+                })
+            });
+            fixture.update(cx, |_, cx| cx.notify());
+            let _ = window.draw(cx);
+            let _ = window.draw(cx);
+            window.focus_next(cx);
+            let _ = window.draw(cx);
+        });
+
+        let background_focus = captured
+            .borrow()
+            .clone()
+            .expect("background focus handle should exist");
+        assert!(!cx.update(|window, _| background_focus.is_focused(window)));
+    }
+
+    #[gpui::test]
+    fn description_wraps_inside_small_dialog_padding(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let bounds = Arc::new(Mutex::new(None));
+        let captured = bounds.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let fixture = cx.new(|_| DescriptionLayoutFixture { bounds });
+            crate::Root::new(fixture, window, cx)
+        });
+
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let description = captured
+            .lock()
+            .unwrap()
+            .expect("description should be laid out");
+        assert!(description.size.width <= px(272.));
+        assert!(description.size.height > px(20.));
     }
 }

@@ -70,7 +70,6 @@ pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div
         .flex_none()
         .occlude()
         .popover_style(cx)
-        .shadow_md()
         .text_xs()
         .p_1()
 }

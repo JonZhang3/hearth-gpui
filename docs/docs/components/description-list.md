@@ -19,6 +19,7 @@ use gpui_component::description_list::{DescriptionList, DescriptionItem, Descrip
 
 ```rust
 DescriptionList::new()
+    .id("project-details")
     .item("Name", "GPUI Component", 1)
     .item("Version", "0.1.0", 1)
     .item("License", "Apache-2.0", 1)
@@ -95,6 +96,8 @@ DescriptionList::new()
     .small()
     .item("Title", "Small Description List", 1)
 ```
+
+Spacing, density, and corner radii are resolved from the active Style Preset. Vega remains the default baseline, while Nova is more compact and Maia is more spacious.
 
 ### Without Borders
 
@@ -241,3 +244,5 @@ DescriptionList::horizontal()
 - Keep labels concise and descriptive
 - Use consistent spacing with the size prop
 - Consider removing borders for embedded contexts
+- Add a stable `.id(...)` when the list should expose `DescriptionList`, `Term`, and `Definition` semantics to assistive technology
+- Item spans are normalized to `1..=columns`; separators always occupy a complete row

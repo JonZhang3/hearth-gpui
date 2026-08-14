@@ -1,0 +1,14 @@
+[package]
+name = "gpui-component-motion"
+description = "Renderer-independent motion primitives for GPUI Component."
+license = "Apache-2.0"
+repository = "https://github.com/longbridge/gpui-component"
+version = "0.1.0"
+publish = true
+edition.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true

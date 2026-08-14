@@ -1,4 +1,4 @@
-use std::{panic::Location, rc::Rc};
+use std::{panic::Location, rc::Rc, sync::Arc};
 
 use crate::StyledExt;
 
@@ -17,13 +17,18 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
     /// Adds a scrollbar to the element.
     #[track_caller]
     fn scrollbar<H: ScrollbarHandle + Clone>(
-        self,
+        mut self,
         scroll_handle: &H,
         axis: impl Into<ScrollbarAxis>,
     ) -> Self {
+        let axis = axis.into();
+        let owner_id = match self.interactivity().element_id.clone() {
+            Some(id) => id,
+            None => caller_id(),
+        };
         self.child(ScrollbarLayer {
-            id: caller_id(),
-            axis: axis.into(),
+            id: scrollbar_layer_id(&owner_id, axis),
+            axis,
             scroll_handle: Rc::new(scroll_handle.clone()),
         })
     }
@@ -43,22 +48,34 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
     /// Almost equivalent to [`StatefulInteractiveElement::overflow_scroll`], but adds scrollbars.
     /// Preserves the source element as the scrollable container.
     #[track_caller]
-    fn overflow_scrollbar(self) -> Scrollable<Self> {
-        Scrollable::new(self, ScrollbarAxis::Both)
+    fn overflow_scrollbar(mut self) -> Scrollable<Self> {
+        let id = match self.interactivity().element_id.clone() {
+            Some(id) => id,
+            None => caller_id(),
+        };
+        Scrollable::new(self, ScrollbarAxis::Both, id)
     }
 
     /// Almost equivalent to [`StatefulInteractiveElement::overflow_x_scroll`], but adds Horizontal scrollbar.
     /// Preserves the source element as the scrollable container.
     #[track_caller]
-    fn overflow_x_scrollbar(self) -> Scrollable<Self> {
-        Scrollable::new(self, ScrollbarAxis::Horizontal)
+    fn overflow_x_scrollbar(mut self) -> Scrollable<Self> {
+        let id = match self.interactivity().element_id.clone() {
+            Some(id) => id,
+            None => caller_id(),
+        };
+        Scrollable::new(self, ScrollbarAxis::Horizontal, id)
     }
 
     /// Almost equivalent to [`StatefulInteractiveElement::overflow_y_scroll`], but adds Vertical scrollbar.
     /// Preserves the source element as the scrollable container.
     #[track_caller]
-    fn overflow_y_scrollbar(self) -> Scrollable<Self> {
-        Scrollable::new(self, ScrollbarAxis::Vertical)
+    fn overflow_y_scrollbar(mut self) -> Scrollable<Self> {
+        let id = match self.interactivity().element_id.clone() {
+            Some(id) => id,
+            None => caller_id(),
+        };
+        Scrollable::new(self, ScrollbarAxis::Vertical, id)
     }
 }
 
@@ -74,10 +91,9 @@ impl<E> Scrollable<E>
 where
     E: InteractiveElement + Styled + ParentElement + Element,
 {
-    #[track_caller]
-    fn new(element: E, axis: impl Into<ScrollbarAxis>) -> Self {
+    fn new(element: E, axis: impl Into<ScrollbarAxis>, id: ElementId) -> Self {
         Self {
-            id: caller_id(),
+            id,
             element,
             axis: axis.into(),
         }
@@ -116,26 +132,29 @@ where
     E: InteractiveElement + Styled + ParentElement + Element + 'static,
 {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let scroll_handle = scroll_handle_for(&self.id, window, cx);
+        let state_id = scrollable_child_id(&self.id, "state");
+        let scroll_handle = scroll_handle_for(&state_id, window, cx);
 
         // Preserve the caller-requested size on the wrapper, while keeping the
         // caller's element as the actual scroll-tracked layout container.
         let root_style = root_style_from(&mut self.element);
 
-        let root_id = self.id.clone();
-        let area_id = (self.id.clone(), "area");
-        let content_id = (self.id.clone(), "content");
-        let scrollbar_id = (self.id.clone(), "scrollbar");
-
-        let content = self
+        let root_id = scrollable_child_id(&self.id, "root");
+        let area_id = scrollable_child_id(&self.id, "area");
+        let content_id = self
             .element
-            .id(content_id)
-            .flex_none()
-            .map(|this| match self.axis {
-                ScrollbarAxis::Vertical => this.h_auto().min_h_full(),
-                ScrollbarAxis::Horizontal => this.w_auto().min_w_full(),
-                ScrollbarAxis::Both => this.size_auto().min_size_full(),
-            });
+            .interactivity()
+            .element_id
+            .clone()
+            .unwrap_or_else(|| scrollable_child_id(&self.id, "content"));
+        let scrollbar_id = scrollbar_layer_id(&self.id, self.axis);
+        self.element.interactivity().element_id = Some(content_id);
+
+        let content = self.element.flex_none().map(|this| match self.axis {
+            ScrollbarAxis::Vertical => this.h_auto().min_h_full(),
+            ScrollbarAxis::Horizontal => this.w_auto().min_w_full(),
+            ScrollbarAxis::Both => this.size_auto().min_size_full(),
+        });
 
         // Keep the scroll area in the normal flow: its content size must
         // propagate to auto-sized ancestors (e.g. a Dialog that grows with
@@ -202,6 +221,26 @@ pub(super) fn caller_id() -> ElementId {
     ElementId::CodeLocation(*Location::caller())
 }
 
+/// Derives a stable structural child ID without flattening its parent identity.
+#[inline]
+pub(super) fn scrollable_child_id(
+    id: &ElementId,
+    name: impl Into<gpui::SharedString>,
+) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
+}
+
+/// Derives an axis-specific ID so separately attached scrollbar layers do not share state.
+#[inline]
+fn scrollbar_layer_id(id: &ElementId, axis: ScrollbarAxis) -> ElementId {
+    let name = match axis {
+        ScrollbarAxis::Vertical => "scrollbar-vertical",
+        ScrollbarAxis::Horizontal => "scrollbar-horizontal",
+        ScrollbarAxis::Both => "scrollbar-both",
+    };
+    scrollable_child_id(id, name)
+}
+
 #[inline]
 fn scroll_handle_for(id: &ElementId, window: &mut Window, cx: &mut App) -> ScrollHandle {
     window
@@ -261,6 +300,55 @@ mod tests {
         Context, Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
         px,
     };
+
+    #[test]
+    fn scrollable_preserves_explicit_source_id() {
+        let source_id: ElementId = ("scrollable", 7usize).into();
+        let mut scrollable = Scrollable::new(
+            div().id(source_id.clone()),
+            ScrollbarAxis::Vertical,
+            source_id.clone(),
+        );
+
+        assert_eq!(scrollable.id, source_id);
+        assert_eq!(
+            scrollable.element.interactivity().element_id.as_ref(),
+            Some(&source_id)
+        );
+    }
+
+    #[test]
+    fn structural_child_ids_do_not_flatten_parent_identity() {
+        let tuple_parent: ElementId = ("scrollable", 1usize).into();
+        let text_parent: ElementId = "scrollable-1".into();
+
+        assert_ne!(
+            scrollable_child_id(&tuple_parent, "state"),
+            scrollable_child_id(&text_parent, "state")
+        );
+    }
+
+    #[test]
+    fn fallback_ids_distinguish_call_sites() {
+        let first = div().overflow_y_scrollbar();
+        let second = div().overflow_y_scrollbar();
+
+        assert_ne!(first.id, second.id);
+    }
+
+    #[test]
+    fn scrollbar_layer_ids_distinguish_axes() {
+        let owner: ElementId = "scrollable".into();
+
+        assert_ne!(
+            scrollbar_layer_id(&owner, ScrollbarAxis::Horizontal),
+            scrollbar_layer_id(&owner, ScrollbarAxis::Vertical)
+        );
+        assert_ne!(
+            scrollbar_layer_id(&owner, ScrollbarAxis::Vertical),
+            scrollbar_layer_id(&owner, ScrollbarAxis::Both)
+        );
+    }
 
     fn draw(cx: &mut VisualTestContext) {
         cx.run_until_parked();

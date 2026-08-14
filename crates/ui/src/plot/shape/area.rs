@@ -4,11 +4,77 @@ use gpui::{Background, Bounds, Path, PathBuilder, Pixels, Point, Window, px};
 
 use crate::plot::{StrokeStyle, origin_point};
 
+fn step_after_points(points: &[Point<Pixels>]) -> Vec<Point<Pixels>> {
+    let mut result = Vec::with_capacity(points.len().saturating_mul(2));
+    if let Some(first) = points.first().copied() {
+        result.push(first);
+    }
+    for pair in points.windows(2) {
+        result.push(Point::new(pair[1].x, pair[0].y));
+        result.push(pair[1]);
+    }
+    result
+}
+
+fn reversed_step_after_points(points: &[Point<Pixels>]) -> Vec<Point<Pixels>> {
+    let mut result = step_after_points(points);
+    result.reverse();
+    result
+}
+
+fn append_curve(
+    builder: &mut PathBuilder,
+    points: &[Point<Pixels>],
+    style: StrokeStyle,
+    connect: bool,
+) {
+    let Some(first) = points.first().copied() else {
+        return;
+    };
+    if connect {
+        builder.line_to(first);
+    } else {
+        builder.move_to(first);
+    }
+
+    match style {
+        StrokeStyle::Natural => {
+            for index in 0..points.len().saturating_sub(1) {
+                let p0 = if index == 0 {
+                    points[0]
+                } else {
+                    points[index - 1]
+                };
+                let p1 = points[index];
+                let p2 = points[index + 1];
+                let p3 = if index + 2 < points.len() {
+                    points[index + 2]
+                } else {
+                    points[points.len() - 1]
+                };
+                let c1 = Point::new(p1.x + (p2.x - p0.x) / 6.0, p1.y + (p2.y - p0.y) / 6.0);
+                let c2 = Point::new(p2.x - (p3.x - p1.x) / 6.0, p2.y - (p3.y - p1.y) / 6.0);
+                builder.cubic_bezier_to(p2, c1, c2);
+            }
+        }
+        StrokeStyle::Linear => {
+            for point in &points[1..] {
+                builder.line_to(*point);
+            }
+        }
+        StrokeStyle::StepAfter => {
+            for point in &step_after_points(points)[1..] {
+                builder.line_to(*point);
+            }
+        }
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub struct Area<T> {
     data: Vec<T>,
     x: Box<dyn Fn(&T) -> Option<f32>>,
-    y0: Option<f32>,
+    y0: Box<dyn Fn(&T) -> Option<f32>>,
     y1: Box<dyn Fn(&T) -> Option<f32>>,
     fill: Background,
     stroke: Background,
@@ -20,7 +86,7 @@ impl<T> Default for Area<T> {
         Self {
             data: Vec::new(),
             x: Box::new(|_| None),
-            y0: None,
+            y0: Box::new(|_| None),
             y1: Box::new(|_| None),
             fill: Default::default(),
             stroke: Default::default(),
@@ -54,7 +120,16 @@ impl<T> Area<T> {
 
     /// Set the y0 of the Area.
     pub fn y0(mut self, y0: f32) -> Self {
-        self.y0 = Some(y0);
+        self.y0 = Box::new(move |_| Some(y0));
+        self
+    }
+
+    /// Sets a datum-dependent lower boundary for stacked areas.
+    pub fn y0_fn<F>(mut self, y0: F) -> Self
+    where
+        F: Fn(&T) -> Option<f32> + 'static,
+    {
+        self.y0 = Box::new(y0);
         self
     }
 
@@ -92,15 +167,8 @@ impl<T> Area<T> {
 
         let mut points = vec![];
 
-        let mut first_x_tick = None;
-        let mut last_x_tick = None;
-        for (index, v) in self.data.iter().enumerate() {
-            if index == 0 {
-                first_x_tick = (self.x)(v);
-            }
-            if index == self.data.len() - 1 {
-                last_x_tick = (self.x)(v);
-            }
+        let mut baseline_points = vec![];
+        for v in &self.data {
             let x_tick = (self.x)(v);
             let y_tick = (self.y1)(v);
 
@@ -108,6 +176,9 @@ impl<T> Area<T> {
                 let pos = origin_point(px(x), px(y), origin);
 
                 points.push(pos);
+                if let Some(y0) = (self.y0)(v) {
+                    baseline_points.push(origin_point(px(x), px(y0), origin));
+                }
             }
         }
 
@@ -121,56 +192,18 @@ impl<T> Area<T> {
             return (area_builder.build().ok(), line_builder.build().ok());
         }
 
-        match self.stroke_style {
-            StrokeStyle::Natural => {
-                area_builder.move_to(points[0]);
-                line_builder.move_to(points[0]);
-                let n = points.len();
-                for i in 0..n - 1 {
-                    let p0 = if i == 0 { points[0] } else { points[i - 1] };
-                    let p1 = points[i];
-                    let p2 = points[i + 1];
-                    let p3 = if i + 2 < n {
-                        points[i + 2]
-                    } else {
-                        points[n - 1]
-                    };
-
-                    // Catmull-Rom to Bezier
-                    let c1 = Point::new(p1.x + (p2.x - p0.x) / 6.0, p1.y + (p2.y - p0.y) / 6.0);
-                    let c2 = Point::new(p2.x - (p3.x - p1.x) / 6.0, p2.y - (p3.y - p1.y) / 6.0);
-
-                    area_builder.cubic_bezier_to(p2, c1, c2);
-                    line_builder.cubic_bezier_to(p2, c1, c2);
-                }
-            }
-            StrokeStyle::Linear => {
-                area_builder.move_to(points[0]);
-                line_builder.move_to(points[0]);
-                for p in &points[1..] {
-                    area_builder.line_to(*p);
-                    line_builder.line_to(*p);
-                }
-            }
-            StrokeStyle::StepAfter => {
-                area_builder.move_to(points[0]);
-                line_builder.move_to(points[0]);
-                for (i, p) in points.windows(2).enumerate() {
-                    area_builder.line_to(Point::new(p[1].x, p[0].y));
-                    line_builder.line_to(Point::new(p[1].x, p[0].y));
-                    // Don't draw the vertical line for the last point
-                    if i < points.len() - 2 {
-                        area_builder.line_to(p[1]);
-                        line_builder.line_to(p[1]);
-                    }
-                }
-            }
-        }
+        append_curve(&mut area_builder, &points, self.stroke_style, false);
+        append_curve(&mut line_builder, &points, self.stroke_style, false);
 
         // Close path
-        if let (Some(first), Some(last), Some(y)) = (first_x_tick, last_x_tick, self.y0) {
-            area_builder.line_to(origin_point(px(last), px(y), bounds.origin));
-            area_builder.line_to(origin_point(px(first), px(y), bounds.origin));
+        if baseline_points.len() == points.len() {
+            if matches!(self.stroke_style, StrokeStyle::StepAfter) {
+                let baseline = reversed_step_after_points(&baseline_points);
+                append_curve(&mut area_builder, &baseline, StrokeStyle::Linear, true);
+            } else {
+                baseline_points.reverse();
+                append_curve(&mut area_builder, &baseline_points, self.stroke_style, true);
+            }
             area_builder.close();
         }
 
@@ -187,5 +220,26 @@ impl<T> Area<T> {
         if let Some(line) = line {
             window.paint_path(line, self.stroke);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn step_after_geometry_can_be_replayed_in_exact_reverse() {
+        let points = vec![
+            Point::new(px(0.), px(10.)),
+            Point::new(px(20.), px(30.)),
+            Point::new(px(40.), px(15.)),
+        ];
+        let forward = step_after_points(&points);
+        let reverse = reversed_step_after_points(&points);
+
+        assert_eq!(forward[1], Point::new(px(20.), px(10.)));
+        assert_eq!(forward[2], points[1]);
+        assert_eq!(reverse.first(), forward.last());
+        assert_eq!(reverse.last(), forward.first());
     }
 }

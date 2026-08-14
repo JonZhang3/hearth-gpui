@@ -59,16 +59,6 @@ pub struct ThemeConfig {
     #[serde(rename = "mono_font.size")]
     pub mono_font_size: Option<f32>,
 
-    /// The border radius for general elements, default is 6.
-    #[serde(rename = "radius")]
-    pub radius: Option<usize>,
-    /// The border radius for large elements like Dialogs and Notifications, default is 8.
-    #[serde(rename = "radius.lg")]
-    pub radius_lg: Option<usize>,
-    /// Set shadows in the theme, for example the Input and Button, default is true.
-    #[serde(rename = "shadow")]
-    pub shadow: Option<bool>,
-
     /// The colors of the theme.
     pub colors: ThemeConfigColors,
     /// The highlight theme, this part is combilbility with `style` section in Zed theme.
@@ -97,6 +87,12 @@ pub struct ThemeConfigColors {
     /// Default border color
     #[serde(rename = "border")]
     pub border: Option<SharedString>,
+    /// Background color for Card surfaces.
+    #[serde(rename = "card.background")]
+    pub card: Option<SharedString>,
+    /// Text color for Card surfaces.
+    #[serde(rename = "card.foreground")]
+    pub card_foreground: Option<SharedString>,
     /// Default Button background color.
     #[serde(rename = "button.background")]
     pub button: Option<SharedString>,
@@ -607,6 +603,8 @@ impl ThemeColor {
 
         apply_color!(border);
         apply_color!(foreground);
+        apply_background_color!(card, fallback = tokens.background);
+        apply_color!(card_foreground, fallback = self.foreground);
         apply_color!(input, fallback = self.border);
         apply_background_color!(muted);
         apply_color!(
@@ -749,6 +747,7 @@ impl ThemeColor {
                 )
         );
         apply_color!(group_box_foreground, fallback = self.foreground);
+        apply_color!(group_box_title_foreground, fallback = self.muted_foreground);
         apply_color!(caret, fallback = self.primary);
         apply_color!(chart_1, fallback = self.blue.lighten(0.4));
         apply_color!(chart_2, fallback = self.blue.lighten(0.2));
@@ -826,7 +825,7 @@ impl ThemeColor {
         apply_background_color!(skeleton, fallback = tokens.secondary);
         apply_background_color!(slider_bar, fallback = tokens.primary);
         apply_background_color!(slider_thumb, fallback = self.primary_foreground);
-        apply_background_color!(switch, fallback = tokens.secondary_active);
+        apply_background_color!(switch, fallback = self.input);
         apply_background_color!(switch_thumb, fallback = tokens.background);
         apply_background_color!(tab, fallback = tokens.background);
         apply_background_color!(tab_active, fallback = tokens.background);
@@ -926,16 +925,6 @@ impl Theme {
         if let Some(mono_font_size) = config.mono_font_size {
             self.mono_font_size = px(mono_font_size);
         }
-        if let Some(radius) = config.radius {
-            self.radius = px(radius as f32);
-        }
-        if let Some(radius_lg) = config.radius_lg {
-            self.radius_lg = px(radius_lg as f32);
-        }
-        if let Some(shadow) = config.shadow {
-            self.shadow = shadow;
-        }
-
         self.tokens = self.colors.apply_config(&config, &default_colors);
         self.mode = config.mode;
     }
@@ -987,6 +976,73 @@ mod tests {
             )
         );
         assert_eq!(theme.mode, ThemeMode::Light);
+    }
+
+    #[test]
+    fn test_card_colors_support_fallbacks_and_explicit_configuration() {
+        let fallback_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Card fallback",
+            "mode": "light",
+            "colors": {
+                "background": "#f8fafc",
+                "foreground": "#0f172a"
+            }
+        }))
+        .unwrap();
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(fallback_config));
+
+        assert_eq!(theme.card, theme.background);
+        assert_eq!(theme.card_foreground, theme.foreground);
+        assert_eq!(
+            theme.tokens.card.background,
+            theme.tokens.background.background
+        );
+
+        let explicit_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "Explicit Card",
+            "mode": "dark",
+            "colors": {
+                "background": "#020617",
+                "foreground": "#f8fafc",
+                "card.background": "#0f172a",
+                "card.foreground": "#e2e8f0"
+            }
+        }))
+        .unwrap();
+        theme.apply_config(&std::rc::Rc::new(explicit_config));
+
+        assert_eq!(theme.card, try_parse_color("#0f172a").unwrap());
+        assert_eq!(theme.card_foreground, try_parse_color("#e2e8f0").unwrap());
+    }
+
+    #[test]
+    fn test_group_box_title_color_supports_fallback_and_configuration() {
+        let fallback_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "GroupBox fallback",
+            "mode": "light",
+            "colors": {
+                "muted.foreground": "#64748b"
+            }
+        }))
+        .unwrap();
+        let mut theme = Theme::default();
+        theme.apply_config(&std::rc::Rc::new(fallback_config));
+        assert_eq!(theme.group_box_title_foreground, theme.muted_foreground);
+
+        let explicit_config = serde_json::from_value::<ThemeConfig>(serde_json::json!({
+            "name": "GroupBox explicit",
+            "mode": "light",
+            "colors": {
+                "group_box.title.foreground": "#334155"
+            }
+        }))
+        .unwrap();
+        theme.apply_config(&std::rc::Rc::new(explicit_config));
+        assert_eq!(
+            theme.group_box_title_foreground,
+            try_parse_color("#334155").unwrap()
+        );
     }
 
     #[test]

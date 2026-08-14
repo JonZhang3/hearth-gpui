@@ -9,7 +9,7 @@ use gpui::{
 };
 
 use gpui_component::{
-    ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable,
+    ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
     button::Button,
     checkbox::Checkbox,
     h_flex,
@@ -75,7 +75,7 @@ impl Render for DragCompany {
             .text_sm()
             .bg(cx.theme().accent)
             .text_color(cx.theme().accent_foreground)
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .shadow_md()
             .child(self.name.clone())
     }
@@ -130,11 +130,25 @@ impl CompanyListItem {
 impl Selectable for CompanyListItem {
     fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
+        self.base = self.base.selected(selected);
         self
     }
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+}
+
+impl Sizable for CompanyListItem {
+    fn with_size(mut self, size: impl Into<gpui_component::Size>) -> Self {
+        self.base = self.base.with_size(size);
+        self
+    }
+}
+impl Disableable for CompanyListItem {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.base = self.base.disabled(disabled);
+        self
     }
 }
 
@@ -157,7 +171,7 @@ impl RenderOnce for CompanyListItem {
             .py_1()
             .overflow_x_hidden()
             .border_1()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .child(
                 h_flex()
                     .items_center()
@@ -205,9 +219,9 @@ impl RenderOnce for CompanyListItem {
                             .child(
                                 h_flex().w(px(65.)).justify_end().child(
                                     div()
-                                        .rounded(cx.theme().radius)
+                                        .rounded(cx.theme().style.radii.md)
                                         .whitespace_nowrap()
-                                        .text_size(px(12.))
+                                        .text_xs()
                                         .px_1()
                                         .text_color(trend_color)
                                         .child(self.company.change_percent_str.clone()),
@@ -340,6 +354,14 @@ impl ListDelegate for CompanyListDelegate {
         self.matched_companies[section].len()
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> SharedString {
+        self.matched_companies[ix.section][ix.row].name.clone()
+    }
+
+    fn is_item_enabled(&self, ix: IndexPath, _: &App) -> bool {
+        (ix.section + ix.row) % 11 != 0
+    }
+
     fn perform_search(
         &mut self,
         query: &str,
@@ -426,90 +448,82 @@ impl ListDelegate for CompanyListDelegate {
         ix: IndexPath,
         _: &mut Window,
         cx: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
+    ) -> Self::Item {
         let selected = Some(ix) == self.selected_index || Some(ix) == self.confirmed_index;
-        if let Some(company) = self.matched_companies[ix.section].get(ix.row) {
-            let item =
-                CompanyListItem::new(ix, company.clone(), selected).when(self.draggable, |this| {
-                    // Normalize the pending drop target to an insertion gap, so the
-                    // indicator renders at the same edge no matter which of the two
-                    // rows around the gap the cursor is over.
-                    let count = self.matched_companies[ix.section].len();
-                    let drop_position = self.drop_target.and_then(|(target, position)| {
-                        if target.section != ix.section {
-                            return None;
-                        }
+        let company = self.matched_companies[ix.section][ix.row].clone();
+        CompanyListItem::new(ix, company, selected).when(self.draggable, |this| {
+            // Normalize the pending drop target to an insertion gap, so the
+            // indicator renders at the same edge no matter which of the two
+            // rows around the gap the cursor is over.
+            let count = self.matched_companies[ix.section].len();
+            let drop_position = self.drop_target.and_then(|(target, position)| {
+                if target.section != ix.section {
+                    return None;
+                }
 
-                        let gap = position.gap(target.row);
-                        if gap == ix.row {
-                            Some(DropPosition::Before)
-                        } else if gap == count && ix.row + 1 == count {
-                            Some(DropPosition::After)
-                        } else {
-                            None
+                let gap = position.gap(target.row);
+                if gap == ix.row {
+                    Some(DropPosition::Before)
+                } else if gap == count && ix.row + 1 == count {
+                    Some(DropPosition::After)
+                } else {
+                    None
+                }
+            });
+
+            let state = cx.entity().downgrade();
+            this.draggable(
+                ix,
+                drop_position,
+                // A drag may end without a drop (e.g. released outside the
+                // list), clear the stale drop target when a new one starts.
+                move |cx| {
+                    _ = state.update(cx, |this, cx| {
+                        if this.delegate_mut().drop_target.take().is_some() {
+                            cx.notify();
                         }
                     });
+                },
+                cx.listener(move |this, e: &DragMoveEvent<DragCompany>, _, cx| {
+                    let bounds = e.bounds;
+                    let from = e.drag(cx).ix;
+                    let position = if bounds.contains(&e.event.position) {
+                        let position = if e.event.position.y < bounds.center().y {
+                            DropPosition::Before
+                        } else {
+                            DropPosition::After
+                        };
 
-                    let state = cx.entity().downgrade();
-                    this.draggable(
-                        ix,
-                        drop_position,
-                        // A drag may end without a drop (e.g. released outside the
-                        // list), clear the stale drop target when a new one starts.
-                        move |cx| {
-                            _ = state.update(cx, |this, cx| {
-                                if this.delegate_mut().drop_target.take().is_some() {
-                                    cx.notify();
-                                }
-                            });
-                        },
-                        cx.listener(move |this, e: &DragMoveEvent<DragCompany>, _, cx| {
-                            let bounds = e.bounds;
-                            let from = e.drag(cx).ix;
-                            let position = if bounds.contains(&e.event.position) {
-                                let position = if e.event.position.y < bounds.center().y {
-                                    DropPosition::Before
-                                } else {
-                                    DropPosition::After
-                                };
+                        // Gaps adjacent to the dragged row are no-op moves.
+                        let gap = position.gap(ix.row);
+                        if from.section == ix.section && (gap == from.row || gap == from.row + 1) {
+                            None
+                        } else {
+                            Some(position)
+                        }
+                    } else {
+                        None
+                    };
 
-                                // Gaps adjacent to the dragged row are no-op moves.
-                                let gap = position.gap(ix.row);
-                                if from.section == ix.section
-                                    && (gap == from.row || gap == from.row + 1)
-                                {
-                                    None
-                                } else {
-                                    Some(position)
-                                }
-                            } else {
-                                None
-                            };
+                    if this.delegate_mut().update_drop_target(ix, position) {
+                        cx.notify();
+                    }
+                }),
+                cx.listener(move |this, drag: &DragCompany, _, cx| {
+                    let Some(position) = this
+                        .delegate()
+                        .drop_target
+                        .filter(|(target, _)| *target == ix)
+                        .map(|(_, position)| position)
+                    else {
+                        return;
+                    };
 
-                            if this.delegate_mut().update_drop_target(ix, position) {
-                                cx.notify();
-                            }
-                        }),
-                        cx.listener(move |this, drag: &DragCompany, _, cx| {
-                            let Some(position) = this
-                                .delegate()
-                                .drop_target
-                                .filter(|(target, _)| *target == ix)
-                                .map(|(_, position)| position)
-                            else {
-                                return;
-                            };
-
-                            this.delegate_mut().move_company(drag.ix, ix, position);
-                            cx.notify();
-                        }),
-                    )
-                });
-
-            return Some(item);
-        }
-
-        None
+                    this.delegate_mut().move_company(drag.ix, ix, position);
+                    cx.notify();
+                }),
+            )
+        })
     }
 
     fn loading(&self, _: &App) -> bool {
@@ -528,9 +542,9 @@ impl ListDelegate for CompanyListDelegate {
         150
     }
 
-    fn load_more(&mut self, window: &mut Window, cx: &mut Context<ListState<Self>>) {
+    fn load_more(&mut self, window: &mut Window, cx: &mut Context<ListState<Self>>) -> Task<()> {
         if !self.lazy_load {
-            return;
+            return Task::ready(());
         }
 
         cx.spawn_in(window, async move |view, window| {
@@ -547,7 +561,6 @@ impl ListDelegate for CompanyListDelegate {
                 view.delegate_mut().eof = view.delegate()._companies.len() >= 6000;
             });
         })
-        .detach();
     }
 }
 
@@ -584,7 +597,7 @@ impl ListStory {
             industries: vec![],
             matched_companies: vec![vec![]],
             _companies: vec![],
-            selected_index: Some(IndexPath::default()),
+            selected_index: Some(IndexPath::new(0).section(1)),
             confirmed_index: None,
             query: "".into(),
             loading: false,
@@ -595,7 +608,11 @@ impl ListStory {
         };
         delegate.extend_more(100);
 
-        let company_list = cx.new(|cx| ListState::new(delegate, window, cx).searchable(true));
+        let company_list = cx.new(|cx| {
+            ListState::new(delegate, window, cx)
+                .searchable(true)
+                .initial_selected_index(Some(IndexPath::new(0).section(1)))
+        });
 
         let _subscriptions =
             vec![
@@ -698,6 +715,14 @@ impl Render for ListStory {
             .on_action(cx.listener(Self::selected_company))
             .size_full()
             .gap_4()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        "Use Up/Down and Enter. Disable Searchable to try Home/End; muted rows are disabled.",
+                    ),
+            )
             .child(
                 h_flex()
                     .gap_2()
@@ -820,12 +845,13 @@ impl Render for ListStory {
             )
             .child(
                 List::new(&self.company_list)
+                    .aria_label("Companies")
                     .p(px(8.))
                     .flex_1()
                     .w_full()
                     .border_1()
                     .border_color(cx.theme().border)
-                    .rounded(cx.theme().radius),
+                    .rounded(cx.theme().style.radii.md),
             )
     }
 }

@@ -1,13 +1,210 @@
-use std::ops::Range;
-
-use crate::{ActiveTheme, AxisExt, ElementExt, StyledExt, h_flex};
-use gpui::{
-    AccessibleAction, Along, App, AppContext as _, Axis, Background, Bounds, Context, Corners,
-    DefiniteLength, DragMoveEvent, Empty, Entity, EntityId, EventEmitter, InteractiveElement,
-    IntoElement, IsZero, MouseButton, MouseDownEvent, Orientation, ParentElement as _, Pixels,
-    Point, Render, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder as _, px, relative,
+use std::{
+    ops::Range,
+    sync::Arc,
+    time::{Duration, Instant},
 };
+
+use crate::{
+    ActiveTheme, AxisExt, Density, ElementExt, StylePreset, StyledExt,
+    accessibility::accessibility_state, animation::Lerp, h_flex,
+};
+use gpui::{
+    AccessibleAction, Along, Animation, AnimationExt, AnyElement, App, AppContext as _, Axis,
+    Background, Bounds, Context, Corners, DefiniteLength, DragMoveEvent, ElementId, Empty, Entity,
+    EntityId, EventEmitter, Fill, FocusHandle, Hsla, InteractiveElement, IntoElement, IsZero,
+    KeyDownEvent, MouseButton, MouseDownEvent, Orientation, ParentElement as _, Pixels, Point,
+    Render, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Window, div, prelude::FluentBuilder as _, px, relative,
+};
+use rust_i18n::t;
+
+/// The shadcn transition family used by a Slider Style Preset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SliderMotionKind {
+    Ring,
+    Colors,
+}
+
+/// Component-local geometry resolved from semantic Style Preset density.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SliderMetrics {
+    track_edge: Pixels,
+    thumb_edge: Pixels,
+    ring_width: Pixels,
+    hit_edge: Pixels,
+    min_vertical_length: Pixels,
+    shadow: bool,
+    thumb_border_uses_ring: bool,
+    motion_kind: SliderMotionKind,
+}
+
+impl SliderMetrics {
+    /// Resolves pinned Vega, Nova, and Maia geometry without preset ID checks.
+    fn resolve(style: &StylePreset) -> Self {
+        match style.density {
+            Density::Compact => Self {
+                track_edge: px(4.),
+                thumb_edge: px(12.),
+                ring_width: px(3.),
+                hit_edge: px(28.),
+                min_vertical_length: px(160.),
+                shadow: false,
+                thumb_border_uses_ring: true,
+                motion_kind: SliderMotionKind::Ring,
+            },
+            Density::Standard => Self {
+                track_edge: px(6.),
+                thumb_edge: px(16.),
+                ring_width: px(4.),
+                hit_edge: px(24.),
+                min_vertical_length: px(160.),
+                shadow: style.elevation.enabled,
+                thumb_border_uses_ring: false,
+                motion_kind: SliderMotionKind::Ring,
+            },
+            Density::Comfortable => Self {
+                track_edge: px(12.),
+                thumb_edge: px(16.),
+                ring_width: px(4.),
+                hit_edge: px(24.),
+                min_vertical_length: px(160.),
+                shadow: style.elevation.enabled,
+                thumb_border_uses_ring: false,
+                motion_kind: SliderMotionKind::Colors,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ActiveRingTransition {
+    from: Hsla,
+    target: Hsla,
+    started_at: Instant,
+    duration: Duration,
+    easing: crate::MotionEasing,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct RingTransition {
+    from: Hsla,
+    to: Hsla,
+    duration: Duration,
+    epoch: u64,
+}
+
+/// Persistent Thumb ring motion that retargets from the currently visible color.
+#[derive(Debug, Clone, Copy)]
+struct SliderRingMotionState {
+    target: Hsla,
+    active: Option<ActiveRingTransition>,
+    epoch: u64,
+}
+
+struct SliderThumbSpec {
+    id: ElementId,
+    position: DefiniteLength,
+    is_start: bool,
+    value: f64,
+    min: f64,
+    max: f64,
+    label: SharedString,
+    description: Option<SharedString>,
+    focus_handle: FocusHandle,
+    hovered: bool,
+    pressed: bool,
+    thumb_background: Background,
+    thumb_border: Hsla,
+    radius: Corners<Pixels>,
+    metrics: SliderMetrics,
+}
+
+impl SliderRingMotionState {
+    fn new(target: Hsla) -> Self {
+        Self {
+            target,
+            active: None,
+            epoch: 0,
+        }
+    }
+
+    fn current(&mut self, now: Instant) -> Hsla {
+        let Some(active) = self.active else {
+            return self.target;
+        };
+        let elapsed = now.saturating_duration_since(active.started_at);
+        let linear_delta = if active.duration.is_zero() {
+            1.
+        } else {
+            elapsed.as_secs_f32() / active.duration.as_secs_f32()
+        };
+        let current = Lerp::lerp(
+            &active.from,
+            &active.target,
+            active.easing.sample(linear_delta),
+        );
+        if linear_delta >= 1. {
+            self.active = None;
+            active.target
+        } else {
+            current
+        }
+    }
+
+    fn transition_to(
+        &mut self,
+        target: Hsla,
+        now: Instant,
+        duration: Duration,
+        easing: crate::MotionEasing,
+    ) -> Option<RingTransition> {
+        let previous = self.active;
+        let target_unchanged = self.target == target;
+        let current = self.current(now);
+        if target_unchanged && self.active.is_none() {
+            return None;
+        }
+
+        self.target = target;
+        self.epoch = self.epoch.wrapping_add(1);
+        let duration = previous
+            .map(|active| {
+                let elapsed = now
+                    .saturating_duration_since(active.started_at)
+                    .min(active.duration);
+                if target_unchanged {
+                    active.duration.saturating_sub(elapsed)
+                } else if target == active.from {
+                    elapsed
+                } else {
+                    duration
+                }
+            })
+            .unwrap_or(duration);
+        if duration.is_zero() || current == target {
+            self.active = None;
+            return None;
+        }
+
+        self.active = Some(ActiveRingTransition {
+            from: current,
+            target,
+            started_at: now,
+            duration,
+            easing,
+        });
+        Some(RingTransition {
+            from: current,
+            to: target,
+            duration,
+            epoch: self.epoch,
+        })
+    }
+}
+
+fn slider_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
+}
 
 #[derive(Clone)]
 struct DragThumb((EntityId, bool));
@@ -196,6 +393,10 @@ pub struct SliderState {
     /// Tracks whether the user is currently interacting with the slider so we
     /// only emit [`SliderEvent::Release`] after a real press/drag.
     dragging: bool,
+    /// The range thumb currently controlled by keyboard and accessibility actions.
+    active_start_thumb: bool,
+    hovered_start_thumb: bool,
+    hovered_end_thumb: bool,
 }
 
 impl SliderState {
@@ -210,6 +411,9 @@ impl SliderState {
             bounds: Bounds::default(),
             scale: SliderScale::default(),
             dragging: false,
+            active_start_thumb: false,
+            hovered_start_thumb: false,
+            hovered_end_thumb: false,
         }
     }
 
@@ -226,6 +430,7 @@ impl SliderState {
             );
         }
         self.min = min;
+        self.value = self.normalize_value(self.value);
         self.update_thumb_pos();
         self
     }
@@ -239,12 +444,17 @@ impl SliderState {
             );
         }
         self.max = max;
+        self.value = self.normalize_value(self.value);
         self.update_thumb_pos();
         self
     }
 
     /// Set the step value of the slider, default: 1.0
     pub fn step(mut self, step: f32) -> Self {
+        assert!(
+            step.is_finite() && step > 0.0,
+            "`step` must be finite and greater than 0"
+        );
         self.step = step;
         self
     }
@@ -268,7 +478,7 @@ impl SliderState {
 
     /// Set the default value of the slider, default: 0.0
     pub fn default_value(mut self, value: impl Into<SliderValue>) -> Self {
-        self.value = value.into();
+        self.value = self.normalize_value(value.into());
         self.update_thumb_pos();
         self
     }
@@ -280,7 +490,7 @@ impl SliderState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.value = value.into();
+        self.value = self.normalize_value(value.into());
         self.update_thumb_pos();
         cx.notify();
     }
@@ -354,6 +564,85 @@ impl SliderState {
         }
     }
 
+    /// Clamps and orders values so visual, keyboard, and accessibility state agree.
+    fn normalize_value(&self, value: SliderValue) -> SliderValue {
+        if self.min > self.max {
+            return value;
+        }
+        match value.clamp(self.min, self.max) {
+            SliderValue::Single(value) => SliderValue::Single(value),
+            SliderValue::Range(start, end) if start <= end => SliderValue::Range(start, end),
+            SliderValue::Range(start, end) => SliderValue::Range(end, start),
+        }
+    }
+
+    /// Snaps a raw value to the configured step relative to the minimum value.
+    fn snap_value(&self, value: f32) -> f32 {
+        if self.min >= self.max {
+            return self.min;
+        }
+        let steps = ((value - self.min) / self.step).round();
+        (self.min + steps * self.step).clamp(self.min, self.max)
+    }
+
+    /// Updates one thumb and emits the same change/commit events for keyboard and a11y input.
+    fn set_thumb_value(
+        &mut self,
+        is_start: bool,
+        value: f32,
+        commit: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let previous = self.value;
+        let value = self.snap_value(value);
+        if is_start {
+            self.value.set_start(value);
+        } else {
+            self.value.set_end(value);
+        }
+        self.active_start_thumb = is_start;
+        self.update_thumb_pos();
+        if self.value == previous {
+            return;
+        }
+        cx.emit(SliderEvent::Change(self.value));
+        if commit {
+            cx.emit(SliderEvent::Release(self.value));
+        }
+        cx.notify();
+    }
+
+    /// Handles the native Slider keyboard contract for one thumb.
+    fn handle_key(&mut self, key: &str, is_start: bool, cx: &mut Context<Self>) -> bool {
+        let current = if is_start {
+            self.value.start()
+        } else {
+            self.value.end()
+        };
+        let value = match key {
+            "left" | "down" => current - self.step,
+            "right" | "up" => current + self.step,
+            "home" => self.min,
+            "end" => self.max,
+            _ => return false,
+        };
+        self.set_thumb_value(is_start, value, true, cx);
+        true
+    }
+
+    fn set_thumb_hovered(&mut self, is_start: bool, hovered: bool, cx: &mut Context<Self>) {
+        let target = if is_start {
+            &mut self.hovered_start_thumb
+        } else {
+            &mut self.hovered_end_thumb
+        };
+        if *target == hovered {
+            return;
+        }
+        *target = hovered;
+        cx.notify();
+    }
+
     /// Update value by mouse position
     fn update_value_by_position(
         &mut self,
@@ -365,7 +654,6 @@ impl SliderState {
     ) {
         self.dragging = true;
         let bounds = self.bounds;
-        let step = self.step;
 
         let inner_pos = if axis.is_horizontal() {
             position.x - bounds.left()
@@ -373,6 +661,9 @@ impl SliderState {
             bounds.bottom() - position.y
         };
         let total_size = bounds.size.along(axis);
+        if total_size <= px(0.) {
+            return;
+        }
         let percentage = inner_pos.clamp(px(0.), total_size) / total_size;
 
         let percentage = if is_start {
@@ -381,16 +672,17 @@ impl SliderState {
             percentage.clamp(self.percentage.start, 1.0)
         };
 
-        let value = self.percentage_to_value(percentage);
-        let value = (value / step).round() * step;
+        let value = self.snap_value(self.percentage_to_value(percentage));
 
         if is_start {
-            self.percentage.start = percentage;
             self.value.set_start(value);
         } else {
-            self.percentage.end = percentage;
             self.value.set_end(value);
         }
+        self.active_start_thumb = is_start;
+        // Recompute the visual position from the snapped value so the Thumb,
+        // accessibility value, and emitted value always describe one state.
+        self.update_thumb_pos();
         cx.emit(SliderEvent::Change(self.value));
         cx.notify();
     }
@@ -416,6 +708,8 @@ pub struct Slider {
     style: StyleRefinement,
     disabled: bool,
     reverse: bool,
+    aria_label: Option<SharedString>,
+    aria_description: Option<SharedString>,
 }
 
 impl Slider {
@@ -427,6 +721,8 @@ impl Slider {
             style: StyleRefinement::default(),
             disabled: false,
             reverse: false,
+            aria_label: None,
+            aria_description: None,
         }
     }
 
@@ -448,6 +744,18 @@ impl Slider {
         self
     }
 
+    /// Sets the accessible name announced for the Slider thumbs.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
+    /// Sets additional accessible help text for the Slider thumbs.
+    pub fn aria_description(mut self, description: impl Into<SharedString>) -> Self {
+        self.aria_description = Some(description.into());
+        self
+    }
+
     /// Reverse the filled (highlighted) side of the track, default: false.
     ///
     /// By default the track is filled from the min end to the thumb. With
@@ -462,77 +770,180 @@ impl Slider {
         self
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn render_thumb(
-        &self,
-        start: DefiniteLength,
-        is_start: bool,
-        bar_color: Background,
-        thumb_bg: Background,
-        radius: Corners<Pixels>,
-        window: &mut Window,
-        _cx: &mut App,
-    ) -> impl gpui::IntoElement {
+    fn render_thumb(&self, spec: SliderThumbSpec, window: &mut Window, cx: &mut App) -> AnyElement {
         let entity_id = self.state.entity_id();
         let axis = self.axis;
-        let id = ("slider-thumb", is_start as u32);
+        let is_start = spec.is_start;
+        let focus_visible =
+            spec.focus_handle.is_focused(window) && window.last_input_was_keyboard();
+        let ring_visible = !self.disabled && (spec.hovered || spec.pressed || focus_visible);
+        let ring_color = cx.theme().ring.opacity(if ring_visible { 0.5 } else { 0. });
+        let duration = if cx.reduce_motion() || spec.metrics.motion_kind != SliderMotionKind::Ring {
+            Duration::ZERO
+        } else {
+            cx.theme().style.motion.normal()
+        };
+        let easing = cx.theme().style.motion.move_easing;
+        let motion_id = slider_child_id(&spec.id, "ring-motion");
+        let motion_state =
+            window.use_keyed_state(motion_id, cx, |_, _| SliderRingMotionState::new(ring_color));
+        let transition = motion_state.update(cx, |state, _| {
+            state.transition_to(ring_color, Instant::now(), duration, easing)
+        });
+        let ring_edge = spec.metrics.thumb_edge + spec.metrics.ring_width * 2.;
+        let thumb = div()
+            .size(spec.metrics.thumb_edge)
+            .flex_shrink_0()
+            .border_1()
+            .border_color(spec.thumb_border)
+            .corner_radii(spec.radius)
+            .bg(spec.thumb_background)
+            .when(spec.metrics.shadow, |this| this.shadow_sm());
+        let ring_radius = spec.radius.map(|radius| {
+            if radius.is_zero() {
+                px(0.)
+            } else {
+                *radius + spec.metrics.ring_width
+            }
+        });
+        let ring = div()
+            .size(ring_edge)
+            .flex()
+            .items_center()
+            .justify_center()
+            .corner_radii(ring_radius)
+            .bg(ring_color)
+            .child(thumb);
+        let ring = if let Some(transition) = transition {
+            let animation_id = slider_child_id(&spec.id, format!("ring-{}", transition.epoch));
+            ring.with_animation(
+                animation_id,
+                Animation::new(transition.duration).with_easing(move |delta| easing.sample(delta)),
+                move |this, delta| this.bg(Lerp::lerp(&transition.from, &transition.to, delta)),
+            )
+            .into_any_element()
+        } else {
+            ring.into_any_element()
+        };
+        let state_for_increment = self.state.clone();
+        let state_for_decrement = self.state.clone();
+        let state_for_set_value = self.state.clone();
+        let state_for_keyboard = self.state.clone();
+        let state_for_hover = self.state.clone();
+        let focus_on_press = spec.focus_handle.clone();
 
-        if self.disabled {
-            return div().id(id);
-        }
-
-        div()
-            .id(id)
+        let thumb = div()
+            .id(spec.id)
+            .role(Role::Slider)
+            .aria_numeric_value(spec.value)
+            .aria_min_numeric_value(spec.min)
+            .aria_max_numeric_value(spec.max)
+            .aria_numeric_value_step(self.state.read(cx).step_value() as f64)
+            .aria_orientation(if axis.is_vertical() {
+                Orientation::Vertical
+            } else {
+                Orientation::Horizontal
+            })
+            .aria_label(spec.label)
+            .when_some(spec.description, |this, description| {
+                this.aria_description(description)
+            })
             .absolute()
             .when(axis.is_horizontal(), |this| {
-                this.top(px(-5.)).left(start).ml(-px(8.))
+                this.top((spec.metrics.track_edge - spec.metrics.hit_edge) * 0.5)
+                    .left(spec.position)
+                    .ml(spec.metrics.hit_edge * -0.5)
             })
             .when(axis.is_vertical(), |this| {
-                this.bottom(start).left(px(-5.)).mb(-px(8.))
+                this.bottom(spec.position)
+                    .left((spec.metrics.track_edge - spec.metrics.hit_edge) * 0.5)
+                    .mb(spec.metrics.hit_edge * -0.5)
             })
             .flex()
             .items_center()
             .justify_center()
             .flex_shrink_0()
-            .corner_radii(radius)
-            .bg(bar_color.opacity(0.5))
-            .size_4()
-            .p(px(1.))
-            .child(
-                div()
-                    .flex_shrink_0()
-                    .size_full()
-                    .corner_radii(radius)
-                    .bg(thumb_bg),
-            )
-            .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                cx.stop_propagation();
-            })
-            .on_drag(DragThumb((entity_id, is_start)), |drag, _, _, cx| {
-                cx.stop_propagation();
-                cx.new(|_| drag.clone())
-            })
-            .on_drag_move(window.listener_for(
-                &self.state,
-                move |view, e: &DragMoveEvent<DragThumb>, window, cx| {
-                    match e.drag(cx) {
-                        DragThumb((id, is_start)) => {
-                            if *id != entity_id {
-                                return;
-                            }
-
-                            // set value by mouse position
-                            view.update_value_by_position(
-                                axis,
-                                e.event.position,
-                                *is_start,
-                                window,
-                                cx,
-                            )
+            .size(spec.metrics.hit_edge)
+            .child(ring)
+            .when(!self.disabled, |this| {
+                this.track_focus(&spec.focus_handle.tab_stop(true))
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        window.prevent_default();
+                        focus_on_press.focus(window, cx);
+                        cx.stop_propagation();
+                    })
+                    .on_hover(move |hovered, _, cx| {
+                        state_for_hover.update(cx, |state, cx| {
+                            state.set_thumb_hovered(is_start, *hovered, cx)
+                        });
+                    })
+                    .on_key_down(move |event: &KeyDownEvent, window, cx| {
+                        if event.keystroke.modifiers.modified() {
+                            return;
                         }
-                    }
-                },
-            ))
+                        state_for_keyboard.update(cx, |state, cx| {
+                            if state.handle_key(&event.keystroke.key, is_start, cx) {
+                                window.prevent_default();
+                                cx.stop_propagation();
+                            }
+                        });
+                    })
+                    .on_a11y_action(AccessibleAction::Increment, move |_, _, cx| {
+                        state_for_increment.update(cx, |state, cx| {
+                            let current = if is_start {
+                                state.value().start()
+                            } else {
+                                state.value().end()
+                            };
+                            state.set_thumb_value(is_start, current + state.step_value(), true, cx);
+                        });
+                    })
+                    .on_a11y_action(AccessibleAction::Decrement, move |_, _, cx| {
+                        state_for_decrement.update(cx, |state, cx| {
+                            let current = if is_start {
+                                state.value().start()
+                            } else {
+                                state.value().end()
+                            };
+                            state.set_thumb_value(is_start, current - state.step_value(), true, cx);
+                        });
+                    })
+                    .on_a11y_action(AccessibleAction::SetValue, move |data, _, cx| {
+                        let Some(gpui::accesskit::ActionData::Value(value)) = data else {
+                            return;
+                        };
+                        let Ok(value) = value.parse::<f32>() else {
+                            return;
+                        };
+                        state_for_set_value.update(cx, |state, cx| {
+                            state.set_thumb_value(is_start, value, true, cx);
+                        });
+                    })
+                    .on_drag(DragThumb((entity_id, is_start)), |drag, _, _, cx| {
+                        cx.stop_propagation();
+                        cx.new(|_| drag.clone())
+                    })
+                    .on_drag_move(window.listener_for(
+                        &self.state,
+                        move |view, e: &DragMoveEvent<DragThumb>, window, cx| match e.drag(cx) {
+                            DragThumb((id, is_start)) => {
+                                if *id != entity_id {
+                                    return;
+                                }
+
+                                view.update_value_by_position(
+                                    axis,
+                                    e.event.position,
+                                    *is_start,
+                                    window,
+                                    cx,
+                                )
+                            }
+                        },
+                    ))
+            });
+
+        accessibility_state(thumb, false, false, self.disabled).into_any_element()
     }
 }
 
@@ -546,9 +957,17 @@ impl RenderOnce for Slider {
     fn render(self, window: &mut Window, cx: &mut gpui::App) -> impl IntoElement {
         let axis = self.axis;
         let entity_id = self.state.entity_id();
+        let root_id: ElementId = ("slider", entity_id).into();
         let state = self.state.read(cx);
-        let is_range = state.value().is_range();
+        let value = state.value();
+        let is_range = value.is_range();
         let percentage = state.percentage.clone();
+        let hovered_start_thumb = state.hovered_start_thumb;
+        let hovered_end_thumb = state.hovered_end_thumb;
+        let dragging = state.dragging;
+        let active_start_thumb = state.active_start_thumb;
+        let slider_min = state.min_value() as f64;
+        let slider_max = state.max_value() as f64;
         let (bar_start, bar_end) = if self.reverse && !is_range {
             // Fill from the thumb to the max end (remaining side).
             (relative(percentage.end), relative(0.))
@@ -556,13 +975,20 @@ impl RenderOnce for Slider {
             (relative(percentage.start), relative(1. - percentage.end))
         };
         let rem_size = window.rem_size();
+        let metrics = SliderMetrics::resolve(&cx.theme().style);
 
-        let bar_color = self
-            .style
-            .background
+        let custom_range_background = self.style.background.clone();
+        let range_background: Fill = custom_range_background
             .clone()
-            .and_then(|bg| bg.color())
-            .unwrap_or(cx.theme().tokens.slider_bar.into());
+            .unwrap_or_else(|| cx.theme().primary.into());
+        let range_color = range_background
+            .color()
+            .and_then(|background| background.as_solid())
+            .unwrap_or(cx.theme().primary);
+        let track_background: Fill = custom_range_background
+            .and_then(|fill| fill.color())
+            .map(|background| Fill::from(background.opacity(0.2)))
+            .unwrap_or_else(|| cx.theme().muted.into());
         let thumb_bg: Background = self
             .style
             .text
@@ -589,59 +1015,62 @@ impl RenderOnce for Slider {
                 .map(|v| v.to_pixels(rem_size))
                 .unwrap_or(default_radius),
         };
-        if cx.theme().radius.is_zero() {
+        if cx.theme().style.radii.md.is_zero() {
             radius.top_left = px(0.);
             radius.top_right = px(0.);
             radius.bottom_left = px(0.);
             radius.bottom_right = px(0.);
         }
-
-        let slider_min = state.min_value() as f64;
-        let slider_max = state.max_value() as f64;
-        let _slider_step = state.step_value() as f64;
-        let slider_value = state.value().end() as f64;
-        let slider_state_ref = self.state.clone();
+        let thumb_border = if metrics.thumb_border_uses_ring {
+            cx.theme().ring
+        } else {
+            range_color
+        };
+        let base_label = self
+            .aria_label
+            .clone()
+            .unwrap_or_else(|| t!("Slider.label").into());
+        let start_label = if is_range {
+            format!("{}, {}", base_label, t!("Slider.start")).into()
+        } else {
+            base_label.clone()
+        };
+        let end_label = if is_range {
+            format!("{}, {}", base_label, t!("Slider.end")).into()
+        } else {
+            base_label
+        };
+        let start_thumb_id = slider_child_id(&root_id, "start-thumb");
+        let end_thumb_id = slider_child_id(&root_id, "end-thumb");
+        let start_focus = window
+            .use_keyed_state(slider_child_id(&root_id, "start-focus"), cx, |_, cx| {
+                cx.focus_handle()
+            })
+            .read(cx)
+            .clone();
+        let end_focus = window
+            .use_keyed_state(slider_child_id(&root_id, "end-focus"), cx, |_, cx| {
+                cx.focus_handle()
+            })
+            .read(cx)
+            .clone();
+        let track_start_focus = start_focus.clone();
+        let track_end_focus = end_focus.clone();
 
         div()
-            .id(("slider", self.state.entity_id()))
-            .role(Role::Slider)
-            .aria_numeric_value(slider_value)
-            .aria_min_numeric_value(slider_min)
-            .aria_max_numeric_value(slider_max)
-            .aria_orientation(if axis.is_vertical() {
-                Orientation::Vertical
-            } else {
-                Orientation::Horizontal
-            })
-            .on_a11y_action(AccessibleAction::Increment, {
-                let state = slider_state_ref.clone();
-                move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        let new_val =
-                            (state.value().end() + state.step_value()).min(state.max_value());
-                        state.set_value(new_val, window, cx);
-                    });
-                }
-            })
-            .on_a11y_action(AccessibleAction::Decrement, {
-                let state = slider_state_ref.clone();
-                move |_, window, cx| {
-                    state.update(cx, |state, cx| {
-                        let new_val =
-                            (state.value().end() - state.step_value()).max(state.min_value());
-                        state.set_value(new_val, window, cx);
-                    });
-                }
-            })
+            .id(root_id)
             .flex()
             .flex_1()
             .items_center()
             .justify_center()
-            .when(axis.is_vertical(), |this| this.h(px(120.)))
+            .when(axis.is_vertical(), |this| {
+                this.min_h(metrics.min_vertical_length)
+            })
             .when(axis.is_horizontal(), |this| this.w_full())
             .refine_style(&self.style)
             .bg(cx.theme().transparent)
             .text_color(cx.theme().foreground)
+            .when(self.disabled, |this| this.opacity(0.5))
             .when(!self.disabled, |this| {
                 this.on_mouse_up(
                     MouseButton::Left,
@@ -679,6 +1108,12 @@ impl RenderOnce for Slider {
                                         is_start = inner_pos < center;
                                     }
 
+                                    if is_start {
+                                        track_start_focus.focus(window, cx);
+                                    } else {
+                                        track_end_focus.focus(window, cx);
+                                    }
+
                                     state.update_value_by_position(
                                         axis, e.position, is_start, window, cx,
                                     )
@@ -712,20 +1147,23 @@ impl RenderOnce for Slider {
                         ))
                     })
                     .when(axis.is_horizontal(), |this| {
-                        this.items_center().h_6().w_full()
+                        this.items_center().h(metrics.hit_edge).w_full()
                     })
                     .when(axis.is_vertical(), |this| {
-                        this.justify_center().w_6().h_full()
+                        this.justify_center().w(metrics.hit_edge).h_full()
                     })
                     .flex_shrink_0()
                     .child(
                         div()
                             .id("slider-bar")
                             .relative()
-                            .when(axis.is_horizontal(), |this| this.w_full().h_1p5())
-                            .when(axis.is_vertical(), |this| this.h_full().w_1p5())
-                            .bg(bar_color.opacity(0.2))
-                            .active(|this| this.bg(bar_color.opacity(0.4)))
+                            .when(axis.is_horizontal(), |this| {
+                                this.w_full().h(metrics.track_edge)
+                            })
+                            .when(axis.is_vertical(), |this| {
+                                this.h_full().w(metrics.track_edge)
+                            })
+                            .bg(track_background)
                             .corner_radii(radius)
                             .child(
                                 div()
@@ -736,26 +1174,56 @@ impl RenderOnce for Slider {
                                     .when(axis.is_vertical(), |this| {
                                         this.w_full().bottom(bar_start).top(bar_end)
                                     })
-                                    .bg(bar_color)
-                                    .when(!cx.theme().radius.is_zero(), |this| this.rounded_full()),
+                                    .bg(range_background)
+                                    .when(!cx.theme().style.radii.md.is_zero(), |this| {
+                                        this.rounded_full()
+                                    }),
                             )
                             .when(is_range, |this| {
                                 this.child(self.render_thumb(
-                                    relative(percentage.start),
-                                    true,
-                                    bar_color,
-                                    thumb_bg,
-                                    radius,
+                                    SliderThumbSpec {
+                                        id: start_thumb_id,
+                                        position: relative(percentage.start),
+                                        is_start: true,
+                                        value: value.start() as f64,
+                                        min: slider_min,
+                                        max: value.end() as f64,
+                                        label: start_label,
+                                        description: self.aria_description.clone(),
+                                        focus_handle: start_focus,
+                                        hovered: hovered_start_thumb,
+                                        pressed: dragging && active_start_thumb,
+                                        thumb_background: thumb_bg,
+                                        thumb_border,
+                                        radius,
+                                        metrics,
+                                    },
                                     window,
                                     cx,
                                 ))
                             })
                             .child(self.render_thumb(
-                                relative(percentage.end),
-                                false,
-                                bar_color,
-                                thumb_bg,
-                                radius,
+                                SliderThumbSpec {
+                                    id: end_thumb_id,
+                                    position: relative(percentage.end),
+                                    is_start: false,
+                                    value: value.end() as f64,
+                                    min: if is_range {
+                                        value.start() as f64
+                                    } else {
+                                        slider_min
+                                    },
+                                    max: slider_max,
+                                    label: end_label,
+                                    description: self.aria_description.clone(),
+                                    focus_handle: end_focus,
+                                    hovered: hovered_end_thumb,
+                                    pressed: dragging && !active_start_thumb,
+                                    thumb_background: thumb_bg,
+                                    thumb_border,
+                                    radius,
+                                    metrics,
+                                },
                                 window,
                                 cx,
                             ))
@@ -765,5 +1233,110 @@ impl RenderOnce for Slider {
                             }),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    #[test]
+    fn slider_metrics_match_pinned_style_presets() {
+        let vega = SliderMetrics::resolve(&StylePreset::vega());
+        assert_eq!(vega.track_edge, px(6.));
+        assert_eq!(vega.thumb_edge, px(16.));
+        assert_eq!(vega.ring_width, px(4.));
+        assert!(vega.shadow);
+        assert_eq!(vega.motion_kind, SliderMotionKind::Ring);
+
+        let nova = SliderMetrics::resolve(&StylePreset::nova());
+        assert_eq!(nova.track_edge, px(4.));
+        assert_eq!(nova.thumb_edge, px(12.));
+        assert_eq!(nova.ring_width, px(3.));
+        assert!(!nova.shadow);
+        assert!(nova.thumb_border_uses_ring);
+
+        let maia = SliderMetrics::resolve(&StylePreset::maia());
+        assert_eq!(maia.track_edge, px(12.));
+        assert_eq!(maia.thumb_edge, px(16.));
+        assert_eq!(maia.ring_width, px(4.));
+        assert_eq!(maia.motion_kind, SliderMotionKind::Colors);
+    }
+
+    #[test]
+    fn slider_normalizes_values_and_snaps_relative_to_minimum() {
+        let slider = SliderState::new()
+            .min(-5.)
+            .max(5.)
+            .step(2.)
+            .default_value((8., -8.));
+
+        assert_eq!(slider.value(), SliderValue::Range(-5., 5.));
+        assert_eq!(slider.snap_value(-2.2), -3.);
+        assert_eq!(slider.snap_value(4.9), 5.);
+    }
+
+    #[test]
+    fn slider_internal_ids_preserve_structural_identity() {
+        let structured = ElementId::NamedInteger("slider".into(), 1);
+        let textual = ElementId::Name("slider-1".into());
+
+        assert_eq!(structured.to_string(), textual.to_string());
+        assert_ne!(
+            slider_child_id(&structured, "end-thumb"),
+            slider_child_id(&textual, "end-thumb")
+        );
+    }
+
+    #[test]
+    fn ring_motion_retargets_from_the_current_interpolated_color() {
+        let hidden = Hsla::transparent_black();
+        let visible = Hsla::red().opacity(0.5);
+        let duration = Duration::from_millis(100);
+        let easing = crate::MotionEasing::Linear;
+        let now = Instant::now();
+        let mut state = SliderRingMotionState::new(hidden);
+
+        assert!(state.transition_to(hidden, now, duration, easing).is_none());
+        assert!(
+            state
+                .transition_to(visible, now, duration, easing)
+                .is_some()
+        );
+        let reversed = state
+            .transition_to(hidden, now + Duration::from_millis(50), duration, easing)
+            .expect("a mid-transition reversal must animate from the visible value");
+
+        assert!(reversed.from.a > hidden.a);
+        assert!(reversed.from.a < visible.a);
+        assert_eq!(reversed.to, hidden);
+    }
+
+    #[test]
+    #[should_panic(expected = "`step` must be finite and greater than 0")]
+    fn slider_rejects_non_positive_steps() {
+        _ = SliderState::new().step(0.);
+    }
+
+    #[gpui::test]
+    fn keyboard_updates_only_the_focused_range_thumb(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            let slider = cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(10.)
+                    .step(2.)
+                    .default_value(2.0..8.0)
+            });
+
+            slider.update(cx, |state, cx| {
+                assert!(state.handle_key("right", true, cx));
+                assert_eq!(state.value(), SliderValue::Range(4., 8.));
+                assert!(state.handle_key("home", false, cx));
+                assert_eq!(state.value(), SliderValue::Range(4., 4.));
+                assert!(!state.handle_key("space", false, cx));
+            });
+        });
     }
 }

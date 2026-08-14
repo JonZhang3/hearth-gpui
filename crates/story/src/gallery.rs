@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
     Icon, IconName, Sizable as _,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
     resizable::{h_resizable, resizable_panel},
@@ -39,15 +39,21 @@ impl Gallery {
                 vec![StoryContainer::panel::<WelcomeStory>(window, cx)],
             ),
             (
+                "Shadcn Alignment",
+                vec![StoryContainer::panel::<ShadcnAlignmentStory>(window, cx)],
+            ),
+            (
                 "Components",
                 vec![
                     StoryContainer::panel::<AccordionStory>(window, cx),
                     StoryContainer::panel::<AlertStory>(window, cx),
                     StoryContainer::panel::<AlertDialogStory>(window, cx),
+                    StoryContainer::panel::<AspectRatioStory>(window, cx),
                     StoryContainer::panel::<AvatarStory>(window, cx),
                     StoryContainer::panel::<BadgeStory>(window, cx),
                     StoryContainer::panel::<BreadcrumbStory>(window, cx),
                     StoryContainer::panel::<ButtonStory>(window, cx),
+                    StoryContainer::panel::<CardStory>(window, cx),
                     StoryContainer::panel::<CalendarStory>(window, cx),
                     StoryContainer::panel::<ChartStory>(window, cx),
                     StoryContainer::panel::<CheckboxStory>(window, cx),
@@ -55,22 +61,26 @@ impl Gallery {
                     StoryContainer::panel::<CollapsibleStory>(window, cx),
                     StoryContainer::panel::<ColorPickerStory>(window, cx),
                     StoryContainer::panel::<ComboboxStory>(window, cx),
+                    StoryContainer::panel::<CommandStory>(window, cx),
                     StoryContainer::panel::<DatePickerStory>(window, cx),
                     StoryContainer::panel::<DescriptionListStory>(window, cx),
                     StoryContainer::panel::<DialogStory>(window, cx),
                     StoryContainer::panel::<DropdownButtonStory>(window, cx),
                     StoryContainer::panel::<EditorStory>(window, cx),
+                    StoryContainer::panel::<EmptyStory>(window, cx),
                     StoryContainer::panel::<FormStory>(window, cx),
                     StoryContainer::panel::<GroupBoxStory>(window, cx),
                     StoryContainer::panel::<HoverCardStory>(window, cx),
                     StoryContainer::panel::<IconStory>(window, cx),
                     StoryContainer::panel::<ImageStory>(window, cx),
                     StoryContainer::panel::<InputStory>(window, cx),
+                    StoryContainer::panel::<InputGroupStory>(window, cx),
                     StoryContainer::panel::<KbdStory>(window, cx),
                     StoryContainer::panel::<LabelStory>(window, cx),
                     StoryContainer::panel::<ListStory>(window, cx),
                     StoryContainer::panel::<MenuStory>(window, cx),
                     StoryContainer::panel::<NativeMenuStory>(window, cx),
+                    StoryContainer::panel::<NativeSelectStory>(window, cx),
                     StoryContainer::panel::<NotificationStory>(window, cx),
                     StoryContainer::panel::<NumberInputStory>(window, cx),
                     StoryContainer::panel::<OtpInputStory>(window, cx),
@@ -95,7 +105,6 @@ impl Gallery {
                     StoryContainer::panel::<DataTableStory>(window, cx),
                     StoryContainer::panel::<TableStory>(window, cx),
                     StoryContainer::panel::<TabsStory>(window, cx),
-                    StoryContainer::panel::<TagStory>(window, cx),
                     StoryContainer::panel::<TextareaStory>(window, cx),
                     StoryContainer::panel::<ThemeColorsStory>(window, cx),
                     StoryContainer::panel::<ToggleStory>(window, cx),
@@ -193,7 +202,7 @@ impl Render for Gallery {
                                                     .flex()
                                                     .items_center()
                                                     .justify_center()
-                                                    .rounded(cx.theme().radius_lg)
+                                                    .rounded(cx.theme().style.radii.lg)
                                                     .bg(cx.theme().primary)
                                                     .text_color(cx.theme().primary_foreground)
                                                     .size_8()
@@ -238,7 +247,7 @@ impl Render for Gallery {
                                             .bg(cx.theme().sidebar_accent)
                                             .rounded_full()
                                             .px_1()
-                                            .when(cx.theme().radius.is_zero(), |this| {
+                                            .when(cx.theme().style.radii.md.is_zero(), |this| {
                                                 this.rounded(px(0.))
                                             })
                                             .flex_1()

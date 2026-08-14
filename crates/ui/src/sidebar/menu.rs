@@ -1,6 +1,8 @@
 use crate::{
-    ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Collapsible, Density, FocusableExt as _, Icon, IconName, Sizable as _,
+    StyledExt,
+    accessibility::accessibility_state,
+    button::Button,
     h_flex,
     menu::{ContextMenuExt, PopupMenu},
     sidebar::SidebarItem,
@@ -8,10 +10,62 @@ use crate::{
 };
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, percentage, prelude::FluentBuilder,
+    ParentElement as _, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Window, div, percentage, prelude::FluentBuilder, px,
 };
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
+
+/// Sidebar-menu geometry resolved from semantic preset density.
+#[derive(Clone, Copy)]
+struct SidebarMenuMetrics {
+    menu_gap: gpui::Pixels,
+    item_height: gpui::Pixels,
+    item_padding_x: gpui::Pixels,
+    item_gap: gpui::Pixels,
+    item_radius: gpui::Pixels,
+    collapsed_edge: gpui::Pixels,
+    subitem_height: gpui::Pixels,
+}
+
+impl SidebarMenuMetrics {
+    /// Resolves Vega, Nova, and Maia geometry without branching on preset identifiers.
+    fn resolve(cx: &App) -> Self {
+        Self::from_style(&cx.theme().style)
+    }
+
+    /// Resolves menu geometry from a semantic Style Preset.
+    fn from_style(style: &crate::StylePreset) -> Self {
+        match style.density {
+            Density::Standard => Self {
+                menu_gap: px(4.),
+                item_height: px(32.),
+                item_padding_x: px(8.),
+                item_gap: px(8.),
+                item_radius: style.radii.md,
+                collapsed_edge: px(32.),
+                subitem_height: px(28.),
+            },
+            Density::Compact => Self {
+                menu_gap: px(0.),
+                item_height: px(32.),
+                item_padding_x: px(8.),
+                item_gap: px(8.),
+                item_radius: style.radii.md,
+                collapsed_edge: px(32.),
+                subitem_height: px(28.),
+            },
+            Density::Comfortable => Self {
+                menu_gap: px(4.),
+                item_height: px(36.),
+                item_padding_x: px(12.),
+                item_gap: px(10.),
+                item_radius: style.radii.lg,
+                collapsed_edge: px(36.),
+                subitem_height: px(28.),
+            },
+        }
+    }
+}
 
 /// Menu for the [`super::Sidebar`]
 #[derive(Clone)]
@@ -69,11 +123,13 @@ impl SidebarItem for SidebarMenu {
     ) -> impl IntoElement {
         let id = id.into();
 
+        let metrics = SidebarMenuMetrics::resolve(cx);
+
         v_flex()
-            .gap_2()
+            .gap(metrics.menu_gap)
             .refine_style(&self.style)
             .children(self.items.into_iter().enumerate().map(|(ix, item)| {
-                let id = SharedString::from(format!("{}-{}", id, ix));
+                let id = ElementId::NamedChild(Arc::new(id.clone()), ix.to_string().into());
                 item.collapsed(self.collapsed)
                     .render(id, window, cx)
                     .into_any_element()
@@ -202,7 +258,196 @@ impl SidebarMenuItem {
     }
 
     fn is_submenu(&self) -> bool {
-        self.children.len() > 0
+        !self.children.is_empty()
+    }
+
+    /// Renders a root or nested item using the matching sidebar geometry contract.
+    fn render_at_depth(
+        self,
+        id: ElementId,
+        depth: usize,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let click_to_open = self.click_to_open;
+        let click_to_toggle = self.click_to_toggle;
+        let default_open = self.default_open;
+        let is_submenu = self.is_submenu();
+        let open_state = if is_submenu {
+            let state_id = ElementId::NamedChild(Arc::new(id.clone()), "open-state".into());
+            Some(window.use_keyed_state(state_id, cx, |_, _| default_open))
+        } else {
+            None
+        };
+        let focus_id = ElementId::NamedChild(Arc::new(id.clone()), "focus-state".into());
+        let focus_handle = window
+            .use_keyed_state(focus_id, cx, |_, cx| cx.focus_handle())
+            .read(cx)
+            .clone();
+        let handler = self.handler.clone();
+        let is_collapsed = self.collapsed;
+        let is_active = self.active;
+        let is_disabled = self.disabled;
+        let is_open = open_state
+            .as_ref()
+            .is_some_and(|state| !is_collapsed && *state.read(cx));
+        let metrics = SidebarMenuMetrics::resolve(cx);
+        let nested = depth > 0;
+        let item_height = if nested {
+            metrics.subitem_height
+        } else {
+            metrics.item_height
+        };
+        let padding_x = if nested {
+            px(8.)
+        } else {
+            metrics.item_padding_x
+        };
+        let item_gap = if nested { px(8.) } else { metrics.item_gap };
+        let item_radius = if nested {
+            cx.theme().style.radii.md
+        } else {
+            metrics.item_radius
+        };
+        let focus_visible = focus_handle.is_focused(window) && window.last_input_was_keyboard();
+
+        let item = h_flex()
+            .id("item")
+            .role(Role::Button)
+            .when_some(open_state.as_ref(), |this, _| this.aria_expanded(is_open))
+            .aria_label(self.label.clone())
+            .w_full()
+            .h(item_height)
+            .min_w(px(0.))
+            .overflow_x_hidden()
+            .flex_shrink_0()
+            .px(padding_x)
+            .gap(item_gap)
+            .rounded(item_radius)
+            .text_sm()
+            .when(!is_disabled, |this| {
+                this.track_focus(&focus_handle.tab_stop(true))
+                    .cursor_pointer()
+                    .hover(|this| {
+                        this.bg(cx.theme().sidebar_accent)
+                            .text_color(cx.theme().sidebar_accent_foreground)
+                    })
+            })
+            .when(is_active, |this| {
+                this.font_medium()
+                    .bg(cx.theme().tokens.sidebar_accent)
+                    .text_color(cx.theme().sidebar_accent_foreground)
+            })
+            .when_some(self.icon.clone(), |this, icon| {
+                this.child(icon.size_4().flex_none())
+            })
+            .when(is_collapsed, |this| {
+                this.size(metrics.collapsed_edge).p_0().justify_center()
+            })
+            .when(!is_collapsed, |this| {
+                this.child(
+                    h_flex()
+                        .flex_1()
+                        .min_w(px(0.))
+                        .gap(item_gap)
+                        .justify_between()
+                        .overflow_x_hidden()
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .overflow_x_hidden()
+                                .whitespace_nowrap()
+                                .text_ellipsis()
+                                .child(self.label.clone()),
+                        )
+                        .when_some(self.suffix.clone(), |this, suffix| {
+                            this.child(div().flex_none().child(suffix(window, cx)))
+                        }),
+                )
+                .when_some(open_state.clone(), |this, open_state| {
+                    this.child(
+                        Button::new("caret")
+                            .xsmall()
+                            .ghost()
+                            .aria_label(if is_open {
+                                "Collapse submenu"
+                            } else {
+                                "Expand submenu"
+                            })
+                            .icon(
+                                Icon::new(IconName::ChevronRight)
+                                    .size_4()
+                                    .when(is_open, |this| this.rotate(percentage(90. / 360.))),
+                            )
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                open_state.update(cx, |is_open, cx| {
+                                    *is_open = !*is_open;
+                                    cx.notify();
+                                });
+                            }),
+                    )
+                })
+            })
+            .when(is_disabled, |this| this.opacity(0.5))
+            .when(!is_disabled, |this| {
+                this.on_click({
+                    let open_state = open_state.clone();
+                    move |event, window, cx| {
+                        if click_to_open {
+                            if let Some(state) = &open_state {
+                                state.update(cx, |is_open, cx| {
+                                    *is_open = true;
+                                    cx.notify();
+                                });
+                            }
+                        } else if click_to_toggle {
+                            if let Some(state) = &open_state {
+                                state.update(cx, |is_open, cx| {
+                                    *is_open = !*is_open;
+                                    cx.notify();
+                                });
+                            }
+                        }
+                        handler(event, window, cx);
+                    }
+                })
+            })
+            .focus_ring(focus_visible, px(0.), window, cx);
+
+        let item = if let Some(context_menu) = self.context_menu {
+            item.context_menu(move |menu, window, cx| context_menu(menu, window, cx))
+                .into_any_element()
+        } else {
+            item.into_any_element()
+        };
+        let item = accessibility_state(item, false, false, is_disabled);
+
+        div()
+            .id(id.clone())
+            .w_full()
+            .child(item)
+            .when(is_open, |this| {
+                this.child(
+                    v_flex()
+                        .id("submenu")
+                        .border_l_1()
+                        .border_color(cx.theme().sidebar_border)
+                        .gap_1()
+                        .ml_3p5()
+                        .pl_2p5()
+                        .py_0p5()
+                        .children(self.children.into_iter().enumerate().map(|(index, item)| {
+                            let child_id = ElementId::NamedChild(
+                                Arc::new(id.clone()),
+                                index.to_string().into(),
+                            );
+                            item.render_at_depth(child_id, depth + 1, window, cx)
+                        })),
+                )
+            })
+            .into_any_element()
     }
 
     /// Set the context menu for the menu item.
@@ -235,151 +480,26 @@ impl SidebarItem for SidebarMenuItem {
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        let click_to_open = self.click_to_open;
-        let click_to_toggle = self.click_to_toggle;
-        let default_open = self.default_open;
-        let id = id.into();
-        let is_submenu = self.is_submenu();
-        let open_state = if is_submenu {
-            Some(window.use_keyed_state(id.clone(), cx, |_, _| default_open))
-        } else {
-            None
-        };
-        let handler = self.handler.clone();
-        let is_collapsed = self.collapsed;
-        let is_active = self.active;
-        let is_hoverable = !is_active && !self.disabled;
-        let is_disabled = self.disabled;
-        let is_open = open_state
-            .as_ref()
-            .map_or(false, |s| !is_collapsed && *s.read(cx));
+        self.render_at_depth(id.into(), 0, window, cx)
+    }
+}
 
-        div()
-            .id(id.clone())
-            .w_full()
-            .child(
-                h_flex()
-                    .size_full()
-                    .id("item")
-                    .overflow_x_hidden()
-                    .flex_shrink_0()
-                    .p_2()
-                    .gap_x_2()
-                    .rounded(cx.theme().radius)
-                    .text_sm()
-                    .when(is_hoverable, |this| {
-                        this.hover(|this| {
-                            this.bg(cx.theme().sidebar_accent.opacity(0.8))
-                                .text_color(cx.theme().sidebar_accent_foreground)
-                        })
-                    })
-                    .when(is_active, |this| {
-                        this.font_medium()
-                            .bg(cx.theme().tokens.sidebar_accent)
-                            .text_color(cx.theme().sidebar_accent_foreground)
-                    })
-                    .when_some(self.icon.clone(), |this, icon| this.child(icon))
-                    .when(is_collapsed, |this| {
-                        this.justify_center().when(is_active, |this| {
-                            this.bg(cx.theme().tokens.sidebar_accent)
-                                .text_color(cx.theme().sidebar_accent_foreground)
-                        })
-                    })
-                    .when(!is_collapsed, |this| {
-                        this.h_7()
-                            .child(
-                                h_flex()
-                                    .flex_1()
-                                    .gap_x_2()
-                                    .justify_between()
-                                    .overflow_x_hidden()
-                                    .child(
-                                        h_flex()
-                                            .flex_1()
-                                            .overflow_x_hidden()
-                                            .child(self.label.clone()),
-                                    )
-                                    .when_some(self.suffix.clone(), |this, suffix| {
-                                        this.child(suffix(window, cx).into_any_element())
-                                    }),
-                            )
-                            .when_some(open_state.clone(), |this, open_state| {
-                                this.child(
-                                    Button::new("caret")
-                                        .xsmall()
-                                        .ghost()
-                                        .icon(
-                                            Icon::new(IconName::ChevronRight)
-                                                .size_4()
-                                                .when(is_open, |this| {
-                                                    this.rotate(percentage(90. / 360.))
-                                                }),
-                                        )
-                                        .on_click({
-                                            move |_, _, cx| {
-                                                // Avoid trigger item click, just expand/collapse submenu
-                                                cx.stop_propagation();
-                                                open_state.update(cx, |is_open, cx| {
-                                                    *is_open = !*is_open;
-                                                    cx.notify();
-                                                })
-                                            }
-                                        }),
-                                )
-                            })
-                    })
-                    .when(is_disabled, |this| {
-                        this.text_color(cx.theme().muted_foreground)
-                    })
-                    .when(!is_disabled, |this| {
-                        this.on_click({
-                            let open_state = open_state.clone();
-                            move |ev, window, cx| {
-                                if click_to_open {
-                                    if let Some(ref s) = open_state {
-                                        s.update(cx, |is_open: &mut bool, cx| {
-                                            *is_open = true;
-                                            cx.notify();
-                                        });
-                                    }
-                                } else if click_to_toggle {
-                                    if let Some(ref s) = open_state {
-                                        s.update(cx, |is_open: &mut bool, cx| {
-                                            *is_open = !*is_open;
-                                            cx.notify();
-                                        });
-                                    }
-                                }
-                                handler(ev, window, cx)
-                            }
-                        })
-                    })
-                    .map(|this| {
-                        if let Some(context_menu) = self.context_menu {
-                            this.context_menu(move |menu, window, cx| {
-                                context_menu(menu, window, cx)
-                            })
-                            .into_any_element()
-                        } else {
-                            this.into_any_element()
-                        }
-                    }),
-            )
-            .when(is_open, |this| {
-                this.child(
-                    v_flex()
-                        .id("submenu")
-                        .border_l_1()
-                        .border_color(cx.theme().sidebar_border)
-                        .gap_1()
-                        .ml_3p5()
-                        .pl_2p5()
-                        .py_0p5()
-                        .children(self.children.into_iter().enumerate().map(|(ix, item)| {
-                            let id = format!("{}-{}", id, ix);
-                            item.render(id, window, cx).into_any_element()
-                        })),
-                )
-            })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sidebar_menu_metrics_follow_semantic_density() {
+        let vega = SidebarMenuMetrics::from_style(&crate::StylePreset::vega());
+        let nova = SidebarMenuMetrics::from_style(&crate::StylePreset::nova());
+        let maia = SidebarMenuMetrics::from_style(&crate::StylePreset::maia());
+
+        assert_eq!(vega.menu_gap, px(4.));
+        assert_eq!(vega.item_height, px(32.));
+        assert_eq!(nova.menu_gap, px(0.));
+        assert_eq!(nova.item_height, px(32.));
+        assert_eq!(maia.menu_gap, px(4.));
+        assert_eq!(maia.item_height, px(36.));
+        assert_eq!(maia.item_padding_x, px(12.));
     }
 }

@@ -1,193 +1,166 @@
 ---
 title: Sheet
-description: 从屏幕边缘滑出的内容面板组件。
+description: 从窗口边缘滑入的模态内容面板。
 ---
 
 # Sheet
 
-Sheet 是一种从屏幕边缘滑出的面板组件，也常被用作侧栏、抽屉或临时内容面板。它适合承载导航菜单、表单、设置项和辅助信息，而不会直接占用主视图空间。
+Sheet 用于在窗口边缘显示辅助导航、表单或设置内容。组件支持四个方向、焦点陷阱、响应式侧边尺寸、滚动、背景关闭、退出动效和焦点恢复。
 
 ## 导入
 
 ```rust
-use gpui_component::WindowExt;
-use gpui_component::Placement;
+use gpui_component::{Placement, WindowExt};
 ```
 
-## 用法
+窗口的第一层视图必须是 [`Root`](/docs/root)。使用自定义 Root 组合时，需要渲染
+`Root::render_sheet_layer`。
 
-### 在根视图中渲染 Sheet 图层
-
-如果应用要支持 Sheet，需要在根视图中渲染 sheet layer。
-
-[Root::render_sheet_layer](https://docs.rs/gpui-component/latest/gpui_component/struct.Root.html#method.render_sheet_layer) 会把当前激活的 Sheet 渲染到应用内容之上。
-
-```rust
-use gpui_component::TitleBar;
-
-struct MyApp {
-    view: AnyView,
-}
-
-impl Render for MyApp {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sheet_layer = Root::render_sheet_layer(window, cx);
-
-        div()
-            .size_full()
-            .child(
-                v_flex()
-                    .size_full()
-                    .child(TitleBar::new())
-                    .child(div().flex_1().overflow_hidden().child(self.view.clone())),
-            )
-            .children(sheet_layer)
-    }
-}
-```
-
-### 基础 Sheet
+## 基础用法
 
 ```rust
 window.open_sheet(cx, |sheet, _, _| {
     sheet
-        .title("Navigation")
-        .child("Sheet content goes here")
+        .title("编辑个人资料")
+        .description("修改资料后保存。")
+        .child(profile_form)
+        .footer(
+            v_flex()
+                .gap_2()
+                .child(Button::new("save").label("保存修改").w_full())
+                .child(
+                    Button::new("cancel")
+                        .outline()
+                        .label("取消")
+                        .w_full()
+                        .on_click(|_, window, cx| window.close_sheet(cx)),
+                ),
+        )
 })
 ```
 
-### 不同方向
+`open_sheet` 默认从右侧打开。左右 Sheet 默认使用可用宽度的 75%，最大为 384px；上下
+Sheet 默认使用内容高度。
+
+## 方向与尺寸
 
 ```rust
 window.open_sheet_at(Placement::Left, cx, |sheet, _, _| {
-    sheet.title("Left Sheet")
-})
+    sheet.title("导航").child(navigation)
+});
 
-window.open_sheet_at(Placement::Right, cx, |sheet, _, _| {
-    sheet.title("Right Sheet")
-})
+window.open_sheet_at(Placement::Bottom, cx, |sheet, _, _| {
+    sheet
+        .title("活动记录")
+        .description("最近的工作区活动")
+        .size(px(320.))
+        .child(activity)
+});
 ```
 
-### 自定义尺寸
+`size` 覆盖左右方向的宽度或上下方向的高度。Sheet 不提供拖拽调整尺寸功能。
+
+## Header 组合
+
+文字标题和描述会自动成为可访问名称与描述：
+
+```rust
+sheet
+    .title("应用设置")
+    .description("配置外观和通知")
+```
+
+自定义元素需要同时提供明确的辅助功能信息：
+
+```rust
+sheet
+    .title_element(custom_title)
+    .description_element(custom_description)
+    .aria_label("应用设置")
+    .aria_description("配置外观和通知")
+```
+
+标题和描述都不存在时，不会生成空白 Header。
+
+## Close 按钮与背景层
 
 ```rust
 window.open_sheet(cx, |sheet, _, _| {
     sheet
-        .title("Wide Sheet")
-        .size(px(500.))
-        .child("This sheet is 500px wide")
-})
-```
-
-### 表单内容
-
-```rust
-let input = cx.new(|cx| InputState::new(window, cx));
-let date = cx.new(|cx| DatePickerState::new(window, cx));
-
-window.open_sheet(cx, |sheet, _, _| {
-    sheet
-        .title("User Profile")
-        .child(
-            v_flex()
-                .gap_4()
-                .child("Enter your information:")
-                .child(Input::new(&input).placeholder("Full Name"))
-                .child(DatePicker::new(&date).placeholder("Date of Birth"))
-        )
-        .footer(
-            h_flex()
-                .gap_3()
-                .child(Button::new("save").primary().label("Save"))
-                .child(Button::new("cancel").label("Cancel"))
-        )
-})
-```
-
-### Overlay 与关闭行为
-
-```rust
-window.open_sheet(cx, |sheet, _, _| {
-    sheet
-        .title("Settings")
+        .title("隐藏关闭按钮")
+        .show_close_button(false)
         .overlay(true)
         .overlay_closable(true)
-        .child("Sheet settings content")
+        .child("使用 Escape 或点击背景层关闭。")
 })
 ```
 
-### 可调整大小
+- `show_close_button(false)` 隐藏图标按钮，并且不会留下空白标题行。
+- `overlay(false)` 只隐藏背景绘制，仍然保留模态遮挡和焦点陷阱。
+- `overlay_closable` 只控制可见背景层的主键点击关闭。
+- Escape 可以关闭 Sheet。
+- `on_close` 监听 Escape、背景点击和内置关闭按钮产生的用户关闭操作；直接调用
+  `window.close_sheet(cx)` 属于程序化关闭，不触发该回调。
+
+## 初始焦点
 
 ```rust
-window.open_sheet(cx, |sheet, _, _| {
+let name_focus = name_input.read(cx).focus_handle(cx);
+
+window.open_sheet(cx, move |sheet, _, _| {
     sheet
-        .title("Resizable Panel")
-        .resizable(true)
-        .size(px(300.))
-        .child("You can resize this sheet by dragging the edge")
+        .title("编辑个人资料")
+        .initial_focus(name_focus.clone())
+        .child(Input::new(&name_input))
 })
 ```
 
-### 自定义位置偏移
+未设置 `initial_focus` 时，Sheet 会聚焦第一个有效 tab stop；没有可聚焦子元素时，焦点保留在
+Dialog surface。退出动效完成后，焦点返回此前获得焦点的控件。
+
+## 原生 TitleBar 安全区
+
+与 Web 组件不同，Sheet 会保留桌面窗口 TitleBar 的拖拽区域。需要修改时，在打开 Sheet 前配置
+Theme：
 
 ```rust
-window.open_sheet(cx, |sheet, _, _| {
-    sheet
-        .title("Below Title Bar")
-        .margin_top(px(32.))
-        .child("This sheet appears below the title bar")
-})
+theme.sheet.margin_top = px(32.);
 ```
 
-### 自定义样式
+Sheet 不提供单独的 `margin_top` builder。
+
+## 自定义样式
+
+`Sheet` 实现了 `Styled`。样式 refinement 只作用于 Sheet surface，不再重复应用到 Body：
 
 ```rust
 window.open_sheet(cx, |sheet, _, cx| {
     sheet
-        .title("Styled Sheet")
+        .title("自定义 Sheet")
         .bg(cx.theme().accent)
         .text_color(cx.theme().accent_foreground)
         .border_color(cx.theme().primary)
-        .child("Custom styled sheet content")
+        .child(content)
 })
 ```
 
-### 主动关闭
+## API
 
-```rust
-Button::new("close")
-    .label("Close Sheet")
-    .on_click(|_, window, cx| {
-        window.close_sheet(cx);
-    })
+| 方法 | 说明 |
+|---|---|
+| `title(text)` | 设置语义标题和默认可访问名称 |
+| `title_element(element)` | 设置自定义标题内容 |
+| `description(text)` | 设置语义描述 |
+| `description_element(element)` | 设置自定义描述内容 |
+| `aria_label(text)` | 覆盖可访问名称 |
+| `aria_description(text)` | 覆盖可访问描述 |
+| `child(element)` | 添加可滚动 Body 内容 |
+| `footer(element)` | 设置 Footer 内容 |
+| `size(length)` | 覆盖对应方向轴上的宽度或高度 |
+| `show_close_button(bool)` | 显示或隐藏关闭按钮 |
+| `overlay(bool)` | 显示或隐藏背景绘制 |
+| `overlay_closable(bool)` | 启用背景点击关闭 |
+| `initial_focus(handle)` | 设置首选初始焦点 |
+| `on_close(handler)` | 监听用户发起的关闭操作 |
 
-window.close_sheet(cx);
-```
-
-## API 参考
-
-### Window 扩展
-
-- `open_sheet(cx, fn)` 默认在右侧打开
-- `open_sheet_at(placement, cx, fn)` 在指定方向打开
-- `close_sheet(cx)` 关闭当前 Sheet
-
-### 常用 Builder 方法
-
-- `title(str)`
-- `child(el)`
-- `footer(el)`
-- `size(px)`
-- `margin_top(px)`
-- `resizable(bool)`
-- `overlay(bool)`
-- `overlay_closable(bool)`
-- `on_close(fn)`
-
-## 最佳实践
-
-1. 左右方向更适合导航和设置面板
-2. 上下方向更适合临时辅助内容
-3. 尽量提供清晰标题和明显关闭路径
-4. 长内容建议分组排版
-5. 对于复杂内容，尽量延迟加载内部数据
+[`Root`]: /docs/root

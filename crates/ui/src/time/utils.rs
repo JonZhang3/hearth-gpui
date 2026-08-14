@@ -1,10 +1,12 @@
-use chrono::{Datelike, Duration, NaiveDate};
+use chrono::{Datelike, Duration, NaiveDate, Weekday};
 
+#[cfg(test)]
 trait NaiveDateExt {
     fn days_in_month(&self) -> i32;
     fn is_leap_year(&self) -> bool;
 }
 
+#[cfg(test)]
 impl NaiveDateExt for chrono::NaiveDate {
     fn days_in_month(&self) -> i32 {
         let month = self.month();
@@ -28,68 +30,34 @@ impl NaiveDateExt for chrono::NaiveDate {
     }
 }
 
-pub(crate) fn days_in_month(year: i32, month: u32) -> Vec<Vec<NaiveDate>> {
-    let mut year = year;
-    let mut month = month;
-    if month > 12 {
-        year += 1;
-        month = 1;
-    }
-    if month < 1 {
-        year -= 1;
-        month = 12;
-    }
+pub(crate) fn days_in_month(year: i32, month: i32, week_starts_on: Weekday) -> Vec<Vec<NaiveDate>> {
+    // Normalize arbitrary positive and negative month offsets before constructing the date.
+    let month_index = year * 12 + month - 1;
+    let normalized_year = month_index.div_euclid(12);
+    let normalized_month = month_index.rem_euclid(12) as u32 + 1;
+    let first = NaiveDate::from_ymd_opt(normalized_year, normalized_month, 1)
+        .expect("normalized calendar month must be valid");
 
-    let date = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
-    let num_days = date.days_in_month();
-    let start_weekday = date.weekday().num_days_from_sunday();
+    let first_weekday = first.weekday().num_days_from_monday() as i64;
+    let week_start = week_starts_on.num_days_from_monday() as i64;
+    let leading_days = (first_weekday - week_start).rem_euclid(7);
+    let grid_start = first - Duration::days(leading_days);
 
-    // Get the days in the month, 2023-02 will returns
-    // "29|30|31| 1| 2| 3| 4",
-    // " 5| 6| 7| 8| 9|10|11",
-    // "12|13|14|15|16|17|18",
-    // "19|20|21|22|23|24|25",
-    // "26|27|28| 1| 2| 3| 4",
-    let mut days = vec![];
-    for n in 0..5 {
-        let mut week_days = vec![];
-        for weekday in 0..7 {
-            let (mut y, mut m) = (year, month);
-
-            // If the day is less than the start weekday, we need to go back to the previous month.
-            if n == 0 && weekday < start_weekday {
-                m = if m == 1 { 12 } else { m - 1 };
-                y = if m == 1 { year - 1 } else { y };
-            }
-
-            // If start_weekday is 3, and n is 0 and weekday is 3, then day is 1.
-            // If start_weekday is 3, and n is 1 and weekday is 4, then day is 9.
-            let day = n * 7 + weekday as i32 - start_weekday as i32;
-
-            // If the day is greater than the number of days in the month, we need to go to the next month.
-            if day > num_days {
-                m = if m == 12 { 1 } else { m + 1 };
-                y = if m == 1 { year + 1 } else { y };
-            }
-
-            #[allow(clippy::expect_fun_call)]
-            let date = date
-                .checked_add_signed(Duration::days(day as i64))
-                .expect(&format!("invalid date {}-{} days {}", y, m, day));
-            week_days.push(date);
-        }
-
-        days.push(week_days);
-    }
-
-    days
+    // Six rows keep Calendar and DatePicker geometry stable for every month.
+    (0..6)
+        .map(|week| {
+            (0..7)
+                .map(|day| grid_start + Duration::days((week * 7 + day) as i64))
+                .collect()
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, NaiveDate};
+    use chrono::{Datelike, NaiveDate, Weekday};
 
-    use super::{days_in_month, NaiveDateExt};
+    use super::{NaiveDateExt, days_in_month};
 
     #[test]
     fn test_days_in_month() {
@@ -115,7 +83,7 @@ mod tests {
     fn test_days() {
         #[track_caller]
         fn assert_case(date: NaiveDate, expected: Vec<&str>) {
-            let out = days_in_month(date.year(), date.month())
+            let out = days_in_month(date.year(), date.month() as i32, Weekday::Sun)
                 .iter()
                 .map(|week| {
                     week.iter()
@@ -144,6 +112,7 @@ mod tests {
                 "11|12|13|14|15|16|17",
                 "18|19|20|21|22|23|24",
                 "25|26|27|28|29|30|31",
+                "9-1|9-2|9-3|9-4|9-5|9-6|9-7",
             ],
         );
         assert_case(
@@ -154,6 +123,7 @@ mod tests {
                 "12|13|14|15|16|17|18",
                 "19|20|21|22|23|24|25",
                 "26|27|28|29|30|31|2-1",
+                "2-2|2-3|2-4|2-5|2-6|2-7|2-8",
             ],
         );
 
@@ -165,6 +135,7 @@ mod tests {
                 "11|12|13|14|15|16|17",
                 "18|19|20|21|22|23|24",
                 "25|26|27|28|29|3-1|3-2",
+                "3-3|3-4|3-5|3-6|3-7|3-8|3-9",
             ],
         );
         assert_case(
@@ -175,7 +146,15 @@ mod tests {
                 "12|13|14|15|16|17|18",
                 "19|20|21|22|23|24|25",
                 "26|27|28|3-1|3-2|3-3|3-4",
+                "3-5|3-6|3-7|3-8|3-9|3-10|3-11",
             ],
         );
+    }
+
+    #[test]
+    fn supports_monday_week_start_and_arbitrary_month_offsets() {
+        let weeks = days_in_month(2024, 14, Weekday::Mon);
+        assert_eq!(weeks[0][0], NaiveDate::from_ymd_opt(2025, 1, 27).unwrap());
+        assert_eq!(weeks[5][6], NaiveDate::from_ymd_opt(2025, 3, 9).unwrap());
     }
 }

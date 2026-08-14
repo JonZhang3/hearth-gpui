@@ -1,10 +1,11 @@
 use gpui::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    StatefulInteractiveElement, StyleRefinement, Styled, Window, div, relative,
+    AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
+    prelude::FluentBuilder as _, relative,
 };
 
 use crate::{
     ActiveTheme as _, StyledExt as _,
+    button::Button,
     dialog::{CancelDialog, ConfirmDialog},
     h_flex,
 };
@@ -15,8 +16,8 @@ use crate::{
 ///
 /// ```ignore
 /// DialogFooter::new()
-///     .child(DialogClose::new().child(Button::new("cancel").label("Cancel")))
-///     .child(Button::new("confirm").label("Confirm"))
+///     .child(DialogClose::new(Button::new("cancel").label("Cancel")))
+///     .child(DialogAction::new(Button::new("confirm").label("Confirm")))
 /// ```
 #[derive(IntoElement)]
 pub struct DialogFooter {
@@ -25,8 +26,12 @@ pub struct DialogFooter {
 }
 
 impl DialogFooter {
+    /// Creates an end-aligned action row using the active modal metrics.
     pub fn new() -> Self {
-        Self { style: StyleRefinement::default(), children: Vec::new() }
+        Self {
+            style: StyleRefinement::default(),
+            children: Vec::new(),
+        }
     }
 }
 
@@ -44,76 +49,65 @@ impl Styled for DialogFooter {
 
 impl RenderOnce for DialogFooter {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let metrics = cx.theme().style.modals;
+
         h_flex()
             .gap_2()
             .justify_end()
             .line_height(relative(1.))
-            .rounded_b(cx.theme().radius_lg)
+            .when(metrics.footer_separated, |this| {
+                this.ml(-metrics.padding)
+                    .mr(-metrics.padding)
+                    .mb(-metrics.padding)
+                    .p(metrics.footer_padding)
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+            })
+            .when(metrics.footer_tinted, |this| {
+                this.bg(cx.theme().muted.opacity(0.5))
+                    .rounded_b(cx.theme().style.radii.xl)
+            })
             .refine_style(&self.style)
             .children(self.children)
     }
 }
 
-pub trait DialogFooterButton {
-    fn is_cancel(&self) -> bool {
-        false
-    }
-
-    fn is_action(&self) -> bool {
-        false
-    }
-}
-
 #[derive(IntoElement)]
 pub struct DialogClose {
-    children: Vec<AnyElement>,
+    button: Button,
 }
 
 impl DialogClose {
-    pub fn new() -> Self {
-        Self { children: Vec::new() }
-    }
-}
-
-impl ParentElement for DialogClose {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements);
+    /// Creates a cancellation control without adding a layout wrapper.
+    pub fn new(button: Button) -> Self {
+        Self { button }
     }
 }
 
 impl RenderOnce for DialogClose {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        div()
-            .size_full()
-            .id("dialog-close")
-            .on_click(move |_, window, cx| window.dispatch_action(Box::new(CancelDialog), cx))
-            .children(self.children)
+        self.button.append_on_click(move |_, window, cx| {
+            window.dispatch_action(Box::new(CancelDialog), cx)
+        })
     }
 }
 
 #[derive(IntoElement)]
 pub struct DialogAction {
-    children: Vec<AnyElement>,
+    button: Button,
 }
 
 impl DialogAction {
-    pub fn new() -> Self {
-        Self { children: Vec::new() }
-    }
-}
-
-impl ParentElement for DialogAction {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.children.extend(elements);
+    /// Creates a confirmation control without adding a layout wrapper.
+    pub fn new(button: Button) -> Self {
+        Self { button }
     }
 }
 
 impl RenderOnce for DialogAction {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        div()
-            .size_full()
-            .id("dialog-action")
-            .on_click(move |_, window, cx| window.dispatch_action(Box::new(ConfirmDialog), cx))
-            .children(self.children)
+        self.button.append_on_click(move |_, window, cx| {
+            window.dispatch_action(Box::new(ConfirmDialog), cx)
+        })
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme, Sizable, Size,
+    ActiveTheme, Sizable, Size, StyledExt as _,
     actions::{
         Cancel, SelectDown, SelectFirst, SelectLast, SelectNextColumn, SelectPageDown,
         SelectPageUp, SelectPrevColumn, SelectUp,
@@ -8,7 +8,8 @@ use crate::{
 };
 use gpui::{
     App, Edges, Entity, Focusable, InteractiveElement, IntoElement, KeyBinding, ParentElement,
-    RenderOnce, Styled, Window, div, prelude::FluentBuilder,
+    RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
+    Window, div, prelude::FluentBuilder,
 };
 
 const CONTEXT: &'static str = "DataTable";
@@ -90,6 +91,8 @@ impl Default for TableOptions {
 pub struct DataTable<D: TableDelegate> {
     state: Entity<TableState<D>>,
     options: TableOptions,
+    aria_label: Option<SharedString>,
+    style: StyleRefinement,
 }
 
 impl<D> DataTable<D>
@@ -101,7 +104,15 @@ where
         Self {
             state: state.clone(),
             options: TableOptions::default(),
+            aria_label: None,
+            style: StyleRefinement::default(),
         }
+    }
+
+    /// Set the accessible name announced for the interactive data grid.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
     }
 
     /// Set to use stripe style of the table, default to false.
@@ -127,6 +138,15 @@ where
     }
 }
 
+impl<D> Styled for DataTable<D>
+where
+    D: TableDelegate,
+{
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 impl<D> Sizable for DataTable<D>
 where
     D: TableDelegate,
@@ -144,13 +164,25 @@ where
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let bordered = self.options.bordered;
         let focus_handle = self.state.focus_handle(cx);
+        let (rows_count, columns_count) = {
+            let state = self.state.read(cx);
+            (
+                state.accessibility_row_count(cx),
+                state.delegate().columns_count(cx),
+            )
+        };
         self.state.update(cx, |state, _| {
             state.options = self.options;
         });
 
         div()
-            .id("table")
+            .id(("data-table", self.state.entity_id()))
+            .role(Role::Grid)
+            .aria_row_count(rows_count)
+            .aria_column_count(columns_count)
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
             .size_full()
+            .text_sm()
             .key_context(CONTEXT)
             .track_focus(&focus_handle)
             .on_action(window.listener_for(&self.state, TableState::action_cancel))
@@ -164,10 +196,11 @@ where
             .on_action(window.listener_for(&self.state, TableState::action_select_page_down))
             .bg(cx.theme().tokens.table)
             .when(bordered, |this| {
-                this.rounded(cx.theme().radius)
+                this.rounded(cx.theme().style.radii.md)
                     .border_1()
                     .border_color(cx.theme().border)
             })
+            .refine_style(&self.style)
             .child(self.state)
     }
 }

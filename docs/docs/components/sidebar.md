@@ -7,6 +7,10 @@ description: A composable, themeable and customizable sidebar component for navi
 
 A flexible sidebar component that provides navigation structure for applications. Features collapsible states, nested menu items, header and footer sections, and responsive design. Perfect for creating application navigation panels, admin dashboards, and complex hierarchical interfaces.
 
+Sidebar menu geometry follows the active Style Preset. Menu items support keyboard activation,
+focus-visible treatment, disabled accessibility state, active styling, label truncation, and nested
+disclosure through the same semantic contracts used by the rest of the component library.
+
 ## Import
 
 ```rust
@@ -140,14 +144,15 @@ Sidebar::new()
 ### With Badges and Suffixes
 
 ```rust
-use gpui_component::{Badge, Switch};
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    switch::Switch,
+};
 
 SidebarMenuItem::new("Notifications")
     .icon(IconName::Bell)
     .suffix(
-        Badge::new()
-            .count(5)
-            .child("5")
+        Badge::new().secondary().child("5")
     )
 
 SidebarMenuItem::new("Dark Mode")
@@ -168,7 +173,7 @@ SidebarMenuItem::new("Settings")
 ```rust
 Sidebar::new()
     .side(Side::Right)
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Right Panel")
@@ -235,7 +240,7 @@ SidebarMenu::new()
 
 ```rust
 Sidebar::new()
-    .width(280)  // Custom width in pixels
+    .w(280)  // Custom width in pixels
     .border_width(2)  // Custom border width
     .header(
         SidebarHeader::new()
@@ -295,7 +300,7 @@ let is_mobile = window_width < 768;
 
 Sidebar::new()
     .collapsed(is_mobile || manually_collapsed)
-    .width(if is_mobile { 60 } else { 240 })
+    .w(if is_mobile { 60 } else { 240 })
     .header(
         SidebarHeader::new()
             .child(
@@ -397,7 +402,7 @@ Sidebar::new()
                     .child(
                         SidebarMenuItem::new("Analytics")
                             .icon(IconName::TrendingUp)
-                            .suffix(Badge::new().count(2))
+                            .suffix(Badge::new().secondary().child("2"))
                     )
             )
     )
@@ -413,7 +418,7 @@ Sidebar::new()
                     .child(
                         SidebarMenuItem::new("Orders")
                             .icon(IconName::ShoppingCart)
-                            .suffix(Badge::new().dot().variant_destructive())
+                            .suffix(Badge::new().destructive().child("3"))
                     )
                     .child(
                         SidebarMenuItem::new("Products")
@@ -437,7 +442,7 @@ Sidebar::new()
 
 ```rust
 Sidebar::new()
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Settings")

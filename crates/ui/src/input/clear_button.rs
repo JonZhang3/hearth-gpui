@@ -1,15 +1,14 @@
 use gpui::App;
+use rust_i18n::t;
 
-use crate::{
-    button::{Button, ButtonVariants as _},
-    Icon, IconName, Sizable as _,
-};
+use crate::{Icon, IconName, Sizable as _, button::Button};
 
 #[inline]
 pub(crate) fn clear_button(_: &App) -> Button {
     Button::new("clean")
+        .aria_label(t!("Common.Clear"))
         .icon(Icon::new(IconName::Close))
-        .text()
+        .ghost()
         .xsmall()
         .tab_stop(false)
 }

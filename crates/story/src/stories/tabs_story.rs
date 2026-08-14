@@ -1,11 +1,11 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window,
+    Styled, Window, px,
 };
 
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable, Size,
-    button::{Button, ButtonGroup, ButtonVariants},
+    button::{Button, ButtonGroup},
     checkbox::Checkbox,
     h_flex,
     tab::{Tab, TabBar},
@@ -89,6 +89,21 @@ impl TabsStory {
         }
         cx.notify();
     }
+
+    /// Removes one dynamic tab without changing selection through event bubbling.
+    fn remove_dynamic_tab(&mut self, index: usize, cx: &mut Context<Self>) {
+        if self.dynamic_tabs.len() <= 1 || index >= self.dynamic_tabs.len() {
+            return;
+        }
+
+        self.dynamic_tabs.remove(index);
+        if self.dynamic_active_tab_ix > index {
+            self.dynamic_active_tab_ix -= 1;
+        } else if self.dynamic_active_tab_ix >= self.dynamic_tabs.len() {
+            self.dynamic_active_tab_ix = self.dynamic_tabs.len() - 1;
+        }
+        cx.notify();
+    }
 }
 
 impl Focusable for TabsStory {
@@ -108,7 +123,6 @@ impl Render for TabsStory {
                     .child(
                         ButtonGroup::new("toggle-size")
                             .outline()
-                            .compact()
                             .child(
                                 Button::new("xsmall")
                                     .label("XSmall")
@@ -129,12 +143,18 @@ impl Render for TabsStory {
                                     .label("Large")
                                     .selected(self.size == Size::Large),
                             )
+                            .child(
+                                Button::new("custom")
+                                    .label("Custom 44")
+                                    .selected(self.size == Size::Size(px(44.))),
+                            )
                             .on_click(cx.listener(|this, selecteds: &Vec<usize>, window, cx| {
                                 let size = match selecteds[0] {
                                     0 => Size::XSmall,
                                     1 => Size::Small,
                                     2 => Size::Medium,
                                     3 => Size::Large,
+                                    4 => Size::Size(px(44.)),
                                     _ => unreachable!(),
                                 };
                                 this.set_size(size, window, cx);
@@ -149,6 +169,11 @@ impl Render for TabsStory {
                                 cx.notify();
                             })),
                     ),
+            )
+            .child(
+                section("Keyboard navigation")
+                    .max_w_md()
+                    .child("Focus a tab, then use Left/Right, Home/End, Enter, or Space."),
             )
             .child(
                 section("Tabs").max_w_md().child(
@@ -285,19 +310,14 @@ impl Render for TabsStory {
                     .child(
                         h_flex()
                             .gap_2()
-                            .child(
-                                Button::new("add-tab")
-                                    .outline()
-                                    .compact()
-                                    .label("Add Tab")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.add_dynamic_tab(window, cx);
-                                    })),
-                            )
+                            .child(Button::new("add-tab").outline().label("Add Tab").on_click(
+                                cx.listener(|this, _, window, cx| {
+                                    this.add_dynamic_tab(window, cx);
+                                }),
+                            ))
                             .child(
                                 Button::new("remove-tab")
                                     .outline()
-                                    .compact()
                                     .label("Remove Last")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.remove_last_dynamic_tab(window, cx);
@@ -323,7 +343,10 @@ impl Render for TabsStory {
                                         Button::new(format!("dynamic-tab-close-{id}"))
                                             .ghost()
                                             .xsmall()
-                                            .icon(IconName::Close),
+                                            .icon(IconName::Close)
+                                            .on_click(cx.listener(move |this, _, _, cx| {
+                                                this.remove_dynamic_tab(ix, cx);
+                                            })),
                                     )
                                     .selected(self.dynamic_active_tab_ix == ix)
                             })),

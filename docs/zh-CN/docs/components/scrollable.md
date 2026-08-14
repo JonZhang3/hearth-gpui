@@ -27,7 +27,7 @@ use gpui_component::{
 - `overflow_y_scrollbar()`：按需添加纵向滚动条。
 
 ```rust
-use gpui::{div, Axis};
+use gpui::div;
 use gpui_component::ScrollableElement;
 
 div()
@@ -36,6 +36,14 @@ div()
     .child("Your content here")
     .overflow_scrollbar()
 ```
+
+每个独立滚动区域都应设置稳定且唯一的 `.id(...)`。该 ID 会保留在源元素上，
+用于隔离滚动位置和滚动条交互状态；在循环中创建滚动区域时，应将条目 key
+纳入 ID。
+
+滚动条保留 16 px 的桌面指针命中区域，同时绘制更窄的语义化轨道和滑块。
+滑块圆角与自动隐藏时长来自当前 Style Preset，颜色来自当前 Theme。只有内容
+确实溢出的轴才会绘制滚动条。
 
 ### 纵向滚动
 

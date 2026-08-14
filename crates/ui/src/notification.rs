@@ -9,16 +9,61 @@ use std::{
 use gpui::{
     Anchor, Animation, AnimationExt, AnyElement, App, AppContext, ClickEvent, Context,
     DismissEvent, ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement,
-    ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, Subscription, Window, div, prelude::FluentBuilder, px,
+    ParentElement as _, Pixels, Render, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Subscription, Window, div, prelude::FluentBuilder, px,
 };
+use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
-    animation::cubic_bezier,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Density, Disableable as _, Edges, Icon, IconName, Sizable as _, StyledExt,
+    TITLE_BAR_HEIGHT,
+    animation::{OverlayLifecycle, OverlayPhase, effective_motion_duration},
+    button::Button,
     h_flex, v_flex,
 };
+
+/// Component-local geometry derived from semantic Style Preset density.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct NotificationMetrics {
+    width: Pixels,
+    padding_x: Pixels,
+    padding_y: Pixels,
+    content_gap: Pixels,
+    stack_gap: Pixels,
+    motion_offset: Pixels,
+}
+
+impl NotificationMetrics {
+    /// Resolves Notification geometry without branching on a Style Preset ID.
+    fn for_density(density: Density) -> Self {
+        match density {
+            Density::Compact => Self {
+                width: px(384.),
+                padding_x: px(12.),
+                padding_y: px(10.),
+                content_gap: px(8.),
+                stack_gap: px(8.),
+                motion_offset: px(16.),
+            },
+            Density::Standard => Self {
+                width: px(448.),
+                padding_x: px(16.),
+                padding_y: px(14.),
+                content_gap: px(12.),
+                stack_gap: px(12.),
+                motion_offset: px(16.),
+            },
+            Density::Comfortable => Self {
+                width: px(448.),
+                padding_x: px(20.),
+                padding_y: px(16.),
+                content_gap: px(12.),
+                stack_gap: px(12.),
+                motion_offset: px(24.),
+            },
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum NotificationType {
@@ -70,12 +115,13 @@ pub struct Notification {
     title: Option<SharedString>,
     message: Option<SharedString>,
     icon: Option<Icon>,
+    placement: Option<Anchor>,
     autohide: bool,
     action_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> Button>>,
     content_builder: Option<Rc<dyn Fn(&mut Self, &mut Window, &mut Context<Self>) -> AnyElement>>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     on_close: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    closing: bool,
+    lifecycle: OverlayLifecycle,
 }
 
 impl From<String> for Notification {
@@ -128,12 +174,13 @@ impl Notification {
             message: None,
             type_: None,
             icon: None,
+            placement: None,
             autohide: true,
             action_builder: None,
             content_builder: None,
             on_click: None,
             on_close: None,
-            closing: false,
+            lifecycle: OverlayLifecycle::opened(),
         }
     }
 
@@ -196,6 +243,19 @@ impl Notification {
         self
     }
 
+    /// Override the placement for this notification.
+    ///
+    /// Notifications without an override inherit [`NotificationSettings::placement`].
+    pub fn placement(mut self, placement: Anchor) -> Self {
+        self.placement = Some(placement);
+        self
+    }
+
+    /// Resolve the notification placement against the active global default.
+    fn resolved_placement(&self, default: Anchor) -> Anchor {
+        self.placement.unwrap_or(default)
+    }
+
     /// Set the icon of the notification.
     ///
     /// If icon is None, the notification will use the default icon of the type.
@@ -248,24 +308,26 @@ impl Notification {
 
     /// Dismiss the notification.
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.closing {
+        let Some(transition) = self.lifecycle.begin_close() else {
             return;
-        }
-        self.closing = true;
+        };
         cx.notify();
 
         let on_close = self.on_close.clone();
-        // Dismiss the notification after 0.15s to show the animation.
+        let duration = effective_motion_duration(cx.theme().style.motion.emphasis(), cx);
         cx.spawn_in(window, async move |view, cx| {
-            cx.background_executor()
-                .timer(Duration::from_secs_f32(0.15))
-                .await;
-            _ = view.update_in(cx, |view, _, cx| {
-                view.closing = false;
-                cx.emit(DismissEvent);
-                cx.notify();
-            });
-            if let Some(on_close) = on_close {
+            cx.background_executor().timer(duration).await;
+            let completed = view
+                .update_in(cx, |view, _, cx| {
+                    let completed = view.lifecycle.complete_close(transition);
+                    if completed {
+                        cx.emit(DismissEvent);
+                        cx.notify();
+                    }
+                    completed
+                })
+                .unwrap_or(false);
+            if completed && let Some(on_close) = on_close {
                 _ = cx.update(|window, cx| on_close(window, cx));
             }
         })
@@ -299,48 +361,79 @@ impl Render for Notification {
         let action = self
             .action_builder
             .clone()
-            .map(|builder| builder(self, window, cx).small().mr_3p5());
+            .map(|builder| builder(self, window, cx).small());
 
-        let closing = self.closing;
-        let icon = match self.type_ {
-            None => self.icon.clone(),
-            Some(type_) => Some(type_.icon(cx)),
-        };
-        let has_icon = icon.is_some();
-        let placement = cx.theme().notification.placement;
+        let closing = self.lifecycle.phase() == OverlayPhase::Closing;
+        let accepts_input = self.lifecycle.accepts_input();
+        let style = cx.theme().style.as_ref();
+        let motion = style.motion;
+        let metrics = NotificationMetrics::for_density(style.density);
+        let icon = self
+            .icon
+            .clone()
+            .or_else(|| self.type_.map(|type_| type_.icon(cx)));
+        let placement = self.resolved_placement(cx.theme().notification.placement);
+        let margins = &cx.theme().notification.margins;
+        let available_width =
+            (window.viewport_size().width - margins.left - margins.right).max(px(0.));
+        let accessibility_label = self
+            .title
+            .clone()
+            .or_else(|| self.message.clone())
+            .unwrap_or_else(|| t!("Common.Notification").into());
 
         h_flex()
             .id("notification")
+            .role(Role::Alert)
+            .aria_label(accessibility_label)
             .group("")
             .occlude()
             .relative()
-            .w_112()
+            .items_start()
+            .w(metrics.width)
+            .max_w(available_width)
             .border_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().tokens.popover)
-            .rounded(cx.theme().radius_lg)
-            .shadow_md()
-            .py_3p5()
-            .px_4()
-            .gap_3()
+            .text_color(cx.theme().tokens.popover_foreground)
+            .rounded(style.radii.lg)
+            .when(style.elevation.enabled, |this| match style.density {
+                Density::Compact => this.shadow_sm(),
+                Density::Standard => this.shadow_md(),
+                Density::Comfortable => this.shadow_lg(),
+            })
+            .py(metrics.padding_y)
+            .pl(metrics.padding_x)
+            .pr(metrics.padding_x + px(20.))
+            .gap(metrics.content_gap)
             .refine_style(&self.style)
             .when_some(icon, |this, icon| {
-                this.child(div().absolute().top(px(18.)).left_4().child(icon))
+                this.child(div().flex_none().pt(px(2.)).child(icon))
             })
             .child(
                 v_flex()
+                    .min_w_0()
                     .flex_1()
                     .overflow_hidden()
-                    .when(has_icon, |this| this.pl_6())
+                    .gap(px(2.))
                     .when_some(self.title.clone(), |this, title| {
                         this.child(div().text_sm().font_semibold().child(title))
                     })
                     .when_some(self.message.clone(), |this, message| {
-                        this.child(div().text_sm().child(message))
+                        this.child(
+                            div()
+                                .text_sm()
+                                .when(self.title.is_some(), |this| {
+                                    this.text_color(cx.theme().muted_foreground)
+                                })
+                                .child(message),
+                        )
                     })
                     .when_some(content, |this, content| this.child(content)),
             )
-            .when_some(action, |this, action| this.child(action))
+            .when_some(action, |this, action| {
+                this.child(div().flex_none().child(action))
+            })
             .child(
                 div()
                     .absolute()
@@ -350,70 +443,55 @@ impl Render for Notification {
                     .group_hover("", |this| this.visible())
                     .child(
                         Button::new("close")
+                            .aria_label(t!("Common.Close"))
                             .icon(IconName::Close)
                             .ghost()
                             .xsmall()
+                            .disabled(!accepts_input)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.dismiss(window, cx);
                             })),
                     ),
             )
-            .when_some(self.on_click.clone(), |this, on_click| {
-                this.on_click(cx.listener(move |view, event, window, cx| {
-                    view.dismiss(window, cx);
-                    on_click(event, window, cx);
+            .when_some(
+                accepts_input.then(|| self.on_click.clone()).flatten(),
+                |this, on_click| {
+                    this.on_click(cx.listener(move |view, event, window, cx| {
+                        view.dismiss(window, cx);
+                        on_click(event, window, cx);
+                    }))
+                },
+            )
+            .when(accepts_input, |this| {
+                this.on_aux_click(cx.listener(move |view, event: &ClickEvent, window, cx| {
+                    if event.is_middle_click() {
+                        view.dismiss(window, cx);
+                    }
                 }))
             })
-            .on_aux_click(cx.listener(move |view, event: &ClickEvent, window, cx| {
-                if event.is_middle_click() {
-                    view.dismiss(window, cx);
-                }
-            }))
+            .when(!accepts_input, |this| {
+                this.child(div().absolute().top_0().left_0().size_full().occlude())
+            })
             .with_animation(
-                ElementId::NamedInteger("slide-down".into(), closing as u64),
-                Animation::new(Duration::from_secs_f64(0.25))
-                    .with_easing(cubic_bezier(0.4, 0., 0.2, 1.)),
-                move |this, delta| {
+                ElementId::NamedInteger("notification-motion".into(), closing as u64),
+                Animation::new(motion.emphasis()).with_easing(move |delta| {
                     if closing {
-                        let opacity = 1. - delta;
-                        let that = this
-                            .shadow_none()
-                            .opacity(opacity)
-                            .when(opacity < 0.85, |this| this.shadow_none());
-                        match placement {
-                            Anchor::TopRight | Anchor::BottomRight => {
-                                let x_offset = px(0.) + delta * px(45.);
-                                that.left(px(0.) + x_offset)
-                            }
-                            Anchor::TopLeft | Anchor::BottomLeft => {
-                                let x_offset = px(0.) - delta * px(45.);
-                                that.left(px(0.) + x_offset)
-                            }
-                            Anchor::TopCenter => {
-                                let y_offset = px(0.) - delta * px(45.);
-                                that.top(px(0.) + y_offset)
-                            }
-                            Anchor::BottomCenter => {
-                                let y_offset = px(0.) + delta * px(45.);
-                                that.top(px(0.) + y_offset)
-                            }
-                            _ => that,
-                        }
+                        motion.exit_easing.sample(delta)
                     } else {
-                        let y_offset = match placement {
-                            Anchor::TopLeft | Anchor::TopRight | Anchor::TopCenter => {
-                                px(-45.) + delta * px(45.)
-                            }
-                            Anchor::BottomLeft | Anchor::BottomRight | Anchor::BottomCenter => {
-                                px(45.) - delta * px(45.)
-                            }
-                            _ => px(0.),
-                        };
-                        let opacity = delta;
-                        this.top(px(0.) + y_offset)
-                            .opacity(opacity)
-                            .when(opacity < 0.85, |this| this.shadow_none())
+                        motion.enter_easing.sample(delta)
+                    }
+                }),
+                move |this, delta| {
+                    let progress = if closing { delta } else { 1. - delta };
+                    let offset = metrics.motion_offset * progress;
+
+                    match placement {
+                        Anchor::TopRight | Anchor::BottomRight => this.left(offset),
+                        Anchor::TopLeft | Anchor::BottomLeft => this.left(-offset),
+                        Anchor::TopCenter => this.top(-offset),
+                        Anchor::BottomCenter => this.top(offset),
+                        _ => this,
                     }
                 },
             )
@@ -429,6 +507,8 @@ pub struct NotificationSettings {
     pub margins: Edges<Pixels>,
     /// The maximum number of notifications to show at once, default: 10
     pub max_items: usize,
+    /// The automatic dismissal duration, default: 5 seconds.
+    pub duration: Duration,
 }
 
 impl Default for NotificationSettings {
@@ -443,6 +523,7 @@ impl Default for NotificationSettings {
                 left: offset,
             },
             max_items: 10,
+            duration: Duration::from_secs(5),
         }
     }
 }
@@ -451,7 +532,6 @@ impl Default for NotificationSettings {
 pub struct NotificationList {
     /// Notifications that will be auto hidden.
     pub(crate) notifications: VecDeque<Entity<Notification>>,
-    expanded: bool,
     _subscriptions: HashMap<NotificationId, Subscription>,
 }
 
@@ -459,7 +539,6 @@ impl NotificationList {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
         Self {
             notifications: VecDeque::new(),
-            expanded: false,
             _subscriptions: HashMap::new(),
         }
     }
@@ -473,6 +552,7 @@ impl NotificationList {
         let notification = notification.into();
         let id = notification.id.clone();
         let autohide = notification.autohide;
+        let duration = cx.theme().notification.duration;
 
         // Remove the notification by id, for keep unique.
         self.notifications.retain(|note| note.read(cx).id != id);
@@ -489,9 +569,9 @@ impl NotificationList {
 
         self.notifications.push_back(notification.clone());
         if autohide {
-            // Sleep for 5 seconds to autohide the notification
+            // Keep auto-dismiss timing under the active Theme configuration.
             cx.spawn_in(window, async move |_, cx| {
-                cx.background_executor().timer(Duration::from_secs(5)).await;
+                cx.background_executor().timer(duration).await;
 
                 if let Err(err) =
                     notification.update_in(cx, |note, window, cx| note.dismiss(window, cx))
@@ -555,49 +635,83 @@ impl Render for NotificationList {
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl IntoElement {
+        const PLACEMENTS: [Anchor; 6] = [
+            Anchor::TopLeft,
+            Anchor::TopCenter,
+            Anchor::TopRight,
+            Anchor::BottomLeft,
+            Anchor::BottomCenter,
+            Anchor::BottomRight,
+        ];
+
         let size = window.viewport_size();
-        let max_items = cx.theme().notification.max_items;
-        let items = self
-            .notifications
-            .iter()
-            .rev()
-            .take(max_items)
-            .rev()
-            .cloned();
-
-        let placement = cx.theme().notification.placement;
+        let settings = &cx.theme().notification;
+        let max_items = settings.max_items;
+        let default_placement = settings.placement;
         let margins = &cx.theme().notification.margins;
+        let metrics = NotificationMetrics::for_density(cx.theme().style.density);
+        let groups = PLACEMENTS
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, placement)| {
+                let mut items = self
+                    .notifications
+                    .iter()
+                    .filter(|notification| {
+                        notification.read(cx).resolved_placement(default_placement) == placement
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                let visible_start = items.len().saturating_sub(max_items);
+                let items = items.drain(visible_start..).collect::<Vec<_>>();
 
-        v_flex()
+                if items.is_empty() {
+                    return None;
+                }
+
+                Some(
+                    v_flex()
+                        .id(("notification-list", index))
+                        .absolute()
+                        .max_h(size.height)
+                        .pt(margins.top)
+                        .pb(margins.bottom)
+                        .gap(metrics.stack_gap)
+                        .when(
+                            matches!(
+                                placement,
+                                Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
+                            ),
+                            |this| this.top_0(),
+                        )
+                        .when(
+                            matches!(
+                                placement,
+                                Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight
+                            ),
+                            |this| this.bottom_0().flex_col_reverse(),
+                        )
+                        .when(
+                            matches!(placement, Anchor::TopLeft | Anchor::BottomLeft),
+                            |this| this.left_0().pl(margins.left),
+                        )
+                        .when(
+                            matches!(placement, Anchor::TopRight | Anchor::BottomRight),
+                            |this| this.right_0().pr(margins.right),
+                        )
+                        .when(
+                            matches!(placement, Anchor::TopCenter | Anchor::BottomCenter),
+                            |this| this.left_0().right_0().items_center(),
+                        )
+                        .children(items),
+                )
+            });
+
+        div()
             .id("notification-list")
-            .max_h(size.height)
-            .pt(margins.top)
-            .pb(margins.bottom)
-            .gap_3()
-            .when(
-                matches!(placement, Anchor::TopRight),
-                |this| this.pr(margins.right), // ignore left
-            )
-            .when(
-                matches!(placement, Anchor::TopLeft),
-                |this| this.pl(margins.left), // ignore right
-            )
-            .when(
-                matches!(placement, Anchor::BottomLeft),
-                |this| this.flex_col_reverse().pl(margins.left), // ignore right
-            )
-            .when(
-                matches!(placement, Anchor::BottomRight),
-                |this| this.flex_col_reverse().pr(margins.right), // ignore left
-            )
-            .when(matches!(placement, Anchor::BottomCenter), |this| {
-                this.flex_col_reverse()
-            })
-            .on_hover(cx.listener(|view, hovered, _, cx| {
-                view.expanded = *hovered;
-                cx.notify()
-            }))
-            .children(items)
+            .relative()
+            .size_full()
+            .children(groups)
     }
 }
 
@@ -606,6 +720,7 @@ mod tests {
     use super::*;
     use crate::theme::Theme;
     use gpui::{TestAppContext, VisualTestContext};
+    use std::{cell::Cell, time::Duration};
 
     struct FooKind;
     struct BarKind;
@@ -633,8 +748,43 @@ mod tests {
     /// so that closed notifications are removed from the list.
     fn flush_dismiss(cx: &mut VisualTestContext) {
         cx.background_executor
-            .advance_clock(Duration::from_millis(200));
+            .advance_clock(Duration::from_millis(300));
         cx.run_until_parked();
+    }
+
+    #[test]
+    fn metrics_follow_semantic_style_density() {
+        let compact = NotificationMetrics::for_density(Density::Compact);
+        let standard = NotificationMetrics::for_density(Density::Standard);
+        let comfortable = NotificationMetrics::for_density(Density::Comfortable);
+
+        assert_eq!(compact.width, px(384.));
+        assert!(compact.padding_x < standard.padding_x);
+        assert!(standard.padding_x < comfortable.padding_x);
+        assert!(compact.stack_gap < standard.stack_gap);
+        assert!(standard.motion_offset < comfortable.motion_offset);
+    }
+
+    #[test]
+    fn settings_preserve_notification_defaults() {
+        let settings = NotificationSettings::default();
+
+        assert_eq!(settings.placement, Anchor::TopRight);
+        assert_eq!(settings.max_items, 10);
+        assert_eq!(settings.duration, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn notification_placement_override_falls_back_to_global_default() {
+        let default = Anchor::TopRight;
+
+        assert_eq!(Notification::new().resolved_placement(default), default);
+        assert_eq!(
+            Notification::new()
+                .placement(Anchor::BottomLeft)
+                .resolved_placement(default),
+            Anchor::BottomLeft
+        );
     }
 
     #[gpui::test]
@@ -776,5 +926,38 @@ mod tests {
         flush_dismiss(cx);
 
         assert_eq!(ids(&list, cx).len(), 1);
+    }
+
+    #[gpui::test]
+    fn duplicate_dismiss_emits_one_callback_and_reduced_motion_has_no_delay(
+        cx: &mut TestAppContext,
+    ) {
+        cx.update(|cx| {
+            cx.set_global(Theme::default());
+            cx.set_reduce_motion(true);
+        });
+        let (root, cx) = cx.add_window_view(|window, cx| TestRoot {
+            list: cx.new(|cx| NotificationList::new(window, cx)),
+        });
+        let list = root.read_with(cx, |root, _| root.list.clone());
+        let close_count = Rc::new(Cell::new(0));
+
+        list.update_in(cx, |list, window, cx| {
+            let close_count = close_count.clone();
+            list.push(
+                Notification::info("reduced motion")
+                    .id::<FooKind>()
+                    .autohide(false)
+                    .on_close(move |_, _| close_count.set(close_count.get() + 1)),
+                window,
+                cx,
+            );
+            list.close(TypeId::of::<FooKind>(), window, cx);
+            list.close(TypeId::of::<FooKind>(), window, cx);
+        });
+        cx.run_until_parked();
+
+        assert!(ids(&list, cx).is_empty());
+        assert_eq!(close_count.get(), 1);
     }
 }

@@ -10,12 +10,17 @@ collapsed: false
 
 - [Accordion](accordion) - Collapsible content panels
 - [Alert](alert) - Alert messages with different variants
+- [AspectRatio](aspect-ratio) - Preserve a width-to-height ratio
 - [Avatar](avatar) - User avatars with fallback text
-- [Badge](badge) - Count badges and indicators
+- [Badge](badge) - Inline labels and overlay indicators
+- [Breadcrumb](breadcrumb) - Hierarchical navigation path
 - [Button](button) - Interactive buttons with multiple variants
+- [Card](card) - Structured surfaces for related content and actions
 - [Checkbox](checkbox) - Binary selection control
 - [Collapsible](collapsible) - Expandable/collapsible content
+- [Command](command) - Searchable command menus and palettes
 - [DropdownButton](dropdown_button) - Button with dropdown menu
+- [Empty](empty) - Empty and no-result states
 - [Icon](icon) - Icon display component
 - [Image](image) - Image display with fallbacks
 - [Kbd](kbd) - Keyboard shortcut display
@@ -29,7 +34,6 @@ collapsed: false
 - [Spinner](spinner) - Loading and status spinners
 - [Stepper](stepper) - Step-by-step progress indicator
 - [Switch](switch) - Toggle on/off control
-- [Tag](tag) - Labels and categories
 - [TextView](text-view) - Markdown and HTML text rendering
 - [Toggle](toggle) - Toggle button states
 - [Tooltip](tooltip) - Helpful hints on hover
@@ -38,6 +42,7 @@ collapsed: false
 
 - [Input](input) - An input field or a component that looks like an input field.
 - [Select](select) - A list of options for the user to pick.
+- [NativeSelect](native-select) - A compact selector backed by the operating system menu.
 - [Combobox](combobox) - Searchable single-select or multi-select dropdown.
 - [NumberInput](number-input) - Numeric input with increment/decrement
 - [DatePicker](date-picker) - Date selection with calendar

@@ -1,24 +1,25 @@
 ---
 title: Tree
-description: A hierarchical tree view component for displaying and navigating tree-structured data.
+description: A virtualized hierarchical view with selection, disclosure, and keyboard navigation.
 ---
 
 # Tree
 
-A versatile tree component for displaying hierarchical data with expand/collapse functionality, keyboard navigation, and custom item rendering. Perfect for file explorers, navigation menus, or any nested data structure.
+`Tree` displays hierarchical data through a virtualized flat list. Applications keep control of row composition while Tree owns expansion, selection, keyboard navigation, scrolling, and accessibility semantics.
 
 ## Import
 
 ```rust
-use gpui_component::tree::{tree, TreeState, TreeItem, TreeEntry};
+use gpui_component::{
+    IconName, Sizable as _, h_flex,
+    list::ListItem,
+    tree::{TreeItem, TreeState, tree},
+};
 ```
 
-## Usage
-
-### Basic Tree
+## Basic usage
 
 ```rust
-// Create tree state
 let tree_state = cx.new(|cx| {
     TreeState::new(cx).items(vec![
         TreeItem::new("src", "src")
@@ -30,24 +31,7 @@ let tree_state = cx.new(|cx| {
     ])
 });
 
-// Render tree
-tree(&tree_state, |ix, entry, selected, window, cx| {
-    ListItem::new(ix)
-        .child(
-            h_flex()
-                .gap_2()
-                .child(entry.item().label.clone())
-        )
-})
-```
-
-### File Tree with Icons
-
-```rust
-use gpui_component::{ListItem, IconName, h_flex};
-
-tree(&tree_state, |ix, entry, selected, window, cx| {
-    let item = entry.item();
+tree(&tree_state, |ix, entry, _selected, _window, cx| {
     let icon = if !entry.is_folder() {
         IconName::File
     } else if entry.is_expanded() {
@@ -57,343 +41,125 @@ tree(&tree_state, |ix, entry, selected, window, cx| {
     };
 
     ListItem::new(ix)
-        .selected(selected)
-        .pl(px(16.) * entry.depth() + px(12.)) // Indent based on depth
+        .pl(entry.content_inset(cx))
         .child(
             h_flex()
-                .gap_2()
+                .gap(entry.content_gap(cx))
                 .child(icon)
-                .child(item.label.clone())
+                .child(entry.item().label.clone()),
         )
-        .on_click(cx.listener(move |_, _, _, _| {
-            // Handle item click
-        }))
 })
+.aria_label("Project files")
 ```
 
-### Dynamic Tree Loading
+The returned `ListItem` automatically receives the Tree size, disabled state, selected state, and secondary context-menu selection state. The renderer should only describe application-specific row content and optional actions.
+
+## Size and Style Presets
 
 ```rust
-impl MyView {
-    fn load_files(&mut self, path: PathBuf, cx: &mut Context<Self>) {
-        let tree_state = self.tree_state.clone();
-        cx.spawn(async move |cx| {
-            let items = build_file_items(&path).await;
-            tree_state.update(cx, |state, cx| {
-                state.set_items(items, cx);
-            })
-        }).detach();
-    }
-}
-
-fn build_file_items(path: &Path) -> Vec<TreeItem> {
-    let mut items = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-                .to_string();
-
-            if path.is_dir() {
-                let children = build_file_items(&path);
-                items.push(TreeItem::new(path.to_string_lossy(), name)
-                    .children(children));
-            } else {
-                items.push(TreeItem::new(path.to_string_lossy(), name));
-            }
-        }
-    }
-    items
-}
+tree(&tree_state, render_tree_item).small();
+tree(&tree_state, render_tree_item); // Medium
+tree(&tree_state, render_tree_item).large();
 ```
 
-### Tree with Selection Handling
+Tree delegates row height, text size, and padding to `ListItem`, which consumes semantic Data Metrics. `TreeEntry::content_inset` derives hierarchy indentation from semantic Control Metrics. Vega, Nova, and Maia therefore change geometry without preset-ID branches.
+
+## Disabled nodes
 
 ```rust
-struct MyTreeView {
-    tree_state: Entity<TreeState>,
-    selected_item: Option<TreeItem>,
-}
-
-impl MyTreeView {
-    fn handle_selection(&mut self, item: TreeItem, cx: &mut Context<Self>) {
-        self.selected_item = Some(item.clone());
-        println!("Selected: {} ({})", item.label, item.id);
-        cx.notify();
-    }
-}
-
-// In render method
-tree(&self.tree_state, {
-    let view = cx.entity();
-    move |ix, entry, selected, window, cx| {
-        view.update(cx, |this, cx| {
-            ListItem::new(ix)
-                .selected(selected)
-                .child(entry.item().label.clone())
-                .on_click(cx.listener({
-                    let item = entry.item().clone();
-                    move |this, _, _, cx| {
-                        this.handle_selection(item.clone(), cx);
-                    }
-                }))
-        })
-    }
-})
-```
-
-### Disabled Items
-
-```rust
-TreeItem::new("protected", "Protected Folder")
+TreeItem::new("protected", "Protected")
     .disabled(true)
-    .child(TreeItem::new("secret.txt", "secret.txt"))
+    .child(TreeItem::new("protected/secret.txt", "secret.txt"))
 ```
 
-### Programmatic Tree Control
+Disabled nodes remain visible and are exposed as disabled to assistive technologies. Pointer and keyboard selection skip them.
+
+## Context menu
 
 ```rust
-// Get current selection
-if let Some(entry) = tree_state.read(cx).selected_entry() {
-    println!("Current selection: {}", entry.item().label);
-}
-
-// Set selection programmatically (by selected_index)
-tree_state.update(cx, |state, cx| {
-    state.set_selected_index(Some(2), cx); // Select third item
-});
-
-// Set selection programmatically (by tree item)
-tree_state.update(cx, |state, cx| {
-    state.set_selected_item(Some(item), cx); // Select third item
-});
-
-// Scroll to specific item
-tree_state.update(cx, |state, _| {
-    state.scroll_to_item(5, gpui::ScrollStrategy::Center);
-});
-
-// Clear selection (by selected_index)
-tree_state.update(cx, |state, cx| {
-    state.set_selected_index(None, cx);
-});
-
-// Clear selection (by tree item)
-tree_state.update(cx, |state, cx| {
-    state.set_selected_item(None, cx);
-});
+tree(&tree_state, render_tree_item).context_menu(|_ix, entry, menu, _window, _cx| {
+    menu.when(!entry.is_folder(), |menu| {
+        menu.menu("Open", Box::new(OpenFile))
+    })
+    .menu("Rename", Box::new(Rename))
+    .separator()
+    .menu("Delete", Box::new(Delete))
+})
 ```
 
-## API Reference
+## Programmatic control
+
+```rust
+tree_state.update(cx, |state, cx| {
+    state.set_selected_index(Some(2), cx);
+});
+
+tree_state.update(cx, |state, cx| {
+    state.set_selected_item(Some(&item), cx);
+});
+
+tree_state.update(cx, |state, cx| {
+    state.reveal_item(&item.id, gpui::ScrollStrategy::Center, cx);
+});
+
+if let Some(entry) = tree_state.read(cx).selected_entry() {
+    println!("Selected: {}", entry.item().label);
+}
+```
+
+Invalid indexes and disabled nodes clear selection. Selecting a hidden item expands its ancestors. If a selected descendant becomes hidden by collapsing an ancestor, selection moves to that ancestor.
+
+## Keyboard behavior
+
+| Key | Behavior |
+| --- | --- |
+| `Up` | Select the previous enabled visible node |
+| `Down` | Select the next enabled visible node |
+| `Left` | Collapse an expanded node, otherwise move to its parent |
+| `Right` | Expand a collapsed node, otherwise move to its first enabled child |
+| `Enter` | Toggle the selected folder |
+
+Navigation wraps at the visible-list boundary and remains unchanged when no enabled node exists.
+
+## Accessibility
+
+- The root is exposed as `Tree` and accepts a custom accessible name through `aria_label`.
+- Visible nodes are exposed as `TreeItem` with stable IDs.
+- Level, sibling position, sibling count, selected, expanded, and disabled states are exposed.
+- Keyboard focus remains on the composite Tree while the selected node is its active descendant.
+
+## API reference
+
+### Tree
+
+| Method | Description |
+| --- | --- |
+| `aria_label(label)` | Set the accessible Tree name |
+| `with_size(size)` / `small()` / `large()` | Set semantic row size |
+| `context_menu(builder)` | Build the right-click menu |
 
 ### TreeState
 
-| Method                         | Description                      |
-|--------------------------------|----------------------------------|
-| `new(cx)`                      | Create a new tree state          |
-| `items(items)`                 | Set initial tree items           |
-| `set_items(items, cx)`         | Update tree items and notify     |
-| `selected_index()`             | Get currently selected index     |
-| `set_selected_index(ix, cx)`   | Set selected index               |
-| `set_selected_item(item, cx)`  | Set selected by tree item        |
-| `selected_item(item, cx)`      | Get currently selected tree item |
-| `selected_entry()`             | Get currently selected entry     |
-| `scroll_to_item(ix, strategy)` | Scroll to specific item          |
-
-### TreeItem
-
-| Method            | Description                            |
-| ----------------- | -------------------------------------- |
-| `new(id, label)`  | Create new tree item with ID and label |
-| `child(item)`     | Add single child item                  |
-| `children(items)` | Add multiple child items               |
-| `expanded(bool)`  | Set expanded state                     |
-| `disabled(bool)`  | Set disabled state                     |
-| `is_folder()`     | Check if item has children             |
-| `is_expanded()`   | Check if item is expanded              |
-| `is_disabled()`   | Check if item is disabled              |
+| Method | Description |
+| --- | --- |
+| `items(items)` | Set initial items |
+| `set_items(items, cx)` | Replace items and clear selection |
+| `selected_index()` | Get the selected visible index |
+| `selected_item()` / `selected_entry()` | Get selected data |
+| `set_selected_index(index, cx)` | Select a valid enabled visible index |
+| `set_selected_item(item, cx)` | Select an item and reveal its ancestors |
+| `reveal_item(id, strategy, cx)` | Expand ancestors and scroll to an item |
+| `scroll_to_item(index, strategy)` | Scroll to a visible index |
+| `focus(window, cx)` | Focus the composite Tree |
 
 ### TreeEntry
 
-| Method          | Description                 |
-| --------------- | --------------------------- |
-| `item()`        | Get the source TreeItem     |
-| `depth()`       | Get item depth in tree      |
-| `is_folder()`   | Check if entry has children |
-| `is_expanded()` | Check if entry is expanded  |
-| `is_disabled()` | Check if entry is disabled  |
-
-### tree() Function
-
-| Parameter     | Description                           |
-| ------------- | ------------------------------------- |
-| `state`       | `Entity<TreeState>` for managing tree |
-| `render_item` | Closure for rendering each item       |
-
-#### Render Item Closure
-
-```rust
-Fn(usize, &TreeEntry, bool, &mut Window, &mut App) -> ListItem
-```
-
-- `usize`: Item index in flattened tree
-- `&TreeEntry`: Tree entry with item and metadata
-- `bool`: Whether item is currently selected
-- `&mut Window`: Current window context
-- `&mut App`: Application context
-- Returns: `ListItem` for rendering
-
-## Examples
-
-### Lazy Loading Tree
-
-```rust
-struct LazyTreeView {
-    tree_state: Entity<TreeState>,
-    loaded_paths: HashSet<String>,
-}
-
-impl LazyTreeView {
-    fn load_children(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        if self.loaded_paths.contains(item_id) {
-            return;
-        }
-
-        let path = PathBuf::from(item_id);
-        if path.is_dir() {
-            let tree_state = self.tree_state.clone();
-            let item_id = item_id.to_string();
-
-            cx.spawn(async move |cx| {
-                let children = load_directory_children(&path).await;
-                tree_state.update(cx, |state, cx| {
-                    // Update specific item with loaded children
-                    state.update_item_children(&item_id, children, cx);
-                })
-            }).detach();
-
-            self.loaded_paths.insert(item_id.to_string());
-        }
-    }
-}
-```
-
-### Search and Filter
-
-```rust
-struct SearchableTree {
-    tree_state: Entity<TreeState>,
-    original_items: Vec<TreeItem>,
-    search_query: String,
-}
-
-impl SearchableTree {
-    fn filter_tree(&mut self, query: &str, cx: &mut Context<Self>) {
-        self.search_query = query.to_string();
-
-        let filtered_items = if query.is_empty() {
-            self.original_items.clone()
-        } else {
-            filter_tree_items(&self.original_items, query)
-        };
-
-        self.tree_state.update(cx, |state, cx| {
-            state.set_items(filtered_items, cx);
-        });
-    }
-}
-
-fn filter_tree_items(items: &[TreeItem], query: &str) -> Vec<TreeItem> {
-    items.iter()
-        .filter_map(|item| {
-            if item.label.to_lowercase().contains(&query.to_lowercase()) {
-                Some(item.clone().expanded(true)) // Auto-expand matches
-            } else {
-                // Check if any children match
-                let filtered_children = filter_tree_items(&item.children, query);
-                if !filtered_children.is_empty() {
-                    Some(item.clone()
-                        .children(filtered_children)
-                        .expanded(true))
-                } else {
-                    None
-                }
-            }
-        })
-        .collect()
-}
-```
-
-### Multi-Select Tree
-
-```rust
-struct MultiSelectTree {
-    tree_state: Entity<TreeState>,
-    selected_items: HashSet<String>,
-}
-
-impl MultiSelectTree {
-    fn toggle_selection(&mut self, item_id: &str, cx: &mut Context<Self>) {
-        if self.selected_items.contains(item_id) {
-            self.selected_items.remove(item_id);
-        } else {
-            self.selected_items.insert(item_id.to_string());
-        }
-        cx.notify();
-    }
-
-    fn is_selected(&self, item_id: &str) -> bool {
-        self.selected_items.contains(item_id)
-    }
-}
-
-// In render method
-tree(&self.tree_state, {
-    let view = cx.entity();
-    move |ix, entry, _selected, window, cx| {
-        view.update(cx, |this, cx| {
-            let item = entry.item();
-            let is_multi_selected = this.is_selected(&item.id);
-
-            ListItem::new(ix)
-                .selected(is_multi_selected)
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .child(checkbox().checked(is_multi_selected))
-                        .child(item.label.clone())
-                )
-                .on_click(cx.listener({
-                    let item_id = item.id.clone();
-                    move |this, _, _, cx| {
-                        this.toggle_selection(&item_id, cx);
-                    }
-                }))
-        })
-    }
-})
-```
-
-## Keyboard Navigation
-
-The Tree component supports comprehensive keyboard navigation:
-
-| Key     | Action                                    |
-| ------- | ----------------------------------------- |
-| `↑`     | Select previous item                      |
-| `↓`     | Select next item                          |
-| `←`     | Collapse current folder or move to parent |
-| `→`     | Expand current folder                     |
-| `Enter` | Toggle expand/collapse for folders        |
-| `Space` | Custom action (configurable)              |
-
-```rust
-// Custom keyboard handling
-tree(&tree_state)
-    .key_context("MyTree")
-    .on_action(cx.listener(|this, action: &MyCustomAction, _, cx| {
-        // Handle custom actions
-    }))
-```
+| Method | Description |
+| --- | --- |
+| `item()` | Get the source `TreeItem` |
+| `depth()` | Get zero-based hierarchy depth |
+| `content_inset(cx)` | Resolve semantic left inset from the Tree size |
+| `content_gap(cx)` | Resolve semantic row-content gap from the Tree size |
+| `is_folder()` | Whether the item has children |
+| `is_expanded()` | Whether children are visible |
+| `is_disabled()` | Whether interaction is disabled |

@@ -7,7 +7,7 @@ use regex::Regex;
 use crate::section;
 use gpui_component::{
     ActiveTheme, Disableable, IconName, Sizable,
-    button::{Button, ButtonVariants},
+    button::Button,
     input::{InputEvent, InputState, MaskPattern, NumberInput, NumberInputEvent, StepAction},
     v_flex,
 };
@@ -21,6 +21,9 @@ pub struct NumberInputStory {
     number_input3: Entity<InputState>,
     number_input4: Entity<InputState>,
     disabled_input: Entity<InputState>,
+    read_only_input: Entity<InputState>,
+    invalid_input: Entity<InputState>,
+    large_input: Entity<InputState>,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -111,6 +114,25 @@ impl NumberInputStory {
                 .default_value("100")
                 .placeholder("Disabled")
         });
+        let read_only_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("42")
+                .placeholder("Read only")
+        });
+        let invalid_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("101")
+                .min(0.)
+                .max(100.)
+                .placeholder("Invalid")
+        });
+        let large_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value("29.99")
+                .step(0.01)
+                .min(0.)
+                .placeholder("Large price")
+        });
 
         let _subscriptions = vec![
             cx.subscribe_in(&number_input1, window, Self::on_input_event),
@@ -120,6 +142,9 @@ impl NumberInputStory {
             cx.subscribe_in(&number_input4, window, Self::on_input_event),
             cx.subscribe_in(&disabled_input, window, Self::on_input_event),
             cx.subscribe_in(&disabled_input, window, Self::on_number_input_event),
+            cx.subscribe_in(&read_only_input, window, Self::on_input_event),
+            cx.subscribe_in(&invalid_input, window, Self::on_input_event),
+            cx.subscribe_in(&large_input, window, Self::on_input_event),
         ];
 
         Self {
@@ -129,6 +154,9 @@ impl NumberInputStory {
             number_input3,
             number_input4,
             disabled_input,
+            read_only_input,
+            invalid_input,
+            large_input,
             _subscriptions,
         }
     }
@@ -199,9 +227,11 @@ impl Render for NumberInputStory {
             .justify_start()
             .gap_3()
             .child(
-                section("Normal Size")
-                    .max_w(px(200.))
-                    .child(NumberInput::new(&self.number_input1)),
+                section("Normal Size").max_w(px(200.)).child(
+                    NumberInput::new(&self.number_input1)
+                        .aria_label("Quantity")
+                        .aria_description("Use the arrow keys or step buttons to change it"),
+                ),
             )
             .child(
                 section("Disabled")
@@ -209,16 +239,31 @@ impl Render for NumberInputStory {
                     .child(NumberInput::new(&self.disabled_input).disabled(true)),
             )
             .child(
+                section("Read Only")
+                    .max_w(px(200.))
+                    .child(NumberInput::new(&self.read_only_input).read_only(true)),
+            )
+            .child(
+                section("Invalid")
+                    .max_w(px(200.))
+                    .child(NumberInput::new(&self.invalid_input).invalid(true)),
+            )
+            .child(
                 section("Small Size with suffix").max_w(px(200.)).child(
                     NumberInput::new(&self.number_input2)
                         .small()
-                        .suffix(Button::new("info").text().icon(IconName::Info).xsmall()),
+                        .suffix(Button::new("info").ghost().icon(IconName::Info).xsmall()),
                 ),
             )
             .child(
                 section("With mask pattern")
                     .max_w(px(200.))
                     .child(NumberInput::new(&self.number_input3)),
+            )
+            .child(
+                section("Large Size with prefix")
+                    .max_w(px(240.))
+                    .child(NumberInput::new(&self.large_input).large().prefix("$")),
             )
             .child(
                 section("Without appearance").max_w(px(200.)).child(

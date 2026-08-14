@@ -1,238 +1,108 @@
 ---
 title: Avatar
-description: 支持图片、姓名首字母和占位图标的头像组件。
+description: 支持显式图片、回退、徽标和分组插槽的头像组件。
 ---
 
 # Avatar
 
-Avatar 用于显示用户头像图片，并在无图片时自动回退为姓名首字母或占位图标。组件支持多种尺寸，也可以通过 AvatarGroup 组合展示团队或成员列表。
+Avatar 使用 shadcn Vega 的几何规格。图片和回退内容裁剪为圆形，Badge 位于裁剪层之外，不会被截断。
 
 ## 导入
 
 ```rust
-use gpui_component::avatar::{Avatar, AvatarGroup};
+use gpui_component::{
+    IconName,
+    avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
+};
 ```
 
-## 用法
+## 基础用法
 
-### 基础 Avatar
-
-通过图片地址和用户名创建头像：
+语义 Avatar 必须提供稳定的元素 ID 和可访问名称。图片加载中或加载失败时都会显示 fallback。
 
 ```rust
-Avatar::new()
-    .name("John Doe")
-    .src("https://example.com/avatar.jpg")
+Avatar::new("jane-avatar", "Jane Smith")
+    .image(AvatarImage::new("https://example.com/jane.jpg"))
+    .fallback(AvatarFallback::text("JS"))
 ```
 
-### 使用首字母回退
-
-当未提供图片时，Avatar 会显示用户名首字母，并自动生成背景颜色：
+不适合显示首字母时，可以使用图标回退：
 
 ```rust
-Avatar::new()
-    .name("John Doe")
-
-Avatar::new()
-    .name("Jane Smith")
+Avatar::new("organization-avatar", "Acme organization")
+    .fallback(AvatarFallback::icon(IconName::Building2))
 ```
 
-### 占位头像
+只有在相邻内容已经表达同一身份时，才使用 `Avatar::decorative()`。
 
-适用于匿名用户或没有姓名的场景：
+## Badge
+
+`AvatarBadge` 显示在图片裁剪层之外，并带有背景色描边。
 
 ```rust
-use gpui_component::IconName;
+Avatar::new("online-user", "Online user")
+    .image(AvatarImage::new("https://example.com/user.jpg"))
+    .fallback(AvatarFallback::text("OU"))
+    .badge(AvatarBadge::new().bg(cx.theme().green))
 
-Avatar::new()
-
-Avatar::new()
-    .placeholder(IconName::Building2)
+Avatar::new("invited-user", "Invited user")
+    .fallback(AvatarFallback::text("IU"))
+    .badge(AvatarBadge::new().child(IconName::Plus))
 ```
 
-### 不同尺寸
+## 尺寸
+
+内置尺寸与 Vega 一致：small 为 24 px、默认尺寸为 32 px、large 为 40 px。通过 `Sizable` 仍可使用 extra small 和自定义尺寸。
 
 ```rust
-Avatar::new()
-    .name("John Doe")
-    .xsmall()
-
-Avatar::new()
-    .name("John Doe")
+Avatar::new("small-avatar", "Small avatar")
+    .fallback(AvatarFallback::text("S"))
     .small()
 
-Avatar::new()
-    .name("John Doe")
+Avatar::new("default-avatar", "Default avatar")
+    .fallback(AvatarFallback::text("M"))
 
-Avatar::new()
-    .name("John Doe")
+Avatar::new("large-avatar", "Large avatar")
+    .fallback(AvatarFallback::text("L"))
     .large()
 
-Avatar::new()
-    .name("John Doe")
-    .with_size(px(100.))
+Avatar::new("custom-avatar", "Custom avatar")
+    .fallback(AvatarFallback::text("C"))
+    .with_size(px(56.))
 ```
 
-### 自定义样式
+## Avatar Group
 
-```rust
-Avatar::new()
-    .src("https://example.com/avatar.jpg")
-    .with_size(px(100.))
-    .border_3()
-    .border_color(cx.theme().foreground)
-    .shadow_sm()
-    .rounded(px(20.))
-```
-
-## AvatarGroup
-
-[AvatarGroup] 可以以紧凑、重叠的方式显示多个头像。
-
-### 基础分组
+AvatarGroup 保持插入顺序，使用 Vega 的重叠距离和背景色描边，并支持显式的尾部数量或图标项。
 
 ```rust
 AvatarGroup::new()
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().name("John Doe"))
-```
-
-### 限制数量
-
-```rust
-AvatarGroup::new()
-    .limit(3)
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().src("https://example.com/user4.jpg"))
-    .child(Avatar::new().src("https://example.com/user5.jpg"))
-```
-
-### 使用省略标记
-
-当超过限制数量时，可显示 `...` 提示还有更多成员：
-
-```rust
-AvatarGroup::new()
-    .limit(3)
-    .ellipsis()
-    .child(Avatar::new().src("https://example.com/user1.jpg"))
-    .child(Avatar::new().src("https://example.com/user2.jpg"))
-    .child(Avatar::new().src("https://example.com/user3.jpg"))
-    .child(Avatar::new().src("https://example.com/user4.jpg"))
-    .child(Avatar::new().src("https://example.com/user5.jpg"))
-```
-
-### 分组尺寸
-
-[Sizable] trait 也可用于 AvatarGroup，并会作用于内部所有头像：
-
-```rust
-AvatarGroup::new()
-    .xsmall()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-    .child(Avatar::new().name("C"))
-
-AvatarGroup::new()
-    .small()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-
-AvatarGroup::new()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-
-AvatarGroup::new()
-    .large()
-    .child(Avatar::new().name("A"))
-    .child(Avatar::new().name("B"))
-```
-
-### 批量添加头像
-
-```rust
-let avatars = vec![
-    Avatar::new().src("https://example.com/user1.jpg"),
-    Avatar::new().src("https://example.com/user2.jpg"),
-    Avatar::new().name("John Doe"),
-];
-
-AvatarGroup::new()
-    .children(avatars)
-    .limit(5)
-    .ellipsis()
-```
-
-## API 参考
-
-- [Avatar]
-- [AvatarGroup]
-
-## 示例
-
-### 团队成员展示
-
-```rust
-use gpui_component::{h_flex, v_flex};
-
-v_flex()
-    .gap_4()
-    .child("Development Team")
-    .child(
-        AvatarGroup::new()
-            .limit(4)
-            .ellipsis()
-            .child(Avatar::new().name("Alice Johnson").src("https://example.com/alice.jpg"))
-            .child(Avatar::new().name("Bob Smith").src("https://example.com/bob.jpg"))
-            .child(Avatar::new().name("Charlie Brown"))
-            .child(Avatar::new().name("Diana Prince"))
-            .child(Avatar::new().name("Eve Wilson"))
+    .avatar(
+        Avatar::new("alice", "Alice")
+            .image(AvatarImage::new("https://example.com/alice.jpg"))
+            .fallback(AvatarFallback::text("A")),
     )
-```
-
-### 用户资料头部
-
-```rust
-h_flex()
-    .items_center()
-    .gap_4()
-    .child(
-        Avatar::new()
-            .src("https://example.com/profile.jpg")
-            .name("John Doe")
-            .large()
-            .border_2()
-            .border_color(cx.theme().primary)
+    .avatar(
+        Avatar::new("bob", "Bob")
+            .image(AvatarImage::new("https://example.com/bob.jpg"))
+            .fallback(AvatarFallback::text("B")),
     )
-    .child(
-        v_flex()
-            .child("John Doe")
-            .child("Software Engineer")
+    .avatar(
+        Avatar::new("charlie", "Charlie")
+            .fallback(AvatarFallback::text("C")),
     )
+    .count(AvatarGroupCount::text("+3"))
 ```
 
-### 匿名用户
+尾部项也可以显示图标：
 
 ```rust
-use gpui_component::IconName;
-
-Avatar::new()
-    .placeholder(IconName::UserCircle)
-    .medium()
+AvatarGroup::new()
+    .avatars(avatars)
+    .count(AvatarGroupCount::icon(IconName::Plus))
 ```
 
-### 自动配色
-
-```rust
-Avatar::new().name("Alice")
-Avatar::new().name("Bob")
-Avatar::new().name("Charlie")
-```
+AvatarGroup 的尺寸优先级最高，会统一应用到全部 Avatar 和尾部项。
 
 [Avatar]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.Avatar.html
 [AvatarGroup]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.AvatarGroup.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html

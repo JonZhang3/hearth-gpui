@@ -3,10 +3,7 @@ use gpui::{
     point, px,
 };
 
-use super::{
-    label::PlotLabel, label::TEXT_GAP, label::TEXT_HEIGHT, label::TEXT_SIZE, label::Text,
-    origin_point,
-};
+use super::{label::PlotLabel, label::TEXT_GAP, label::TEXT_SIZE, label::Text, origin_point};
 
 pub const AXIS_GAP: f32 = 18.;
 
@@ -94,7 +91,7 @@ impl PlotAxis {
                 .map(|t| {
                     let y = match side {
                         AxisLabelSide::End => x + px(TEXT_GAP * 3.),
-                        AxisLabelSide::Start => x - px(TEXT_GAP + TEXT_HEIGHT),
+                        AxisLabelSide::Start => x - px(TEXT_GAP) - t.font_size,
                     };
                     Text {
                         text: t.text,
@@ -143,7 +140,7 @@ impl PlotAxis {
                     };
                     Text {
                         text: t.text,
-                        origin: point(x, t.tick - px(TEXT_SIZE / 2.)),
+                        origin: point(x, t.tick - t.font_size / 2.),
                         color: t.color,
                         font_size: t.font_size,
                         font_weight: FontWeight::NORMAL,

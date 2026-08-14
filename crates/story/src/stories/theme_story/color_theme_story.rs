@@ -1,7 +1,7 @@
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, IndexPath, StyledExt as _, ThemeColor,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     input::{Input, InputEvent, InputState},
     menu::PopupMenuItem,
@@ -304,7 +304,7 @@ impl ThemeColorsStory {
             .child(
                 div()
                     .size_16()
-                    .rounded(cx.theme().radius)
+                    .rounded(cx.theme().style.radii.md)
                     .bg(color)
                     .border_1()
                     .border_color(isolated_theme.border)
@@ -444,7 +444,7 @@ impl ThemeColorsStory {
                                             .child(
                                                 div()
                                                     .size_4()
-                                                    .rounded(cx.theme().radius.half())
+                                                    .rounded(cx.theme().style.radii.md.half())
                                                     .bg(color_value)
                                                     .border_1()
                                                     .border_color(cx.theme().border)
@@ -504,7 +504,7 @@ impl ThemeColorsStory {
         div()
             .border_1()
             .border_color(isolated_theme.border)
-            .rounded(cx.theme().radius_lg)
+            .rounded(cx.theme().style.radii.lg)
             .size_full()
             .overflow_hidden()
             .child(
@@ -512,7 +512,7 @@ impl ThemeColorsStory {
                     v_flex()
                         .size_full()
                         .overflow_hidden()
-                        .rounded(cx.theme().radius_lg)
+                        .rounded(cx.theme().style.radii.lg)
                         .px_4()
                         .child(
                             list(list_state.clone(), {
@@ -707,7 +707,6 @@ impl Render for ThemeColorsStory {
                     .child(div().w(px(300.)).child(Select::new(&self.select_state)))
                     .child(
                         Button::new("set_theme")
-                            .primary()
                             .label("Set Theme")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 use gpui_component::{Theme, ThemeRegistry};

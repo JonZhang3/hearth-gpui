@@ -150,7 +150,7 @@ impl Column {
     }
 
     /// Set the width of the column, default is 100px.
-    pub fn width(mut self, width: impl Into<Pixels>) -> Self {
+    pub fn w(mut self, width: impl Into<Pixels>) -> Self {
         self.width = width.into();
         self
     }
@@ -192,7 +192,7 @@ impl Column {
     ///
     /// ```rust,ignore
     /// Column::new("actions", "Actions")
-    ///     .width(px(100.))
+    ///     .w(px(100.))
     ///     .selectable(false)  // Prevent selection of action buttons
     /// ```
     pub fn selectable(mut self, selectable: bool) -> Self {
@@ -201,7 +201,7 @@ impl Column {
     }
 
     /// Set the minimum width of the column, default is 20px
-    pub fn min_width(mut self, min_width: impl Into<Pixels>) -> Self {
+    pub fn min_w(mut self, min_width: impl Into<Pixels>) -> Self {
         let min_width = min_width.into();
         self.min_width = min_width;
 
@@ -214,7 +214,7 @@ impl Column {
     }
 
     /// Set the minimum width of the column, default is 1200px
-    pub fn max_width(mut self, max_width: impl Into<Pixels>) -> Self {
+    pub fn max_w(mut self, max_width: impl Into<Pixels>) -> Self {
         let max_width = max_width.into();
         self.max_width = max_width;
 
@@ -228,6 +228,26 @@ impl Column {
 }
 
 impl FluentBuilder for Column {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn width_builders_preserve_column_constraints() {
+        let minimum = Column::new("minimum", "Minimum")
+            .w(px(100.))
+            .min_w(px(120.));
+        assert_eq!(minimum.width, px(120.));
+        assert_eq!(minimum.min_width, px(120.));
+
+        let maximum = Column::new("maximum", "Maximum")
+            .w(px(200.))
+            .max_w(px(150.));
+        assert_eq!(maximum.width, px(150.));
+        assert_eq!(maximum.max_width, px(150.));
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColumnFixed {
@@ -282,7 +302,7 @@ impl Render for DragColumn {
             .opacity(0.9)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_md()
+            .when(cx.theme().style.elevation.enabled, |this| this.shadow_md())
             .w(self.width)
             .min_w(px(100.))
             .max_w(px(450.))

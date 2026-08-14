@@ -7,8 +7,8 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Icon, IconName, Selectable as _, Side, Sizable,
-    badge::Badge,
-    breadcrumb::{Breadcrumb, BreadcrumbItem},
+    badge::OverlayBadge,
+    breadcrumb::{Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator},
     button::{Button, ButtonGroup},
     h_flex,
     menu::DropdownMenu,
@@ -341,7 +341,7 @@ impl Render for SidebarStory {
         let toggle_collapsed = self.collapsed && collapsible != SidebarCollapsible::None;
 
         h_flex()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().style.radii.md)
             .border_1()
             .border_color(cx.theme().border)
             .h_full()
@@ -360,7 +360,7 @@ impl Render for SidebarStory {
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .rounded(cx.theme().radius)
+                                    .rounded(cx.theme().style.radii.md)
                                     .bg(cx.theme().success)
                                     .text_color(cx.theme().success_foreground)
                                     .size_8()
@@ -480,7 +480,7 @@ impl Render for SidebarStory {
                                     })
                                     .when(ix == 0, |this| {
                                         this.suffix(|_, _| {
-                                            Badge::new().dot().count(1).child(
+                                            OverlayBadge::new().dot().count(1).child(
                                                 div().p_0p5().child(Icon::new(IconName::Bell)),
                                             )
                                         })
@@ -535,24 +535,47 @@ impl Render for SidebarStory {
                                 .child(Separator::vertical().h_4())
                             })
                             .child(
-                                Breadcrumb::new()
-                                    .child("Breadcrumb")
-                                    .child(BreadcrumbItem::new("Home").on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.last_active_item = Item::Playground;
-                                            cx.notify();
-                                        },
-                                    )))
+                                Breadcrumb::new("sidebar-breadcrumb")
                                     .child(
-                                        BreadcrumbItem::new(self.last_active_item.label())
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.active_subitem = None;
-                                                cx.notify();
-                                            })),
+                                        BreadcrumbItem::new("sidebar-root-item")
+                                            .child("Breadcrumb"),
                                     )
-                                    .when_some(self.active_subitem, |this, subitem| {
-                                        this.child(BreadcrumbItem::new(subitem.label()))
-                                    }),
+                                    .child(BreadcrumbSeparator::new())
+                                    .child(
+                                        BreadcrumbItem::new("sidebar-home-item").child(
+                                            BreadcrumbLink::new("sidebar-home-link")
+                                                .label("Home")
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.last_active_item = Item::Playground;
+                                                    cx.notify();
+                                                })),
+                                        ),
+                                    )
+                                    .child(BreadcrumbSeparator::new())
+                                    .when(self.active_subitem.is_some(), |this| {
+                                        this.child(
+                                            BreadcrumbItem::new("sidebar-section-item").child(
+                                                BreadcrumbLink::new("sidebar-section-link")
+                                                    .label(self.last_active_item.label())
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        this.active_subitem = None;
+                                                        cx.notify();
+                                                    })),
+                                            ),
+                                        )
+                                        .child(BreadcrumbSeparator::new())
+                                    })
+                                    .child(
+                                        BreadcrumbItem::new("sidebar-current-item").child(
+                                            BreadcrumbPage::new("sidebar-current-page").label(
+                                                self.active_subitem
+                                                    .map(|item| item.label())
+                                                    .unwrap_or_else(|| {
+                                                        self.last_active_item.label()
+                                                    }),
+                                            ),
+                                        ),
+                                    ),
                             ),
                     )
                     .child(self.render_content(window, cx)),

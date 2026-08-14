@@ -1,251 +1,123 @@
 ---
 title: HoverCard
-description: 鼠标悬停时显示富内容浮层的组件。
+description: 通过鼠标悬停或键盘焦点打开的非模态预览浮层。
 ---
 
 # HoverCard
 
-HoverCard 用于在鼠标悬停到触发元素时显示富内容浮层，适合做用户资料预览、链接预览和上下文信息展示。它支持打开和关闭延迟，以减少鼠标快速移动时的闪烁问题。
-
-它和 [Popover] 很像，但触发方式是 hover 而不是 click，并且提供了更细的时间控制。
+`HoverCard` 用于预览链接或其他可聚焦触发器背后的信息。默认延迟 700ms 打开、300ms
+关闭。指针从 Trigger 移向内容时，安全移动区域会防止浮层意外关闭。
 
 ## 导入
 
 ```rust
-use gpui_component::hover_card::HoverCard;
+use gpui_component::hover_card::{HoverCard, HoverCardAlign, HoverCardSide};
 ```
 
-## 用法
-
-### 基础 HoverCard
+## 使用
 
 ```rust
-use gpui::{ParentElement as _, Styled as _};
-use gpui_component::{hover_card::HoverCard, v_flex};
-
-HoverCard::new("basic")
+HoverCard::new("user-preview")
     .trigger(
-        div()
-            .child("Hover over me")
-            .text_color(cx.theme().primary)
-            .cursor_pointer()
-            .text_sm()
+        Button::new("profile-link")
+            .label("@huacnlee")
+            .link()
     )
     .child(
-        v_flex()
-            .gap_2()
+        h_flex()
+            .gap_3()
+            .items_start()
+            .child(Avatar::new("avatar", "Jason Lee"))
             .child(
-                div()
-                    .child("This is a hover card")
-                    .font_semibold()
-                    .text_sm()
-            )
-            .child(
-                div()
-                    .child("You can display rich content when hovering over a trigger element.")
-                    .text_color(cx.theme().muted_foreground)
-                    .text_sm()
+                v_flex()
+                    .gap_1()
+                    .child(div().font_semibold().child("Jason Lee"))
+                    .child(div().text_color(cx.theme().muted_foreground).child(
+                        "The author of GPUI Component."
+                    ))
             )
     )
 ```
 
-### 用户资料预览
+默认显示在 Trigger 下方并居中，side offset 为 4px。Vega 使用 256px 宽度和 16px
+内边距；Nova 与 Maia 根据当前 Style Preset 的语义 metrics 解析对应几何。
 
-这是一个很常见的场景，类似 GitHub 或 Twitter 的用户悬停预览：
+## 定位
 
-```rust
-use gpui::{px, relative, Styled as _};
-use gpui_component::{
-    avatar::Avatar,
-    hover_card::HoverCard,
-    h_flex,
-    v_flex,
-};
-
-h_flex()
-    .child("Hover over ")
-    .text_sm()
-    .child(
-        HoverCard::new("user-profile")
-            .trigger(
-                div()
-                    .child("@huacnlee")
-                    .cursor_pointer()
-                    .text_color(cx.theme().link)
-            )
-            .child(
-                h_flex()
-                    .w(px(320.))
-                    .gap_4()
-                    .items_start()
-                    .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/5518?s=64")
-                    )
-                    .child(
-                        v_flex()
-                            .gap_1()
-                            .line_height(relative(1.))
-                            .child(div().child("Jason Lee").font_semibold())
-                            .child(
-                                div()
-                                    .child("@huacnlee")
-                                    .text_color(cx.theme().muted_foreground)
-                                    .text_sm()
-                            )
-                            .child("The author of GPUI Component.")
-                    )
-            )
-    )
-    .child(" to see their profile")
-```
-
-### 自定义时间控制
-
-你可以按需调整打开和关闭延迟：
+`side` 与 `align` 相互独立：
 
 ```rust
-use std::time::Duration;
-use gpui::Styled as _;
-use gpui_component::{
-    button::{Button, ButtonVariants as _},
-    h_flex,
-};
-
-h_flex()
-    .gap_4()
-    .child(
-        HoverCard::new("fast-open")
-            .open_delay(Duration::from_millis(200))
-            .close_delay(Duration::from_millis(100))
-            .trigger(Button::new("fast").label("Fast Open (200ms)").outline())
-            .child(div().child("This hover card opens after 200ms").text_sm())
-    )
-    .child(
-        HoverCard::new("slow-open")
-            .open_delay(Duration::from_secs(1))
-            .close_delay(Duration::from_secs_f32(0.5))
-            .trigger(Button::new("slow").label("Slow Open (1000ms)").outline())
-            .child(div().child("This hover card opens after 1000ms").text_sm())
-    )
+HoverCard::new("placement")
+    .side(HoverCardSide::Right)
+    .align(HoverCardAlign::Start)
+    .side_offset(px(8.))
+    .align_offset(px(4.))
+    .trigger(Button::new("trigger").label("Preview"))
+    .child("Preview content")
 ```
 
-### 定位
+side 支持 `Top`、`Right`、`Bottom`、`Left`；align 支持 `Start`、`Center`、`End`。
+旧的 `anchor(Anchor)` builder 仍可使用，并会映射到新的定位模型。
 
-HoverCard 支持通过 [Anchor] 设置 6 种定位：
-
-- TopLeft
-- TopCenter
-- TopRight
-- BottomLeft
-- BottomCenter
-- BottomRight
-
-可以把卡片想象成有一个箭头尖角（像对话气泡的小三角）。anchor 指的就是这个尖角相对于触发器落在哪个点——`TopCenter` 把它放在触发器的顶部中间，`BottomRight` 放在右下角，以此类推。卡片就从这个点挂出来。
-
-例如 `Anchor::TopLeft` 会让卡片出现在触发器正下方，并与其左对齐：
-
-```text
-[ Trigger ]
-┌──────────────┐
-│  Hover Card  │
-└──────────────┘
-```
-
-### 使用动态内容构建器
-
-对于较复杂的内容，可以使用 `content` builder，在 HoverCard 打开时再生成内容：
+## 受控状态
 
 ```rust
-HoverCard::new("complex")
-    .trigger(Button::new("btn").label("Hover me"))
-    .content(|state, window, cx| {
-        v_flex()
-            .child("Dynamic content")
-            .child(format!("Open: {}", state.is_open()))
-    })
+HoverCard::new("controlled")
+    .open(self.preview_open)
+    .on_open_change(cx.listener(|this, open, _, cx| {
+        this.preview_open = *open;
+        cx.notify();
+    }))
+    .trigger(Button::new("trigger").label("Preview"))
+    .child("Controlled preview")
 ```
 
-### 样式
+使用 `default_open(true)` 可创建初始打开的非受控 HoverCard。
 
-HoverCard 继承了 `Styled` trait 的所有方法：
-
-```rust
-HoverCard::new("styled")
-    .trigger(Button::new("btn").label("Styled"))
-    .w(px(400.))
-    .max_h(px(500.))
-    .text_sm()
-    .gap_2()
-    .child("Styled content")
-```
-
-关闭默认外观并自定义样式：
+## 自定义延迟与外观
 
 ```rust
-HoverCard::new("custom-styled")
+HoverCard::new("custom")
+    .open_delay(Duration::from_millis(500))
+    .close_delay(Duration::from_millis(200))
     .appearance(false)
-    .trigger(Button::new("btn").label("Custom"))
-    .bg(cx.theme().background)
-    .border_2()
-    .border_color(cx.theme().primary)
-    .rounded(px(12.))
+    .w(px(320.))
     .p_4()
-    .child("Custom styled content")
+    .rounded_lg()
+    .bg(cx.theme().popover)
+    .trigger(Button::new("trigger").label("Preview"))
+    .child("Custom preview")
 ```
 
-## API 参考
+## 交互与可访问性
 
-### HoverCard 方法
+- 鼠标悬停和键盘焦点都能打开预览。
+- 外层不会增加额外 Tab stop，Trigger 自身的 Enter 与点击行为保持不变。
+- 内容是非模态浮层，不移动焦点，也不建立 focus trap。
+- 不要把必要信息、Button、Input 或完整流程只放在 HoverCard 中；交互内容应使用
+  `Popover` 或 `Dialog`。
+- GPUI 当前没有等价于 Web 版本的 AccessKit 子树隐藏能力。预览内容应保持非交互，必要
+  信息需要在可访问内容中同时提供。
 
-- `new(id: impl Into<ElementId>)`：创建一个新的 HoverCard
-- `trigger<T: IntoElement>(trigger: T)`：设置触发元素
-- `content<F>(content: F)`：设置内容构建器
-- `open_delay(duration: Duration)`：设置显示延迟，默认 600ms
-- `close_delay(duration: Duration)`：设置隐藏延迟，默认 300ms
-- `anchor(anchor: impl Into<Anchor>)`：设置定位，默认 `TopCenter`
-- `on_open_change<F>(callback: F)`：打开状态变化回调
-- `appearance(appearance: bool)`：是否启用默认样式，默认 `true`
+## API
 
-### HoverCardState 方法
+- `new(id)`
+- `trigger(element)`
+- `content(builder)`
+- `side(HoverCardSide)` / `align(HoverCardAlign)`
+- `side_offset(Pixels)` / `align_offset(Pixels)`
+- `anchor(Anchor)` 兼容映射
+- `default_open(bool)` / `open(bool)`
+- `open_delay(Duration)` / `close_delay(Duration)`
+- `on_open_change(callback)`
+- `appearance(bool)`
+- 所有 `Styled` builders
 
-- `is_open() -> bool`：判断当前是否打开
-
-## 行为细节
-
-### Hover 时间控制
-
-HoverCard 的时间控制主要解决悬停交互中的抖动问题：
-
-1. **Open Delay**：防止鼠标快速扫过时意外打开
-2. **Close Delay**：允许用户从 trigger 移动到内容区域时不立刻关闭
-3. **Interactive Content**：只要鼠标在 trigger 或内容区域内，浮层就保持打开
-
-### 已处理的边界场景
-
-- **快速划过**：因为有打开延迟，不会误触发
-- **从触发器移动到内容**：浮层不会马上关闭
-- **频繁悬停**：通过基于 epoch 的定时器机制做了去抖
-- **多个 HoverCard 同时存在**：每个 HoverCard 都维护独立状态，互不影响
-
-## 最佳实践
-
-1. 为不同场景设置合适的延迟。
-2. HoverCard 适合预览信息，不适合承载完整流程。
-3. 让触发器具备清晰的可悬停视觉反馈。
-4. HoverCard 不支持键盘导航；如需键盘可达性，优先考虑 Popover。
-5. 尽量避免嵌套 HoverCard，以免交互混乱。
-
-## 与 [Popover] 的区别
-
-| 特性 | HoverCard | Popover |
-| ------------------------ | ---------------- | ------------------ |
-| 触发方式 | 鼠标悬停 | 点击或右键 |
-| 键盘导航 | 不支持 | 支持 |
-| 点击外部关闭 | 不适用 | 支持，可配置 |
-| 时间延迟 | 支持 | 不支持 |
-| 主要用途 | 预览信息 | 操作和表单 |
+进入动画使用 100ms、方向感知的 `8px -> 0` 位移；退出动画反向使用 `0 -> 8px` 位移，
+并在最后一帧完成后卸载。HoverCard 不改变透明度。该差异可避免 GPUI 对各个绘制
+primitive 分别应用透明度时产生的合成
+观感问题；GPUI 尚不能把任意元素子树隔离成统一合成层，也不支持不影响布局的缩放，因此
+当前不模拟 shadcn 的 `scale(0.95)`。透明度通过各个 GPUI 绘制 primitive 分别相乘实现，
+而不是把完成绘制的子树作为独立图层统一合成。
 
 [Popover]: ./popover.md
-[Anchor]: https://docs.rs/gpui-component/latest/gpui_component/enum.Anchor.html
-[Avatar]: ./avatar.md

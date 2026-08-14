@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui::{
     Anchor, App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _,
     IntoElement, ParentElement, Render, Styled, Window,
@@ -5,7 +7,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, Theme, WindowExt as _,
-    button::{Button, ButtonVariants},
+    button::Button,
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::{Notification, NotificationType},
@@ -112,22 +114,61 @@ impl Render for NotificationStory {
                         Button::new("max-items")
                             .outline()
                             .label(format!("Max items: {}", cx.theme().notification.max_items))
-                            .dropdown_menu(move |menu, window, cx| {
-                                const MAX_ITEMS: [usize; 5] = [1, 2, 3, 5, 10];
-                                MAX_ITEMS.into_iter().fold(menu, |menu, max_items| {
-                                    menu.item(
-                                        PopupMenuItem::new(format!("{}", max_items))
-                                            .checked(cx.theme().notification.max_items == max_items)
-                                            .on_click(window.listener_for(
-                                                &view,
-                                                move |_, _, _, cx| {
-                                                    Theme::global_mut(cx).notification.max_items =
-                                                        max_items;
-                                                    cx.notify();
-                                                },
-                                            )),
-                                    )
-                                })
+                            .dropdown_menu({
+                                let view = view.clone();
+                                move |menu, window, cx| {
+                                    const MAX_ITEMS: [usize; 5] = [1, 2, 3, 5, 10];
+                                    MAX_ITEMS.into_iter().fold(menu, |menu, max_items| {
+                                        menu.item(
+                                            PopupMenuItem::new(format!("{}", max_items))
+                                                .checked(
+                                                    cx.theme().notification.max_items == max_items,
+                                                )
+                                                .on_click(window.listener_for(
+                                                    &view,
+                                                    move |_, _, _, cx| {
+                                                        Theme::global_mut(cx)
+                                                            .notification
+                                                            .max_items = max_items;
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                        )
+                                    })
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new("duration")
+                            .outline()
+                            .label(format!(
+                                "Duration: {}s",
+                                cx.theme().notification.duration.as_secs()
+                            ))
+                            .dropdown_menu({
+                                let view = view.clone();
+                                move |menu, window, cx| {
+                                    const DURATIONS: [u64; 4] = [3, 5, 8, 10];
+                                    DURATIONS.into_iter().fold(menu, |menu, seconds| {
+                                        menu.item(
+                                            PopupMenuItem::new(format!("{} seconds", seconds))
+                                                .checked(
+                                                    cx.theme().notification.duration
+                                                        == Duration::from_secs(seconds),
+                                                )
+                                                .on_click(window.listener_for(
+                                                    &view,
+                                                    move |_, _, _, cx| {
+                                                        Theme::global_mut(cx)
+                                                            .notification
+                                                            .duration =
+                                                            Duration::from_secs(seconds);
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                        )
+                                    })
+                                }
                             }),
                     ),
             )
@@ -142,10 +183,28 @@ impl Render for NotificationStory {
                 ),
             )
             .child(
+                section("Per-notification Placement").child(
+                    Button::new("show-all-placements")
+                        .outline()
+                        .label("Show All Placements")
+                        .on_click(cx.listener(|_, _, window, cx| {
+                            for placement in ANCHORS {
+                                window.push_notification(
+                                    Notification::info(format!("{:?}", placement))
+                                        .title("Position override")
+                                        .placement(placement)
+                                        .autohide(false),
+                                    cx,
+                                );
+                            }
+                        })),
+                ),
+            )
+            .child(
                 section("Notification with Type")
                     .child(
                         Button::new("show-notify-info")
-                            .info()
+                            .outline()
                             .label("Info")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -159,7 +218,6 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-success")
-                            .success()
                             .label("Success")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -173,7 +231,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-warning")
-                            .warning()
+                            .secondary()
                             .label("Warning")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -187,7 +245,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-notify-error")
-                            .danger()
+                            .destructive()
                             .label("Error")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -204,7 +262,7 @@ impl Render for NotificationStory {
                 section("Type with Title and Description")
                     .child(
                         Button::new("show-typed-info")
-                            .info()
+                            .outline()
                             .label("Info")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -217,24 +275,21 @@ impl Render for NotificationStory {
                                 )
                             })),
                     )
-                    .child(
-                        Button::new("show-typed-success")
-                            .success()
-                            .label("Success")
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                window.push_notification(
-                                    Notification::success(
-                                        "Your payment of $99.00 was processed and a \
+                    .child(Button::new("show-typed-success").label("Success").on_click(
+                        cx.listener(|_, _, window, cx| {
+                            window.push_notification(
+                                Notification::success(
+                                    "Your payment of $99.00 was processed and a \
                                         receipt has been emailed to you.",
-                                    )
-                                    .title("Payment received"),
-                                    cx,
                                 )
-                            })),
-                    )
+                                .title("Payment received"),
+                                cx,
+                            )
+                        }),
+                    ))
                     .child(
                         Button::new("show-typed-warning")
-                            .warning()
+                            .secondary()
                             .label("Warning")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -249,7 +304,7 @@ impl Render for NotificationStory {
                     )
                     .child(
                         Button::new("show-typed-error")
-                            .danger()
+                            .destructive()
                             .label("Error")
                             .on_click(cx.listener(|_, _, window, cx| {
                                 window.push_notification(
@@ -325,7 +380,7 @@ impl Render for NotificationStory {
                                     .title("Uh oh! Something went wrong.")
                                     .message("There was a problem with your request.")
                                     .action(|_, _, cx| {
-                                        Button::new("try-again").primary().label("Retry").on_click(
+                                        Button::new("try-again").label("Retry").on_click(
                                             cx.listener(|this, _, window, cx| {
                                                 println!("You have clicked the try again action.");
                                                 this.dismiss(window, cx);

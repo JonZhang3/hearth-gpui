@@ -1,0 +1,4 @@
+interface:
+  display_name: "Align shadcn Component"
+  short_description: "Compare and align GPUI components with shadcn Vega"
+  default_prompt: "Use $align-shadcn-component to compare a GPUI component with the pinned local shadcn implementation, produce a Vega alignment plan, then implement and verify it without waiting for a separate approval command."

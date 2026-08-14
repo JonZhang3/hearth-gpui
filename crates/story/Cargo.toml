@@ -7,6 +7,7 @@ edition.workspace = true
 [features]
 inspector = ["gpui-component/inspector"]
 tree-sitter = ["gpui-component/tree-sitter-languages"]
+visual-test = ["gpui/test-support", "gpui_platform/test-support"]
 default = ["tree-sitter"]
 
 [dependencies]
@@ -50,3 +51,19 @@ gtk = { version = "0.18" }
 
 [lints]
 workspace = true
+
+[[example]]
+name = "shadcn_capture"
+required-features = ["visual-test"]
+
+[[example]]
+name = "shadcn_phase0_capture"
+required-features = ["visual-test"]
+
+[[example]]
+name = "shadcn_overlay_capture"
+required-features = ["visual-test"]
+
+[[example]]
+name = "shadcn_locale_capture"
+required-features = ["visual-test"]

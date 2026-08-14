@@ -10,7 +10,7 @@ Progress 组件用于直观展示任务完成百分比。库中提供两种形�
 - **[Progress](#progress)**：线性水平进度条
 - **[ProgressCircle](#progresscircle)**：环形进度指示器
 
-这两个组件都支持数值变化动画、加载中（不确定进度）状态、自定义颜色以及自动适配当前主题。
+这两个组件都支持数值变化动画、加载中（不确定进度）状态、自定义颜色以及自动适配当前主题。线性 `Progress` 的几何和语义颜色与 pinned shadcn 基准对齐。
 
 ## Progress
 
@@ -22,6 +22,7 @@ use gpui_component::progress::Progress;
 
 ```rust
 Progress::new("my-progress")
+    .aria_label("上传进度")
     .value(75.0)
 ```
 
@@ -46,6 +47,10 @@ Progress::new("my-progress")
     .value(self.progress)
 ```
 
+不确定进度不会暴露过期的数值辅助信息。应使用 `.aria_label(...)`，并在需要时
+使用 `.aria_value(...)`，让辅助技术能够播报任务和状态。Reduced Motion 模式下
+显示静态的不确定进度段，不执行循环动画。
+
 ### 尺寸
 
 `Progress` 实现了 `Sizable` trait：
@@ -56,6 +61,12 @@ Progress::new("sm").value(50.0).small()
 Progress::new("md").value(50.0)
 Progress::new("lg").value(50.0).large()
 ```
+
+默认 Medium 高度跟随当前 Style Preset：Nova 为 4px、Vega 为 6px、Maia 为 12px。
+其他命名尺寸保持从紧凑到大型的单调尺寸关系，`Size::Size(height)` 会精确保留自定义高度。
+
+轨道使用 `tokens.muted`，指示器使用 `tokens.progress_bar`，后者默认回退到 Primary。
+数值变化使用语义 `normal` 时长和 `move_easing`，快速反向时从当前采样宽度继续，不会跳变。
 
 ### 自定义样式
 
@@ -96,8 +107,9 @@ impl Render for MyView {
                             })),
                     )
                     .child(Button::new("inc").icon(IconName::Plus).on_click(
-                        cx.listener(|this, _, _, _| {
+                        cx.listener(|this, _, _, cx| {
                             this.value = (this.value + 10.).min(100.);
+                            cx.notify();
                         }),
                     )),
             )
@@ -117,7 +129,9 @@ impl Render for MyView {
 | `new(id)` | `ElementId` | 创建新的进度条 |
 | `value(v)` | `f32` | 设置进度值，范围 0 到 100，超出时会自动裁剪 |
 | `loading(v)` | `bool` | 开启不确定进度动画；为 `true` 时忽略 `value` |
-| `color(c)` | `impl Into<Hsla>` | 覆盖填充颜色，默认使用 `theme.progress_bar` |
+| `color(c)` | `impl Into<Hsla>` | 覆盖填充颜色，默认使用 `theme.tokens.progress_bar` |
+| `aria_label(text)` | `SharedString` | 设置辅助名称 |
+| `aria_value(text)` | `SharedString` | 设置便于播报的辅助值 |
 | `xsmall()` / `small()` / `large()` | — | 通过 `Sizable` 设置预定义高度 |
 | `Styled` trait methods | — | 自定义高度、圆角、边框等 |
 

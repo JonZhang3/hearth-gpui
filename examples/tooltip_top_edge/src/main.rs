@@ -13,7 +13,6 @@ impl Render for TooltipTopEdgeExample {
             .child(
                 div().absolute().top_0().left(px(24.)).child(
                     Button::new("top-edge-tooltip")
-                        .primary()
                         .label("Hover for tooltip")
                         .tooltip("This tooltip should appear below the trigger near the top edge."),
                 ),

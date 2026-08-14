@@ -11,11 +11,29 @@ pub(crate) enum RowEntry {
     SectionFooter(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct MeasuredEntrySize {
     pub(crate) item_size: Size<Pixels>,
-    pub(crate) section_header_size: Size<Pixels>,
-    pub(crate) section_footer_size: Size<Pixels>,
+    pub(crate) section_header_sizes: Vec<Size<Pixels>>,
+    pub(crate) section_footer_sizes: Vec<Size<Pixels>>,
+}
+
+impl MeasuredEntrySize {
+    /// Returns the measured header size for a section, or zero when it has no header.
+    fn section_header_size(&self, section: usize) -> Size<Pixels> {
+        self.section_header_sizes
+            .get(section)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Returns the measured footer size for a section, or zero when it has no footer.
+    fn section_footer_size(&self, section: usize) -> Size<Pixels> {
+        self.section_footer_sizes
+            .get(section)
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 impl RowEntry {
@@ -23,13 +41,6 @@ impl RowEntry {
     #[allow(unused)]
     pub(crate) fn is_section_header(&self) -> bool {
         matches!(self, RowEntry::SectionHeader(_))
-    }
-
-    pub(crate) fn eq_index_path(&self, path: &IndexPath) -> bool {
-        match self {
-            RowEntry::Entry(index_path) => index_path == path,
-            RowEntry::SectionHeader(_) | RowEntry::SectionFooter(_) => false,
-        }
     }
 
     #[allow(unused)]
@@ -48,6 +59,7 @@ impl RowEntry {
     }
 
     #[inline]
+    #[cfg(test)]
     pub(crate) fn is_entry(&self) -> bool {
         matches!(self, RowEntry::Entry(_))
     }
@@ -69,6 +81,10 @@ pub(crate) struct RowsCache {
     pub(crate) items_count: usize,
     /// The sections, the item is number of rows in each section.
     pub(crate) sections: Rc<Vec<usize>>,
+    /// Number of item rows before each section.
+    section_item_offsets: Rc<Vec<usize>>,
+    /// Flattened section-header position for each non-empty section.
+    section_entity_offsets: Rc<Vec<Option<usize>>>,
     pub(crate) entries_sizes: Rc<Vec<Size<Pixels>>>,
     measured_size: MeasuredEntrySize,
 }
@@ -90,84 +106,90 @@ impl RowsCache {
 
     /// Returns the index of the  Entry with given path in the flattened rows.
     pub(crate) fn position_of(&self, path: &IndexPath) -> Option<usize> {
-        self.entities
-            .iter()
-            .position(|p| p.is_entry() && p.eq_index_path(path))
+        let items_count = *self.sections.get(path.section)?;
+        if path.row >= items_count {
+            return None;
+        }
+
+        let section_header = self
+            .section_entity_offsets
+            .get(path.section)
+            .copied()
+            .flatten()?;
+        Some(section_header + 1 + path.row)
     }
 
     /// Returns the flattened position of the first item row, skipping section
     /// headers and footers.
     pub(crate) fn first_entry_position(&self) -> Option<usize> {
-        self.entities.iter().position(RowEntry::is_entry)
+        self.section_entity_offsets
+            .iter()
+            .flatten()
+            .next()
+            .map(|header| header + 1)
     }
 
-    /// Return prev row, if the row is the first in the first section, goes to the last row.
-    ///
-    /// Empty rows section are skipped.
+    #[cfg(test)]
+    pub(crate) fn first_entry(&self) -> Option<IndexPath> {
+        self.entities.iter().find_map(|entry| match entry {
+            RowEntry::Entry(ix) => Some(*ix),
+            _ => None,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn last_entry(&self) -> Option<IndexPath> {
+        self.entities.iter().rev().find_map(|entry| match entry {
+            RowEntry::Entry(ix) => Some(*ix),
+            _ => None,
+        })
+    }
+
+    /// Return the one-based item ordinal across all sections.
+    pub(crate) fn item_ordinal(&self, path: IndexPath) -> Option<usize> {
+        let items_count = *self.sections.get(path.section)?;
+        if path.row >= items_count {
+            return None;
+        }
+
+        Some(*self.section_item_offsets.get(path.section)? + path.row + 1)
+    }
+
+    /// Returns the previous item and wraps at the beginning.
+    #[cfg(test)]
     pub(crate) fn prev(&self, path: Option<IndexPath>) -> IndexPath {
-        let path = path.unwrap_or_default();
+        let Some(path) = path else {
+            return self.last_entry().unwrap_or_default();
+        };
         let Some(pos) = self.position_of(&path) else {
-            return self
-                .entities
-                .iter()
-                .rfind(|entry| entry.is_entry())
-                .map(|entry| entry.index())
-                .unwrap_or_default();
+            return self.last_entry().unwrap_or_default();
         };
 
-        if let Some(path) = self
-            .entities
+        self.entities
             .iter()
             .take(pos)
             .rev()
             .find(|entry| entry.is_entry())
-            .map(|entry| entry.index())
-        {
-            path
-        } else {
-            self.entities
-                .iter()
-                .rfind(|entry| entry.is_entry())
-                .map(|entry| entry.index())
-                .unwrap_or_default()
-        }
+            .map(RowEntry::index)
+            .unwrap_or_else(|| self.last_entry().unwrap_or_default())
     }
 
-    /// Returns the next row, if the row is the last in the last section, goes to the first row.
-    ///
-    /// Empty rows section are skipped.
+    /// Returns the next item and wraps at the end.
+    #[cfg(test)]
     pub(crate) fn next(&self, path: Option<IndexPath>) -> IndexPath {
-        let Some(mut path) = path else {
-            return IndexPath::default();
+        let Some(path) = path else {
+            return self.first_entry().unwrap_or_default();
         };
-
         let Some(pos) = self.position_of(&path) else {
-            return self
-                .entities
-                .iter()
-                .find(|entry| entry.is_entry())
-                .map(|entry| entry.index())
-                .unwrap_or_default();
+            return self.first_entry().unwrap_or_default();
         };
 
-        if let Some(next_path) = self
-            .entities
+        self.entities
             .iter()
             .skip(pos + 1)
             .find(|entry| entry.is_entry())
-            .map(|entry| entry.index())
-        {
-            path = next_path;
-        } else {
-            path = self
-                .entities
-                .iter()
-                .find(|entry| entry.is_entry())
-                .map(|entry| entry.index())
-                .unwrap_or_default()
-        }
-
-        path
+            .map(RowEntry::index)
+            .unwrap_or_else(|| self.first_entry().unwrap_or_default())
     }
 
     pub(crate) fn prepare_if_needed<F>(
@@ -191,22 +213,35 @@ impl RowsCache {
         }
 
         let mut entries_sizes = vec![];
+        let mut section_item_offsets = Vec::with_capacity(new_sections.len());
+        let mut section_entity_offsets = Vec::with_capacity(new_sections.len());
         let mut total_items_count = 0;
-        self.measured_size = measured_size;
+        let mut total_entities_count = 0;
+        for items_count in new_sections.iter().copied() {
+            section_item_offsets.push(total_items_count);
+            section_entity_offsets.push((items_count > 0).then_some(total_entities_count));
+            total_items_count += items_count;
+            if items_count > 0 {
+                total_entities_count += items_count + 2;
+            }
+        }
+
+        self.measured_size = measured_size.clone();
         self.sections = Rc::new(new_sections);
+        self.section_item_offsets = Rc::new(section_item_offsets);
+        self.section_entity_offsets = Rc::new(section_entity_offsets);
         self.entities = Rc::new(
             self.sections
                 .iter()
                 .enumerate()
                 .flat_map(|(section, items_count)| {
-                    total_items_count += items_count;
                     let mut children = vec![];
                     if *items_count == 0 {
                         return children;
                     }
 
                     children.push(RowEntry::SectionHeader(section));
-                    entries_sizes.push(measured_size.section_header_size);
+                    entries_sizes.push(measured_size.section_header_size(section));
                     for row in 0..*items_count {
                         children.push(RowEntry::Entry(IndexPath {
                             section,
@@ -216,7 +251,7 @@ impl RowsCache {
                         entries_sizes.push(measured_size.item_size);
                     }
                     children.push(RowEntry::SectionFooter(section));
-                    entries_sizes.push(measured_size.section_footer_size);
+                    entries_sizes.push(measured_size.section_footer_size(section));
                     children
                 })
                 .collect(),
@@ -228,11 +263,11 @@ impl RowsCache {
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use gpui::{TestAppContext, px, size};
 
     use crate::{
         IndexPath,
-        list::cache::{RowEntry, RowsCache},
+        list::cache::{MeasuredEntrySize, RowEntry, RowsCache},
     };
 
     fn build_entities(sections: &[usize]) -> Vec<RowEntry> {
@@ -259,31 +294,103 @@ mod tests {
             .collect()
     }
 
+    fn build_cache(sections: &[usize]) -> RowsCache {
+        let mut item_offset = 0;
+        let mut entity_offset = 0;
+        let mut section_item_offsets = Vec::with_capacity(sections.len());
+        let mut section_entity_offsets = Vec::with_capacity(sections.len());
+
+        for items_count in sections.iter().copied() {
+            section_item_offsets.push(item_offset);
+            section_entity_offsets.push((items_count > 0).then_some(entity_offset));
+            item_offset += items_count;
+            if items_count > 0 {
+                entity_offset += items_count + 2;
+            }
+        }
+
+        RowsCache {
+            entities: build_entities(sections).into(),
+            items_count: item_offset,
+            sections: sections.to_vec().into(),
+            section_item_offsets: section_item_offsets.into(),
+            section_entity_offsets: section_entity_offsets.into(),
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn first_entry_position_skips_section_headers() {
-        let mut row_cache = RowsCache::default();
-        row_cache.entities = Rc::new(build_entities(&[2]));
+        let row_cache = build_cache(&[2]);
 
         assert_eq!(row_cache.first_entry_position(), Some(1));
     }
 
     #[test]
+    fn offsets_skip_empty_leading_sections() {
+        let row_cache = build_cache(&[0, 0, 2]);
+
+        assert_eq!(row_cache.next(None), IndexPath::new(0).section(2));
+        assert_eq!(
+            row_cache.position_of(&IndexPath::new(0).section(2)),
+            Some(1),
+            "the first real item must follow its section header"
+        );
+        assert_eq!(
+            row_cache.item_ordinal(IndexPath::new(1).section(2)),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn item_ordinal_is_global_across_sections() {
+        let row_cache = build_cache(&[2, 0, 3]);
+
+        assert_eq!(
+            row_cache.item_ordinal(IndexPath::new(1).section(2)),
+            Some(4)
+        );
+    }
+
+    #[gpui::test]
+    fn uses_each_sections_measured_header_and_footer_size(cx: &mut TestAppContext) {
+        let mut cache = RowsCache::default();
+        let sections = [1, 0, 2];
+        let measured_size = MeasuredEntrySize {
+            item_size: size(px(100.), px(20.)),
+            section_header_sizes: vec![
+                size(px(100.), px(10.)),
+                size(px(0.), px(0.)),
+                size(px(100.), px(12.)),
+            ],
+            section_footer_sizes: vec![
+                size(px(100.), px(9.)),
+                size(px(0.), px(0.)),
+                size(px(0.), px(0.)),
+            ],
+        };
+
+        cx.update(|cx| {
+            cache.prepare_if_needed(sections.len(), measured_size, cx, |section, _| {
+                sections[section]
+            });
+        });
+
+        let heights = cache
+            .entries_sizes
+            .iter()
+            .map(|entry| entry.height)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            heights,
+            vec![px(10.), px(20.), px(9.), px(12.), px(20.), px(20.), px(0.)]
+        );
+        assert_eq!(cache.position_of(&IndexPath::new(0).section(2)), Some(4));
+    }
+
+    #[test]
     fn test_prev_next() {
-        let mut row_cache = RowsCache::default();
-        // section 0
-        //  row 0
-        //  row 1
-        // section 1
-        //  row 0
-        //  row 1
-        //  row 2
-        //  row 3
-        // section 2
-        //  row 0
-        //  row 1
-        //  row 2
-        row_cache.sections = Rc::new(vec![2, 4, 3]);
-        row_cache.entities = Rc::new(build_entities(&[2, 4, 3]));
+        let row_cache = build_cache(&[2, 4, 3]);
 
         assert_eq!(
             row_cache.next(Some(IndexPath::new(0).section(0))),
@@ -342,23 +449,15 @@ mod tests {
 
     #[test]
     fn test_prev_next_with_empty_sections() {
-        let mut row_cache = RowsCache::default();
-        // section 0: 2 items
-        // section 1: 0 items (empty, should be skipped)
-        // section 2: 3 items
-        // section 3: 0 items (empty, should be skipped)
-        // section 4: 1 item
-        row_cache.sections = Rc::new(vec![2, 0, 3, 0, 1]);
-        row_cache.entities = Rc::new(build_entities(&[2, 0, 3, 0, 1]));
+        let row_cache = build_cache(&[2, 0, 3, 0, 1]);
 
-        // Test next: should skip empty sections
         assert_eq!(
             row_cache.next(Some(IndexPath::new(0).section(0))),
             IndexPath::new(1).section(0)
         );
         assert_eq!(
             row_cache.next(Some(IndexPath::new(1).section(0))),
-            IndexPath::new(0).section(2) // Skip section 1 (empty)
+            IndexPath::new(0).section(2)
         );
         assert_eq!(
             row_cache.next(Some(IndexPath::new(0).section(2))),
@@ -366,25 +465,24 @@ mod tests {
         );
         assert_eq!(
             row_cache.next(Some(IndexPath::new(2).section(2))),
-            IndexPath::new(0).section(4) // Skip section 3 (empty)
+            IndexPath::new(0).section(4)
         );
         assert_eq!(
             row_cache.next(Some(IndexPath::new(0).section(4))),
-            IndexPath::new(0).section(0) // Wrap around to first item
+            IndexPath::new(0).section(0)
         );
 
-        // Test prev: should skip empty sections
         assert_eq!(
             row_cache.prev(Some(IndexPath::new(0).section(0))),
-            IndexPath::new(0).section(4) // Wrap around to last item, skip empty sections
+            IndexPath::new(0).section(4)
         );
         assert_eq!(
             row_cache.prev(Some(IndexPath::new(0).section(2))),
-            IndexPath::new(1).section(0) // Skip section 1 (empty)
+            IndexPath::new(1).section(0)
         );
         assert_eq!(
             row_cache.prev(Some(IndexPath::new(0).section(4))),
-            IndexPath::new(2).section(2) // Skip section 3 (empty)
+            IndexPath::new(2).section(2)
         );
         assert_eq!(
             row_cache.prev(Some(IndexPath::new(1).section(2))),

@@ -1,38 +1,43 @@
 use gpui::{
-    Action, AsKeystroke, FocusHandle, Half, IntoElement, KeyContext, Keystroke, ParentElement as _,
-    RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, relative,
+    Action, AnyElement, AsKeystroke, FocusHandle, IntoElement, KeyContext, Keystroke,
+    ParentElement, RenderOnce, StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
 };
 
-use crate::{ActiveTheme, StyledExt};
+use crate::{ActiveTheme, StyledExt, h_flex};
 
-/// A tag for displaying keyboard keybindings.
-#[derive(IntoElement, Clone, Debug)]
+/// Displays a keyboard key or other textual keyboard input.
+#[derive(IntoElement)]
 pub struct Kbd {
     style: StyleRefinement,
-    stroke: Keystroke,
+    stroke: Option<Keystroke>,
+    children: Vec<AnyElement>,
     appearance: bool,
     outline: bool,
 }
 
 impl From<Keystroke> for Kbd {
     fn from(stroke: Keystroke) -> Self {
-        Self {
-            style: StyleRefinement::default(),
-            stroke,
-            appearance: true,
-            outline: false,
-        }
+        Self::from_keystroke(stroke)
     }
 }
 
 impl Kbd {
-    /// Create a new Kbd element with the given [`Keystroke`].
-    pub fn new(stroke: Keystroke) -> Self {
+    /// Creates an empty keyboard key that accepts arbitrary child content.
+    pub fn new() -> Self {
         Self {
             style: StyleRefinement::default(),
-            stroke,
+            stroke: None,
+            children: Vec::new(),
             appearance: true,
             outline: false,
+        }
+    }
+
+    /// Creates a keyboard key from a platform-aware [`Keystroke`].
+    pub fn from_keystroke(stroke: Keystroke) -> Self {
+        Self {
+            stroke: Some(stroke),
+            ..Self::new()
         }
     }
 
@@ -63,7 +68,7 @@ impl Kbd {
         }?;
 
         if let Some(key) = binding.keystrokes().first() {
-            Some(Self::new(key.as_keystroke().clone()))
+            Some(Self::from_keystroke(key.as_keystroke().clone()))
         } else {
             None
         }
@@ -77,7 +82,7 @@ impl Kbd {
     ) -> Option<Self> {
         let binding = window.highest_precedence_binding_for_action_in(action, focus_handle)?;
         if let Some(key) = binding.keystrokes().first() {
-            Some(Self::new(key.as_keystroke().clone()))
+            Some(Self::from_keystroke(key.as_keystroke().clone()))
         } else {
             None
         }
@@ -85,8 +90,8 @@ impl Kbd {
 
     /// Return the Platform specific keybinding string by KeyStroke
     ///
-    /// macOS: https://support.apple.com/en-us/HT201236
-    /// Windows: https://support.microsoft.com/en-us/windows/keyboard-shortcuts-in-windows-dcc61a57-8ff0-cffe-9796-cb9706c75eec
+    /// macOS: <https://support.apple.com/en-us/HT201236>
+    /// Windows: <https://support.microsoft.com/en-us/windows/keyboard-shortcuts-in-windows-dcc61a57-8ff0-cffe-9796-cb9706c75eec>
     pub fn format(key: &Keystroke) -> String {
         #[cfg(target_os = "macos")]
         const SEPARATOR: &str = "";
@@ -208,6 +213,18 @@ impl Kbd {
     }
 }
 
+impl Default for Kbd {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ParentElement for Kbd {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
 impl Styled for Kbd {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
@@ -216,11 +233,24 @@ impl Styled for Kbd {
 
 impl RenderOnce for Kbd {
     fn render(self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
+        let formatted_stroke = self.stroke.as_ref().map(Self::format);
+
         if !self.appearance {
-            return Self::format(&self.stroke).into_any_element();
+            return h_flex()
+                .gap_1()
+                .refine_style(&self.style)
+                .when_some(formatted_stroke, |this, stroke| this.child(stroke))
+                .children(self.children)
+                .into_any_element();
         }
 
-        div()
+        h_flex()
+            .h_5()
+            .min_w_5()
+            .justify_center()
+            .gap_1()
+            .flex_shrink_0()
+            .whitespace_nowrap()
             .text_color(cx.theme().muted_foreground)
             .bg(cx.theme().tokens.muted)
             .when(self.outline, |this| {
@@ -228,28 +258,88 @@ impl RenderOnce for Kbd {
                     .border_color(cx.theme().border)
                     .bg(cx.theme().tokens.background)
             })
-            .py_0p5()
             .px_1()
-            .min_w_5()
-            .text_center()
-            .rounded(cx.theme().radius.half())
-            .line_height(relative(1.))
+            .rounded(cx.theme().style.radii.sm)
             .text_xs()
-            .whitespace_normal()
-            .flex_shrink_0()
+            .font_medium()
             .refine_style(&self.style)
-            .child(Self::format(&self.stroke))
+            .when_some(formatted_stroke, |this, stroke| this.child(stroke))
+            .children(self.children)
             .into_any_element()
+    }
+}
+
+/// Groups multiple keyboard keys and optional separator content.
+#[derive(IntoElement)]
+pub struct KbdGroup {
+    style: StyleRefinement,
+    children: Vec<AnyElement>,
+}
+
+impl KbdGroup {
+    /// Creates an empty keyboard-key group.
+    pub fn new() -> Self {
+        Self {
+            style: StyleRefinement::default(),
+            children: Vec::new(),
+        }
+    }
+}
+
+impl Default for KbdGroup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ParentElement for KbdGroup {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl Styled for KbdGroup {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
+impl RenderOnce for KbdGroup {
+    fn render(self, _: &mut Window, _: &mut gpui::App) -> impl IntoElement {
+        h_flex()
+            .gap_1()
+            .refine_style(&self.style)
+            .children(self.children)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{Kbd, KbdGroup};
+    use gpui::Keystroke;
+
+    #[test]
+    fn creates_platform_keystroke_content() {
+        let stroke = Keystroke::parse("cmd-k").unwrap();
+        let kbd = Kbd::from_keystroke(stroke.clone());
+
+        assert_eq!(kbd.stroke, Some(stroke));
+        assert!(kbd.children.is_empty());
+        assert!(kbd.appearance);
+    }
+
+    #[test]
+    fn creates_empty_composable_elements() {
+        let kbd = Kbd::new();
+        let group = KbdGroup::new();
+
+        assert!(kbd.stroke.is_none());
+        assert!(kbd.children.is_empty());
+        assert!(group.children.is_empty());
+    }
+
     #[test]
     fn test_format() {
-        use super::Kbd;
-        use gpui::Keystroke;
-
         if cfg!(target_os = "macos") {
             assert_eq!(Kbd::format(&Keystroke::parse("cmd-a").unwrap()), "⌘A");
             assert_eq!(Kbd::format(&Keystroke::parse("cmd--").unwrap()), "⌘-");

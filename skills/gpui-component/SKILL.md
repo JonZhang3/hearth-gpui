@@ -61,8 +61,7 @@ When you need a component, find it here. For full API, fetch its `.md` doc.
 |-----------|--------|-------|
 | `Button` | `button::{Button, ButtonGroup}` | Stateless. Primary UI action |
 | `Icon` | `{Icon, IconName}` | Stateless. Lucide icons |
-| `Badge` | `badge::Badge` | Stateless. |
-| `Tag` | `tag::Tag` | Stateless. Closable tags |
+| `Badge` | `badge::{Badge, BadgeVariants, OverlayBadge}` | Stateless. Inline labels and target overlays |
 | `Avatar` | `avatar::Avatar` | Stateless. |
 | `Label` | `label::Label` | Stateless. Form label |
 | `Kbd` | `kbd::Kbd` | Stateless. Keyboard key display |

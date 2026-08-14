@@ -7,6 +7,8 @@ description: 一个可组合、可主题化、可自定义的侧边栏组件。
 
 Sidebar 是一个灵活的应用导航组件，支持折叠状态、嵌套菜单项、头部与底部区域以及响应式布局。它非常适合文件浏览器、后台管理面板和多层级导航界面。
 
+Sidebar 菜单几何会跟随当前 Style Preset。菜单项支持键盘激活、focus-visible、禁用可访问性状态、激活样式、标签截断和嵌套展开，并复用组件库现有的语义契约。
+
 ## 导入
 
 ```rust
@@ -108,14 +110,15 @@ Sidebar::new()
 ### Badge 与后缀
 
 ```rust
-use gpui_component::{Badge, Switch};
+use gpui_component::{
+    badge::{Badge, BadgeVariants as _},
+    switch::Switch,
+};
 
 SidebarMenuItem::new("Notifications")
     .icon(IconName::Bell)
     .suffix(
-        Badge::new()
-            .count(5)
-            .child("5")
+        Badge::new().secondary().child("5")
     )
 ```
 
@@ -124,7 +127,7 @@ SidebarMenuItem::new("Notifications")
 ```rust
 Sidebar::new()
     .side(Side::Right)
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Right Panel")
@@ -150,7 +153,7 @@ SidebarMenuItem::new("Project Files")
 
 ```rust
 Sidebar::new()
-    .width(280)
+    .w(280)
     .border_width(2)
     .header(
         SidebarHeader::new()
@@ -209,7 +212,7 @@ Sidebar::new()
 
 ```rust
 Sidebar::new()
-    .width(300)
+    .w(300)
     .header(
         SidebarHeader::new()
             .child("Settings")

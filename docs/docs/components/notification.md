@@ -109,6 +109,26 @@ Notification::new()
     .autohide(true) // default
 ```
 
+The active Style Preset controls Notification width, padding, gap, radius, elevation, and motion without changing its queue behavior. Global runtime settings remain under `Theme`:
+
+```rust
+use std::time::Duration;
+
+Theme::global_mut(cx).notification.max_items = 5;
+Theme::global_mut(cx).notification.duration = Duration::from_secs(8);
+Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
+```
+
+Individual notifications can override the global placement. Notifications without an override
+continue to inherit `Theme.notification.placement`. `max_items` is applied independently to each
+placement group.
+
+```rust
+Notification::success("Your changes were saved.")
+    .title("Saved")
+    .placement(Anchor::BottomRight);
+```
+
 ### With Action Button
 
 ```rust
@@ -117,7 +137,7 @@ Notification::new()
     .message("Unable to connect to server.")
     .with_type(NotificationType::Error)
     .autohide(false)
-    .action(|_, cx| {
+    .action(|_, _, cx| {
         Button::new("retry")
             .primary()
             .label("Retry")
@@ -147,6 +167,10 @@ Notification::new()
 use gpui_component::text::markdown;
 
 let markdown_content = r#"
+## Accessibility
+
+Notification exposes an AccessKit Alert role. Its title, or message when no title is set, becomes the accessible name. The icon-only close button uses a localized Close label.
+
 ## Custom Notification
 - **Feature**: New dashboard available
 - **Status**: Ready to use
@@ -242,7 +266,7 @@ window.push_notification(
 Notification::warning("System maintenance will begin in 30 minutes.")
     .title("Scheduled Maintenance")
     .autohide(false)
-    .action(|_, cx| {
+    .action(|_, _, cx| {
         Button::new("details")
             .link()
             .label("View Details")
@@ -286,7 +310,7 @@ Notification::new()
     .title("Unsaved Changes")
     .message("You have unsaved changes. Save before leaving?")
     .autohide(false)
-    .action(|_, cx| {
+    .action(|_, _, cx| {
         Button::new("save")
             .primary()
             .label("Save")

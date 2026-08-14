@@ -5,7 +5,7 @@ description: 用于引导用户按步骤完成流程的进度组件。
 
 # Stepper
 
-Stepper 用于按步骤展示流程进度，适合表单向导、订单流程和安装步骤等场景。支持横向和纵向布局、自定义图标以及不同尺寸。
+Stepper 用于按步骤展示流程进度，适合表单向导、订单流程和安装步骤等场景。支持横向和纵向布局、自定义图标、语义尺寸、只读进度和交互式导航。
 
 ## 导入
 
@@ -23,14 +23,16 @@ use gpui_component::stepper::{Stepper, StepperItem};
 Stepper::new("my-stepper")
     .selected_index(0)
     .items([
-        StepperItem::new().child("Step 1"),
-        StepperItem::new().child("Step 2"),
-        StepperItem::new().child("Step 3"),
+        StepperItem::new().label("Step 1"),
+        StepperItem::new().label("Step 2"),
+        StepperItem::new().label("Step 3"),
     ])
     .on_click(|step, _, _| {
         println!("Clicked step: {}", step);
     })
 ```
+
+未设置 `on_click` 时，Stepper 是只读进度指示器，步骤不会进入 Tab 顺序。设置 `on_click` 后，启用的步骤支持鼠标、Enter 和 Space 激活。
 
 ### 带图标的 Stepper
 
@@ -138,6 +140,17 @@ Stepper::new("disabled-stepper")
     ])
 ```
 
+### 可访问性与键盘行为
+
+- 根节点暴露具名步骤列表；上下文不能提供清晰名称时使用 `aria_label()`。
+- `StepperItem::label()` 同时提供可见文本和可访问名称；组合式自定义内容应使用 `aria_label()`。
+- 当前项目暴露 `aria-current="step"`，每个项目提供其位置和列表总数。
+- 交互模式下，启用步骤可通过 Tab 到达，并通过 Enter 或 Space 激活；长按 Space 不会重复触发。
+- 禁用步骤会被辅助技术识别为 disabled，且不能聚焦或激活。
+- 超出范围的 `selected_index()` 会限制到最后一个可用步骤；空 Stepper 没有当前步骤。
+
+Stepper 不对状态变化应用动画。颜色和几何会原子更新，尺寸、间距和连接线宽度由当前 Style Preset 解析。
+
 ## API 参考
 
 - [Stepper]
@@ -151,6 +164,17 @@ Stepper::new("disabled-stepper")
 - `small()`：小尺寸
 - `medium()`：中尺寸，默认值
 - `large()`：大尺寸
+
+### 方法
+
+- `aria_label(label)`：设置步骤列表的可访问名称
+- `selected_index(index)`：设置从 0 开始的当前步骤；越界值会限制到最后一个项目
+- `layout(axis)` / `vertical()`：设置横向或纵向布局
+- `text_center(bool)`：让横向项目内容居中
+- `disabled(bool)`：禁用所有步骤
+- `on_click(handler)`：启用导航并返回激活步骤的索引
+
+`StepperItem` 支持 `label()`、`aria_label()`、`icon()`、`disabled()`、自定义子元素、尺寸和样式。
 
 ## 示例
 

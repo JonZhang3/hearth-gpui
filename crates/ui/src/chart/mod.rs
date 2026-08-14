@@ -1,20 +1,30 @@
 mod area_chart;
 mod bar_chart;
 mod candlestick_chart;
+mod common;
 mod line_chart;
 mod pie_chart;
 mod radar_chart;
+mod radial_chart;
 mod sankey_chart;
 
-pub use area_chart::AreaChart;
-pub use bar_chart::BarChart;
+pub use crate::plot::tooltip::{
+    Tooltip as ChartTooltipContent, TooltipIndicator as ChartTooltipIndicator,
+};
+pub use area_chart::{AreaChart, AreaStackMode};
+pub use bar_chart::{BarChart, BarChartLayout};
 pub use candlestick_chart::CandlestickChart;
+pub use common::{
+    ChartAccessibility, ChartAccessibilityItem, ChartConfig, ChartConfigItem, ChartContainer,
+    ChartLegend, ChartLegendPosition,
+};
 pub use line_chart::LineChart;
 pub use pie_chart::PieChart;
-pub use radar_chart::{RadarChart, RadarLabel};
+pub use radar_chart::{RadarChart, RadarGridShape, RadarLabel};
+pub use radial_chart::RadialChart;
 pub use sankey_chart::{SankeyChart, SankeyLabel};
 
-use gpui::{Hsla, SharedString, TextAlign};
+use gpui::{Hsla, Pixels, SharedString, TextAlign};
 
 use crate::plot::{
     AxisText,
@@ -31,6 +41,7 @@ pub(crate) fn build_point_x_labels<T, X>(
     x_scale: &ScalePoint<X>,
     tick_margin: usize,
     color: Hsla,
+    font_size: Pixels,
 ) -> Vec<AxisText>
 where
     X: PartialEq + Into<SharedString>,
@@ -50,7 +61,9 @@ where
                     _ => TextAlign::Center,
                 };
                 // Call x_fn again to get an owned value for the label text.
-                AxisText::new(x_fn(d).into(), x_tick, color).align(align)
+                AxisText::new(x_fn(d).into(), x_tick, color)
+                    .font_size(font_size)
+                    .align(align)
             })
         })
         .collect()
@@ -69,6 +82,7 @@ pub(crate) fn build_band_labels<T, X>(
     band_width: f32,
     tick_margin: usize,
     color: Hsla,
+    font_size: Pixels,
 ) -> Vec<AxisText>
 where
     X: PartialEq + Into<SharedString>,
@@ -82,6 +96,7 @@ where
             x_scale.tick(&x_fn(d)).map(|x_tick| {
                 // Call x_fn again to get an owned value for the label text.
                 AxisText::new(x_fn(d).into(), x_tick + band_width / 2., color)
+                    .font_size(font_size)
                     .align(TextAlign::Center)
             })
         })

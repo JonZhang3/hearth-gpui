@@ -55,7 +55,7 @@ impl Render for Example {
                             .gap_2()
                             .p_4()
                             .bg(cx.theme().secondary)
-                            .rounded(cx.theme().radius)
+                            .rounded(cx.theme().style.radii.md)
                             .border_1()
                             .border_color(cx.theme().border)
                             .child(
@@ -112,7 +112,7 @@ impl Render for Example {
                             .grid()
                             .grid_cols(4)
                             .bg(cx.theme().accent.opacity(0.1))
-                            .rounded(cx.theme().radius)
+                            .rounded(cx.theme().style.radii.md)
                             .border_1()
                             .border_color(cx.theme().accent)
                             .child(Button::new("trap2-1").label("Trap 2 - Button 1"))

@@ -1,13 +1,14 @@
 use std::ops::Range;
 
 use gpui::{
-    App, HighlightStyle, IntoElement, ParentElement, RenderOnce, SharedString, StyleRefinement,
-    Styled, StyledText, Window, div, prelude::FluentBuilder, rems,
+    AnyElement, App, FocusHandle, HighlightStyle, InteractiveElement as _, IntoElement,
+    MouseButton, ParentElement, RenderOnce, SharedString, StyleRefinement, Styled, StyledText,
+    Window, div, prelude::FluentBuilder, relative,
 };
 
-use crate::{ActiveTheme, StyledExt};
+use crate::{ActiveTheme, Disableable, StyledExt};
 
-const MASKED: &'static str = "•";
+const MASKED: &str = "•";
 
 /// Represents the type of match for highlighting text in a label.
 #[derive(Clone)]
@@ -54,6 +55,9 @@ pub struct Label {
     style: StyleRefinement,
     label: SharedString,
     secondary: Option<SharedString>,
+    children: Vec<AnyElement>,
+    focus_target: Option<FocusHandle>,
+    disabled: bool,
     masked: bool,
     highlights_text: Option<HighlightsMatch>,
 }
@@ -66,9 +70,27 @@ impl Label {
             style: Default::default(),
             label,
             secondary: None,
+            children: Vec::new(),
+            focus_target: None,
+            disabled: false,
             masked: false,
             highlights_text: None,
         }
+    }
+
+    /// Creates a label without predefined text for fully composed content.
+    pub fn empty() -> Self {
+        Self::new(SharedString::default())
+    }
+
+    /// Focuses the associated control when this label receives a primary mouse press.
+    ///
+    /// This provides native desktop pointer behavior but does not create an
+    /// AccessKit `labelled_by` relation. The target control must still expose
+    /// its own accessible name.
+    pub fn for_focus(mut self, focus_target: &FocusHandle) -> Self {
+        self.focus_target = Some(focus_target.clone());
+        self
     }
 
     /// Set the secondary text for the label,
@@ -97,49 +119,65 @@ impl Label {
         }
     }
 
-    fn highlight_ranges(&self, total_length: usize) -> Vec<Range<usize>> {
+    /// Returns original-text byte ranges for a Unicode-safe case-insensitive match.
+    fn case_insensitive_ranges(text: &str, needle: &str, prefix_only: bool) -> Vec<Range<usize>> {
+        let needle_lower = needle.to_lowercase();
+        if needle_lower.is_empty() {
+            return Vec::new();
+        }
+
+        let mut ranges = Vec::new();
+        for (start, _) in text.char_indices() {
+            if prefix_only && start != 0 {
+                break;
+            }
+
+            // Grow a candidate along original character boundaries so every
+            // resulting byte range remains valid even when lowercasing expands.
+            let mut candidate_lower = String::new();
+            for (relative_start, character) in text[start..].char_indices() {
+                candidate_lower.extend(character.to_lowercase());
+                let end = start + relative_start + character.len_utf8();
+
+                if candidate_lower == needle_lower {
+                    ranges.push(start..end);
+                    break;
+                }
+
+                if !needle_lower.starts_with(&candidate_lower) {
+                    break;
+                }
+            }
+
+            if prefix_only {
+                break;
+            }
+        }
+
+        ranges
+    }
+
+    fn highlight_ranges(&self, _total_length: usize) -> Vec<Range<usize>> {
+        if self.masked {
+            return Vec::new();
+        }
+
         let mut ranges = Vec::new();
         let full_text = self.full_text();
 
         if self.secondary.is_some() {
             ranges.push(0..self.label.len());
-            ranges.push(self.label.len()..total_length);
+            ranges.push(self.label.len()..full_text.len());
         }
 
         if let Some(matched) = &self.highlights_text {
             let matched_str = matched.as_str();
             if !matched_str.is_empty() {
-                let search_lower = matched_str.to_lowercase();
-                let full_text_lower = full_text.to_lowercase();
-
-                if matched.is_prefix() {
-                    // For prefix matching, only check if the text starts with the search term
-                    if full_text_lower.starts_with(&search_lower) {
-                        ranges.push(0..matched_str.len());
-                    }
-                } else {
-                    // For full matching, find all occurrences
-                    let mut search_start = 0;
-                    while let Some(pos) = full_text_lower[search_start..].find(&search_lower) {
-                        let match_start = search_start + pos;
-                        let match_end = match_start + matched_str.len();
-
-                        if match_end <= full_text.len() {
-                            ranges.push(match_start..match_end);
-                        }
-
-                        search_start = match_start + 1;
-                        while !full_text.is_char_boundary(search_start)
-                            && search_start < full_text.len()
-                        {
-                            search_start += 1;
-                        }
-
-                        if search_start >= full_text.len() {
-                            break;
-                        }
-                    }
-                }
+                ranges.extend(Self::case_insensitive_ranges(
+                    &full_text,
+                    matched_str,
+                    matched.is_prefix(),
+                ));
             }
         }
 
@@ -185,6 +223,19 @@ impl Label {
     }
 }
 
+impl ParentElement for Label {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
+    }
+}
+
+impl Disableable for Label {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+}
+
 impl Styled for Label {
     fn style(&mut self) -> &mut gpui::StyleRefinement {
         &mut self.style
@@ -195,19 +246,36 @@ impl RenderOnce for Label {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut text = self.full_text();
         let chars_count = text.chars().count();
+        let disabled = self.disabled;
 
         if self.masked {
             text = SharedString::from(MASKED.repeat(chars_count))
         };
 
         let highlights = self.measure_highlights(text.len(), cx);
+        let focus_target = self.focus_target;
 
         div()
-            .line_height(rems(1.25))
+            .h_flex()
+            .items_center()
+            .gap_2()
+            .text_sm()
+            .font_medium()
+            .line_height(relative(1.))
             .text_color(cx.theme().foreground)
+            .when(disabled, |this| this.opacity(0.5))
             .refine_style(&self.style)
             .child(
                 StyledText::new(&text).when_some(highlights, |this, hl| this.with_highlights(hl)),
+            )
+            .children(self.children)
+            .when_some(
+                if disabled { None } else { focus_target },
+                |this, focus_target| {
+                    this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        focus_target.focus(window, cx);
+                    })
+                },
             )
     }
 }
@@ -215,6 +283,7 @@ impl RenderOnce for Label {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::TestAppContext;
 
     #[test]
     fn test_highlight_ranges() {
@@ -392,5 +461,48 @@ mod tests {
         // Test as_str method for prefix
         let prefix_match = HighlightsMatch::Prefix("test".into());
         assert_eq!(prefix_match.as_str(), "test");
+    }
+
+    #[test]
+    fn unicode_case_folding_keeps_original_byte_boundaries() {
+        let text = "İX";
+        let label = Label::new(text).highlights("x");
+        let ranges = label.highlight_ranges(text.len());
+
+        assert_eq!(ranges, vec![2..3]);
+        assert!(ranges
+            .iter()
+            .all(|range| text.is_char_boundary(range.start) && text.is_char_boundary(range.end)));
+    }
+
+    #[test]
+    fn masked_labels_do_not_apply_ranges_from_unmasked_text() {
+        let label = Label::new("秘密 Secret")
+            .secondary("optional")
+            .highlights("secret")
+            .masked(true);
+
+        assert!(
+            label
+                .highlight_ranges("秘密 Secret optional".len())
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn supports_composed_and_disabled_labels() {
+        let label = Label::empty().disabled(true).child("Composed label");
+
+        assert!(label.label.is_empty());
+        assert!(label.disabled);
+        assert_eq!(label.children.len(), 1);
+    }
+
+    #[gpui::test]
+    fn focus_target_builder_preserves_the_association(cx: &mut TestAppContext) {
+        let target = cx.update(|cx| cx.focus_handle());
+        let label = Label::new("Username").for_focus(&target);
+
+        assert_eq!(label.focus_target, Some(target));
     }
 }

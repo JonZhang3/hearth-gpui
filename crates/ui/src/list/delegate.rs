@@ -1,14 +1,19 @@
-use gpui::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Task, Window};
+use gpui::{
+    AnyElement, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Task,
+    Window,
+};
+use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, Icon, IconName, IndexPath, Selectable, h_flex,
+    ActiveTheme as _, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
     list::{ListState, loading::Loading},
+    v_flex,
 };
 
 /// A delegate for the List.
 #[allow(unused)]
 pub trait ListDelegate: Sized + 'static {
-    type Item: Selectable + IntoElement;
+    type Item: Disableable + Selectable + Sizable + IntoElement;
 
     /// When Query Input change, this method will be called.
     /// You can perform search here.
@@ -34,9 +39,20 @@ pub trait ListDelegate: Sized + 'static {
     /// the section header and footer will also be skipped.
     fn items_count(&self, section: usize, cx: &App) -> usize;
 
+    /// Return the accessible label for the item at `ix`.
+    fn item_label(&self, ix: IndexPath, cx: &App) -> SharedString;
+
+    /// Return whether the item can be selected and confirmed.
+    fn is_item_enabled(&self, _ix: IndexPath, _cx: &App) -> bool {
+        true
+    }
+
+    /// Returns an optional checked or pressed state for the option node.
+    fn item_toggled(&self, _ix: IndexPath, _cx: &App) -> Option<bool> {
+        None
+    }
+
     /// Render the item at the given index.
-    ///
-    /// Return None will skip the item.
     ///
     /// NOTE: Every item should have same height.
     fn render_item(
@@ -44,11 +60,11 @@ pub trait ListDelegate: Sized + 'static {
         ix: IndexPath,
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item>;
+    ) -> Self::Item;
 
     /// Render the section header at the given index, default is None.
     ///
-    /// NOTE: Every header should have same height.
+    /// Headers may use different heights between sections.
     fn render_section_header(
         &mut self,
         section: usize,
@@ -60,7 +76,7 @@ pub trait ListDelegate: Sized + 'static {
 
     /// Render the section footer at the given index, default is None.
     ///
-    /// NOTE: Every footer should have same height.
+    /// Footers may use different heights between sections.
     fn render_section_footer(
         &mut self,
         section: usize,
@@ -76,11 +92,14 @@ pub trait ListDelegate: Sized + 'static {
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
     ) -> impl IntoElement {
-        h_flex()
+        v_flex()
             .size_full()
+            .gap_2()
             .justify_center()
+            .items_center()
             .text_color(cx.theme().muted_foreground.opacity(0.6))
             .child(Icon::new(IconName::Inbox).size_12())
+            .child(t!("List.empty"))
             .into_any_element()
     }
 
@@ -164,8 +183,9 @@ pub trait ListDelegate: Sized + 'static {
     ///
     /// This will performed in a background task.
     ///
-    /// This is always called when the table is near the bottom,
-    /// so you must check if there is more data to load or lock
-    /// the loading state.
-    fn load_more(&mut self, window: &mut Window, cx: &mut Context<ListState<Self>>) {}
+    /// The returned task must cover the full request lifetime. `List` prevents
+    /// concurrent calls and suppresses immediate retries when no rows are added.
+    fn load_more(&mut self, _window: &mut Window, _cx: &mut Context<ListState<Self>>) -> Task<()> {
+        Task::ready(())
+    }
 }

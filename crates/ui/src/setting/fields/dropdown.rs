@@ -60,7 +60,7 @@ where
         Button::new("btn")
             .when(options.layout.is_vertical(), |this| this.w_full())
             .label(old_label)
-            .dropdown_caret(true)
+            .trailing_icon(crate::IconName::ChevronDown)
             .outline()
             .disabled(options.disabled)
             .with_size(options.size)

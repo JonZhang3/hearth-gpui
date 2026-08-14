@@ -6,14 +6,12 @@ use gpui::{
 
 use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_component::label::Label;
-use gpui_component::tag::Tag;
-use gpui_component::{ActiveTheme, IconName, StyledExt, h_flex};
 use gpui_component::{
-    Sizable,
-    button::{Button, ButtonVariants},
-    collapsible::Collapsible,
-    v_flex,
+    ActiveTheme, IconName, StyledExt,
+    badge::{Badge, BadgeVariants as _},
+    h_flex,
 };
+use gpui_component::{Sizable, button::Button, collapsible::Collapsible, v_flex};
 
 use crate::section;
 
@@ -70,6 +68,7 @@ impl Render for CollapsibleStory {
             .child(
                 section("Expland Paragraphs").v_flex().child(
                     Collapsible::new()
+                        .id("collapsible-paragraph")
                         .max_w_128()
                         .gap_1()
                         .open(self.item1_open)
@@ -112,6 +111,7 @@ impl Render for CollapsibleStory {
                         .title("Collapsible in a Card")
                         .child(
                             Collapsible::new()
+                                .id("collapsible-card")
                                 .gap_1()
                                 .open(self.item2_open)
                                 .child(
@@ -127,11 +127,11 @@ impl Render for CollapsibleStory {
                                                             .font_semibold(),
                                                     )
                                                     .child(
-                                                        Tag::info()
+                                                        Badge::new()
                                                             .child("+4.5%")
                                                             .outline()
-                                                            .rounded_full()
-                                                            .small(),
+                                                            .border_color(cx.theme().info)
+                                                            .text_color(cx.theme().info),
                                                     ),
                                             ),
                                         )

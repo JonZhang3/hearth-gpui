@@ -1,14 +1,106 @@
-use std::{rc::Rc, time::Duration};
+use std::{rc::Rc, sync::Arc};
 
 use crate::{
-    ActiveTheme, Disableable, FocusableExt, IconName, Selectable, Sizable, Size, StyledExt as _,
-    icon::IconNamed, text::Text, tooltip::ComponentTooltip, v_flex,
+    ActiveTheme, Density, Disableable, IconName, Selectable, Sizable, Size, StylePreset,
+    StyledExt as _, animation::Lerp, icon::IconNamed, text::Text, tooltip::ComponentTooltip,
+    v_flex,
 };
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, Div, ElementId, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement, StyleRefinement,
-    Styled, Toggled, Window, div, prelude::FluentBuilder as _, px, relative, rems, svg,
+    Animation, AnimationExt, AnyElement, App, Background, Div, ElementId, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Toggled, Window, div, prelude::FluentBuilder as _, px, relative, svg,
 };
+
+/// The CSS transition family used by a Checkbox Style Preset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CheckboxMotionKind {
+    Colors,
+    Shadow,
+}
+
+/// Geometry and elevation resolved from the active Style Preset without preset ID checks.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CheckboxMetrics {
+    edge: Pixels,
+    indicator_edge: Pixels,
+    radius: Pixels,
+    label_gap: Pixels,
+    content_gap: Pixels,
+    shadow: bool,
+    motion_kind: CheckboxMotionKind,
+}
+
+/// Resolves shadcn default geometry and the existing GPUI-specific size extensions.
+fn checkbox_metrics(size: Size, style: &StylePreset) -> CheckboxMetrics {
+    let edge = match size {
+        Size::Size(edge) => edge,
+        Size::XSmall => px(12.),
+        Size::Small => px(14.),
+        Size::Medium => px(16.),
+        Size::Large => px(18.),
+    };
+    let indicator_edge = px((edge.as_f32() - 2.).max(1.));
+
+    CheckboxMetrics {
+        edge,
+        indicator_edge,
+        radius: match style.density {
+            Density::Compact => style.radii.sm,
+            Density::Standard | Density::Comfortable => (style.radii.sm - px(2.)).max(px(0.)),
+        }
+        .min(edge * 0.5),
+        label_gap: px(8.),
+        content_gap: px(12.),
+        shadow: style.elevation.enabled && style.density == Density::Standard,
+        motion_kind: match style.density {
+            Density::Compact => CheckboxMotionKind::Colors,
+            Density::Standard | Density::Comfortable => CheckboxMotionKind::Shadow,
+        },
+    }
+}
+
+/// Renderable Checkbox colors captured before a state transition starts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct CheckboxPaintState {
+    background: Background,
+    border: Hsla,
+    foreground: Hsla,
+    ring: Hsla,
+}
+
+/// Previous and target paint states used to animate controlled Checkbox updates.
+#[derive(Debug, Clone, Copy)]
+struct CheckboxMotionState {
+    target: CheckboxPaintState,
+    epoch: u64,
+}
+
+impl CheckboxMotionState {
+    /// Creates stable motion state without animating the first render.
+    fn new(target: CheckboxPaintState) -> Self {
+        Self { target, epoch: 0 }
+    }
+
+    /// Records a new target and returns the transition endpoints when state changed.
+    fn transition_to(
+        &mut self,
+        target: CheckboxPaintState,
+    ) -> Option<(CheckboxPaintState, CheckboxPaintState, u64)> {
+        if self.target == target {
+            return None;
+        }
+
+        let from = self.target;
+        self.target = target;
+        self.epoch = self.epoch.wrapping_add(1);
+        Some((from, target, self.epoch))
+    }
+}
+
+/// Derives an internal Checkbox element ID without flattening the caller's structural ID.
+fn checkbox_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
+}
 
 /// A Checkbox element.
 #[derive(IntoElement)]
@@ -17,8 +109,11 @@ pub struct Checkbox {
     base: Div,
     style: StyleRefinement,
     label: Option<Text>,
+    aria_label: Option<SharedString>,
     children: Vec<AnyElement>,
     checked: bool,
+    indeterminate: bool,
+    invalid: bool,
     disabled: bool,
     size: Size,
     tab_stop: bool,
@@ -35,8 +130,11 @@ impl Checkbox {
             base: div(),
             style: StyleRefinement::default(),
             label: None,
+            aria_label: None,
             children: Vec::new(),
             checked: false,
+            indeterminate: false,
+            invalid: false,
             disabled: false,
             size: Size::default(),
             on_click: None,
@@ -58,9 +156,30 @@ impl Checkbox {
         self
     }
 
+    /// Set the accessible name used when the checkbox has no visible label.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
+        self
+    }
+
     /// Set the checked state for the checkbox.
     pub fn checked(mut self, checked: bool) -> Self {
         self.checked = checked;
+        self
+    }
+
+    /// Set the indeterminate state for the checkbox.
+    ///
+    /// Indeterminate takes precedence over `checked` for rendering and
+    /// accessibility. Activating an indeterminate checkbox selects it.
+    pub fn indeterminate(mut self, indeterminate: bool) -> Self {
+        self.indeterminate = indeterminate;
+        self
+    }
+
+    /// Set whether the checkbox value is invalid.
+    pub fn invalid(mut self, invalid: bool) -> Self {
+        self.invalid = invalid;
         self
     }
 
@@ -87,10 +206,11 @@ impl Checkbox {
     fn handle_click(
         on_click: &Option<Rc<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
         checked: bool,
+        indeterminate: bool,
         window: &mut Window,
         cx: &mut App,
     ) {
-        let new_checked = !checked;
+        let new_checked = indeterminate || !checked;
         if let Some(f) = on_click {
             (f)(&new_checked, window, cx);
         }
@@ -140,97 +260,190 @@ impl Sizable for Checkbox {
     }
 }
 
-pub(crate) fn checkbox_check_icon(
-    id: ElementId,
-    size: Size,
-    checked: bool,
-    disabled: bool,
-    window: &mut Window,
-    cx: &mut App,
-) -> impl IntoElement {
-    let toggle_state = window.use_keyed_state(id, cx, |_, _| checked);
-    let color = if disabled {
-        cx.theme().primary_foreground.opacity(0.5)
+/// Maps visual checkbox state to the AccessKit tri-state value.
+fn checkbox_toggled(checked: bool, indeterminate: bool) -> Toggled {
+    if indeterminate {
+        Toggled::Mixed
     } else {
-        cx.theme().primary_foreground
-    };
+        checked.into()
+    }
+}
 
+/// Renders the static shadcn Checkbox indicator with an explicit semantic foreground color.
+fn checkbox_indicator(
+    indicator_edge: Pixels,
+    selected: bool,
+    foreground: Hsla,
+) -> impl IntoElement {
     svg()
-        .absolute()
-        .top_px()
-        .left_px()
-        .map(|this| match size {
-            Size::XSmall => this.size_2(),
-            Size::Small => this.size_2p5(),
-            Size::Medium => this.size_3(),
-            Size::Large => this.size_3p5(),
-            _ => this.size_3(),
-        })
-        .text_color(color)
-        .map(|this| match checked {
-            true => this.path(IconName::Check.path()),
-            _ => this,
-        })
-        .map(|this| {
-            if !disabled && checked != *toggle_state.read(cx) {
-                let duration = Duration::from_secs_f64(0.25);
-                cx.spawn({
-                    let toggle_state = toggle_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(duration).await;
-                        _ = toggle_state.update(cx, |this, _| *this = checked);
-                    }
-                })
-                .detach();
-
-                this.with_animation(
-                    ElementId::NamedInteger("toggle".into(), checked as u64),
-                    Animation::new(Duration::from_secs_f64(0.25)),
-                    move |this, delta| {
-                        this.opacity(if checked { 1.0 * delta } else { 1.0 - delta })
-                    },
-                )
-                .into_any_element()
-            } else {
-                this.into_any_element()
-            }
-        })
+        .size(indicator_edge)
+        .text_color(foreground)
+        .when(selected, |this| this.path(IconName::Check.path()))
 }
 
 impl RenderOnce for Checkbox {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
+        let indeterminate = self.indeterminate;
+        let selected = checked || indeterminate;
 
         let focus_handle = window
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
             .read(cx)
             .clone();
         let is_focused = focus_handle.is_focused(window);
-
-        let border_color = if checked {
+        let focus_visible = is_focused && window.last_input_was_keyboard();
+        let metrics = checkbox_metrics(self.size, &cx.theme().style);
+        let has_content = !self.children.is_empty();
+        let invalid_border = cx
+            .theme()
+            .danger
+            .opacity(if cx.theme().is_dark() { 0.5 } else { 1. });
+        let border_color = if self.invalid {
+            if selected {
+                cx.theme().primary
+            } else {
+                invalid_border
+            }
+        } else if focus_visible {
+            cx.theme().ring
+        } else if selected {
             cx.theme().primary
         } else {
             cx.theme().input
         };
-        let color = if self.disabled {
-            border_color.opacity(0.5)
+        let ring_visible = self.invalid || focus_visible;
+        let ring_width = cx.theme().style.focus.ring_width;
+        let ring_inset = ring_width + cx.theme().style.focus.ring_offset;
+        let ring_color = if self.invalid {
+            cx.theme()
+                .danger
+                .opacity(if cx.theme().is_dark() { 0.4 } else { 0.2 })
         } else {
-            border_color
+            cx.theme().ring.opacity(0.5)
         };
-        let radius = cx.theme().radius.min(px(4.));
+        let background = if selected {
+            cx.theme().tokens.primary.background
+        } else {
+            cx.theme().input_background().into()
+        };
+        let foreground = if selected {
+            cx.theme().primary_foreground
+        } else {
+            cx.theme().foreground
+        };
+        let paint = CheckboxPaintState {
+            background,
+            border: border_color,
+            foreground,
+            ring: if ring_visible {
+                ring_color
+            } else {
+                ring_color.opacity(0.)
+            },
+        };
+        let motion_key = checkbox_child_id(&self.id, "checkbox-motion");
+        let motion_state =
+            window.use_keyed_state(motion_key, cx, |_, _| CheckboxMotionState::new(paint));
+        let transition = motion_state.update(cx, |state, _| state.transition_to(paint));
+        let accessible_label = self
+            .aria_label
+            .or_else(|| self.label.as_ref().map(|label| label.get_text(cx)));
+        let on_click = self.on_click.clone();
 
-        self.base
+        let ring_transition = transition.filter(|(from, to, _)| {
+            metrics.motion_kind == CheckboxMotionKind::Shadow && from.ring != to.ring
+        });
+        let show_ring = ring_visible || ring_transition.is_some();
+        let ring = show_ring.then(|| {
+            let ring = div()
+                .absolute()
+                .top(-ring_inset)
+                .right(-ring_inset)
+                .bottom(-ring_inset)
+                .left(-ring_inset)
+                .border(ring_width)
+                .border_color(paint.ring)
+                .rounded(metrics.radius + ring_width);
+
+            if let Some((from, to, epoch)) = ring_transition {
+                let easing = cx.theme().style.motion.move_easing;
+                let animation_id = checkbox_child_id(&self.id, format!("checkbox-ring-{epoch}"));
+                ring.with_animation(
+                    animation_id,
+                    Animation::new(cx.theme().style.motion.normal())
+                        .with_easing(move |delta| easing.sample(delta)),
+                    move |this, delta| this.border_color(Lerp::lerp(&from.ring, &to.ring, delta)),
+                )
+                .into_any_element()
+            } else {
+                ring.into_any_element()
+            }
+        });
+
+        let control = div()
+            .relative()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(metrics.edge)
+            .flex_shrink_0()
+            .border_1()
+            .border_color(paint.border)
+            .text_color(paint.foreground)
+            .bg(paint.background)
+            .rounded(metrics.radius)
+            .when(has_content, |this| this.mt_px())
+            .when(metrics.shadow, |this| this.shadow_xs())
+            .when_some(ring, |this, ring| this.child(ring))
+            .child(checkbox_indicator(
+                metrics.indicator_edge,
+                selected,
+                paint.foreground,
+            ));
+
+        let color_transition = transition.filter(|(from, to, _)| {
+            metrics.motion_kind == CheckboxMotionKind::Colors
+                && (from.background != to.background
+                    || from.border != to.border
+                    || from.foreground != to.foreground)
+        });
+        let control = if let Some((from, to, epoch)) = color_transition {
+            let easing = cx.theme().style.motion.move_easing;
+            let solid_backgrounds = from.background.as_solid().zip(to.background.as_solid());
+            let animation_id = checkbox_child_id(&self.id, format!("checkbox-colors-{epoch}"));
+            control
+                .with_animation(
+                    animation_id,
+                    Animation::new(cx.theme().style.motion.normal())
+                        .with_easing(move |delta| easing.sample(delta)),
+                    move |this, delta| {
+                        this.map(|this| {
+                            if let Some((from, to)) = solid_backgrounds {
+                                this.bg(Lerp::lerp(&from, &to, delta))
+                            } else {
+                                this
+                            }
+                        })
+                        .border_color(Lerp::lerp(&from.border, &to.border, delta))
+                        .text_color(Lerp::lerp(
+                            &from.foreground,
+                            &to.foreground,
+                            delta,
+                        ))
+                    },
+                )
+                .into_any_element()
+        } else {
+            control.into_any_element()
+        };
+
+        let element = self
+            .base
             .id(self.id.clone())
             .role(Role::CheckBox)
-            .aria_toggled(if checked {
-                Toggled::True
-            } else {
-                Toggled::False
-            })
-            .when_some(
-                self.label.as_ref().map(|l| l.get_text(cx)),
-                |this, label| this.aria_label(label),
-            )
+            .aria_toggled(checkbox_toggled(checked, indeterminate))
+            .when_some(accessible_label, |this, label| this.aria_label(label))
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -239,51 +452,23 @@ impl RenderOnce for Checkbox {
                 )
             })
             .h_flex()
-            .gap_2()
-            .items_start()
+            .gap(if has_content {
+                metrics.content_gap
+            } else {
+                metrics.label_gap
+            })
+            .when(has_content, |this| this.items_start())
+            .when(!has_content, |this| this.items_center())
             .line_height(relative(1.))
             .text_color(cx.theme().foreground)
             .map(|this| match self.size {
                 Size::XSmall => this.text_xs(),
-                Size::Small => this.text_sm(),
-                Size::Medium => this.text_base(),
-                Size::Large => this.text_lg(),
-                _ => this,
+                Size::Small | Size::Medium | Size::Size(_) => this.text_sm(),
+                Size::Large => this.text_base(),
             })
-            .when(self.disabled, |this| {
-                this.text_color(cx.theme().muted_foreground)
-            })
-            .rounded(cx.theme().radius * 0.5)
-            .focus_ring(is_focused, px(2.), window, cx)
             .refine_style(&self.style)
-            .child(
-                div()
-                    .relative()
-                    .map(|this| match self.size {
-                        Size::XSmall => this.size_3(),
-                        Size::Small => this.size_3p5(),
-                        Size::Medium => this.size_4(),
-                        Size::Large => this.size(rems(1.125)),
-                        _ => this.size_4(),
-                    })
-                    .flex_shrink_0()
-                    .border_1()
-                    .border_color(color)
-                    .rounded(radius)
-                    .map(|this| match checked {
-                        false => this.bg(cx.theme().input_background()),
-                        true if self.disabled => this.bg(color),
-                        true => this.bg(cx.theme().tokens.primary),
-                    })
-                    .child(checkbox_check_icon(
-                        self.id,
-                        self.size,
-                        checked,
-                        self.disabled,
-                        window,
-                        cx,
-                    )),
-            )
+            .when(self.disabled, |this| this.opacity(0.5))
+            .child(control)
             .when(self.label.is_some() || !self.children.is_empty(), |this| {
                 this.child(
                     v_flex()
@@ -297,9 +482,7 @@ impl RenderOnce for Checkbox {
                                     div()
                                         .size_full()
                                         .text_color(cx.theme().foreground)
-                                        .when(self.disabled, |this| {
-                                            this.text_color(cx.theme().muted_foreground)
-                                        })
+                                        .font_medium()
                                         .line_height(relative(1.))
                                         .child(label),
                                 )
@@ -315,14 +498,262 @@ impl RenderOnce for Checkbox {
                 window.prevent_default();
             })
             .when(!self.disabled, |this| {
-                this.on_click({
-                    let on_click = self.on_click.clone();
-                    move |_, window, cx| {
-                        window.prevent_default();
-                        Self::handle_click(&on_click, checked, window, cx);
-                    }
+                this.on_click(move |_, window, cx| {
+                    window.prevent_default();
+                    Self::handle_click(&on_click, checked, indeterminate, window, cx);
                 })
             })
-            .map(|this| self.tooltip.apply(this))
+            .map(|this| self.tooltip.apply(&self.id, this));
+
+        crate::accessibility::accessibility_state(element, self.invalid, false, self.disabled)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ElementExt as _;
+    use gpui::{
+        AppContext as _, Element as _, KeyDownEvent, KeyUpEvent, Keystroke, Render, TestAppContext,
+        VisualTestContext, accesskit,
+    };
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
+
+    #[gpui::test]
+    fn checkbox_builder_preserves_public_configuration(_cx: &mut TestAppContext) {
+        let checkbox = Checkbox::new("builder-checkbox")
+            .label("Visible label")
+            .aria_label("Accessible label")
+            .checked(true)
+            .indeterminate(true)
+            .invalid(true)
+            .disabled(true)
+            .large()
+            .tab_stop(false)
+            .tab_index(2)
+            .tooltip("More information")
+            .on_click(|_, _, _| {});
+
+        assert!(checkbox.label.is_some());
+        assert_eq!(checkbox.aria_label.as_deref(), Some("Accessible label"));
+        assert!(checkbox.checked);
+        assert!(checkbox.indeterminate);
+        assert!(checkbox.invalid);
+        assert!(checkbox.disabled);
+        assert_eq!(checkbox.size, Size::Large);
+        assert!(!checkbox.tab_stop);
+        assert_eq!(checkbox.tab_index, 2);
+        assert!(checkbox.tooltip.text.is_some());
+        assert!(checkbox.on_click.is_some());
+    }
+
+    #[test]
+    fn checkbox_metrics_match_builtin_shadcn_presets() {
+        let vega = checkbox_metrics(Size::Medium, &StylePreset::vega());
+        assert_eq!(vega.edge, px(16.));
+        assert_eq!(vega.indicator_edge, px(14.));
+        assert_eq!(vega.radius, px(4.));
+        assert!(vega.shadow);
+        assert_eq!(vega.motion_kind, CheckboxMotionKind::Shadow);
+
+        let nova = checkbox_metrics(Size::Medium, &StylePreset::nova());
+        assert_eq!(nova.edge, px(16.));
+        assert_eq!(nova.radius, px(4.));
+        assert!(!nova.shadow);
+        assert_eq!(nova.motion_kind, CheckboxMotionKind::Colors);
+
+        let maia = checkbox_metrics(Size::Medium, &StylePreset::maia());
+        assert_eq!(maia.edge, px(16.));
+        assert_eq!(maia.radius, px(6.));
+        assert!(!maia.shadow);
+        assert_eq!(maia.motion_kind, CheckboxMotionKind::Shadow);
+    }
+
+    #[test]
+    fn checkbox_motion_state_skips_initial_render_and_advances_changed_targets() {
+        let initial = CheckboxPaintState {
+            background: Hsla::white().into(),
+            border: Hsla::red(),
+            foreground: Hsla::black(),
+            ring: Hsla::transparent_black(),
+        };
+        let target = CheckboxPaintState {
+            background: Hsla::black().into(),
+            border: Hsla::black(),
+            foreground: Hsla::white(),
+            ring: Hsla::red(),
+        };
+        let mut state = CheckboxMotionState::new(initial);
+
+        assert!(state.transition_to(initial).is_none());
+        assert_eq!(state.transition_to(target), Some((initial, target, 1)));
+        assert!(state.transition_to(target).is_none());
+    }
+
+    #[test]
+    fn checkbox_internal_ids_preserve_structural_identity() {
+        let structured = ElementId::NamedInteger("foo".into(), 1);
+        let textual = ElementId::Name("foo-1".into());
+
+        assert_eq!(structured.to_string(), textual.to_string());
+        assert_ne!(
+            checkbox_child_id(&structured, "checkbox-motion"),
+            checkbox_child_id(&textual, "checkbox-motion")
+        );
+        assert_ne!(
+            checkbox_child_id(&structured, "checkbox-ring-1"),
+            checkbox_child_id(&textual, "checkbox-ring-1")
+        );
+        assert_ne!(
+            checkbox_child_id(&structured, "checkbox-colors-1"),
+            checkbox_child_id(&textual, "checkbox-colors-1")
+        );
+    }
+
+    #[test]
+    fn indeterminate_state_is_exposed_as_mixed() {
+        assert_eq!(checkbox_toggled(false, false), Toggled::False);
+        assert_eq!(checkbox_toggled(true, false), Toggled::True);
+        assert_eq!(checkbox_toggled(false, true), Toggled::Mixed);
+        assert_eq!(checkbox_toggled(true, true), Toggled::Mixed);
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct CheckboxAccessibility {
+        role: Role,
+        explicit_label: Option<String>,
+        visible_label: Option<String>,
+        toggled: Option<Toggled>,
+        invalid: bool,
+        disabled: bool,
+    }
+
+    struct AccessibilityProbe {
+        metadata: Arc<Mutex<Option<CheckboxAccessibility>>>,
+    }
+
+    impl Render for AccessibilityProbe {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            let metadata = self.metadata.clone();
+            div().on_prepaint(move |_, window, cx| {
+                let mut node = accesskit::Node::new(Role::CheckBox);
+                let checkbox = Checkbox::new("accessible-checkbox")
+                    .aria_label("Select all rows")
+                    .indeterminate(true)
+                    .invalid(true)
+                    .disabled(true)
+                    .render(window, cx)
+                    .into_element();
+                let role = checkbox
+                    .a11y_role()
+                    .expect("checkbox must expose its accessibility role");
+                checkbox.write_a11y_info(&mut node);
+
+                let mut visible_label_node = accesskit::Node::new(Role::CheckBox);
+                Checkbox::new("visible-label-checkbox")
+                    .label("Visible option")
+                    .checked(true)
+                    .render(window, cx)
+                    .into_element()
+                    .write_a11y_info(&mut visible_label_node);
+
+                *metadata.lock().unwrap() = Some(CheckboxAccessibility {
+                    role,
+                    explicit_label: node.label().map(ToOwned::to_owned),
+                    visible_label: visible_label_node.label().map(ToOwned::to_owned),
+                    toggled: node.toggled(),
+                    invalid: node.invalid() == Some(accesskit::Invalid::True),
+                    disabled: node.is_disabled(),
+                });
+            })
+        }
+    }
+
+    #[gpui::test]
+    fn checkbox_exposes_name_tristate_invalid_and_disabled(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let metadata = Arc::new(Mutex::new(None));
+        let captured = metadata.clone();
+        let (_, cx) = cx.add_window_view(move |_, _| AccessibilityProbe { metadata });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        assert_eq!(
+            *captured.lock().unwrap(),
+            Some(CheckboxAccessibility {
+                role: Role::CheckBox,
+                explicit_label: Some("Select all rows".into()),
+                visible_label: Some("Visible option".into()),
+                toggled: Some(Toggled::Mixed),
+                invalid: true,
+                disabled: true,
+            })
+        );
+    }
+
+    struct KeyboardFixture {
+        calls: Arc<AtomicUsize>,
+        checked: Arc<AtomicBool>,
+    }
+
+    impl Render for KeyboardFixture {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            let calls = self.calls.clone();
+            let checked = self.checked.clone();
+            div()
+                .child(
+                    Checkbox::new("disabled-checkbox")
+                        .label("Disabled")
+                        .disabled(true),
+                )
+                .child(
+                    Checkbox::new("keyboard-checkbox")
+                        .label("Enable notifications")
+                        .on_click(move |value, _, _| {
+                            calls.fetch_add(1, Ordering::SeqCst);
+                            checked.store(*value, Ordering::SeqCst);
+                        }),
+                )
+        }
+    }
+
+    #[gpui::test]
+    fn space_activates_enabled_checkbox_once_and_ignores_key_repeat(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let checked = Arc::new(AtomicBool::new(false));
+        let captured_calls = calls.clone();
+        let captured_checked = checked.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let fixture = cx.new(|_| KeyboardFixture { calls, checked });
+            crate::Root::new(fixture, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            window.focus_next(cx);
+        });
+        let space = Keystroke::parse("space").expect("space must be a valid keystroke");
+        cx.simulate_event(KeyDownEvent {
+            keystroke: space.clone(),
+            is_held: false,
+            prefer_character_input: false,
+        });
+        cx.simulate_event(KeyDownEvent {
+            keystroke: space.clone(),
+            is_held: true,
+            prefer_character_input: false,
+        });
+        cx.simulate_event(KeyUpEvent { keystroke: space });
+        cx.run_until_parked();
+
+        assert_eq!(captured_calls.load(Ordering::SeqCst), 1);
+        assert!(captured_checked.load(Ordering::SeqCst));
     }
 }

@@ -1,15 +1,15 @@
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render,
-    StyleRefinement, Styled, Window, relative,
+    StyleRefinement, Styled, Window, div, relative,
 };
 
 use gpui_component::{
     ActiveTheme as _, StyledExt,
-    button::{Button, ButtonVariants},
+    button::Button,
     checkbox::Checkbox,
     group_box::{GroupBox, GroupBoxVariants as _},
     h_flex,
-    radio::{Radio, RadioGroup},
+    radio::{RadioGroup, RadioGroupItem},
     switch::Switch,
     text::markdown,
     v_flex,
@@ -63,17 +63,20 @@ impl Render for GroupBoxStory {
             .child(
                 section("Default Style").w_128().child(
                     GroupBox::new()
+                        .id("subscriptions")
+                        .aria_label("Subscription settings")
                         .child("Subscriptions")
                         .child(Checkbox::new("all").label("All"))
                         .child(Checkbox::new("news-letter").label("News Letter"))
                         .child(Checkbox::new("account-activity").label("Account Activity"))
-                        .child(Button::new("ok").primary().label("Update Subscriptions")),
+                        .child(Button::new("ok").label("Update Subscriptions")),
                 ),
             )
             .child(
                 section("Fill Style").w_128().child(
                     GroupBox::new()
                         .id("activity")
+                        .aria_label("Contribution and activity settings")
                         .fill()
                         .title("Contributions & activity")
                         .child(
@@ -88,36 +91,55 @@ impl Render for GroupBoxStory {
                                 .child("Include private contributions on my profile")
                                 .child(Switch::new("toggle-1").checked(false)),
                         )
-                        .child(Button::new("btn-1").primary().label("Save")),
+                        .child(Button::new("btn-1").label("Save")),
                 ),
             )
             .child(
                 section("Outline Style").w_128().child(
                     GroupBox::new()
                         .id("appearance")
+                        .aria_label("Appearance settings")
                         .outline()
                         .title("Appearance")
                         .child(
                             RadioGroup::vertical("theme")
-                                .child(Radio::new("light").label("Light"))
-                                .child(Radio::new("dark").label("Dark"))
-                                .child(Radio::new("system").label("System")),
+                                .aria_label("Theme")
+                                .child(RadioGroupItem::new("light").label("Light"))
+                                .child(RadioGroupItem::new("dark").label("Dark"))
+                                .child(RadioGroupItem::new("system").label("System")),
                         ),
                 ),
             )
             .child(
                 section("Without Title").w_128().child(
-                    GroupBox::new().outline().child(
-                        h_flex()
-                            .justify_between()
-                            .child("Make profile private and hide activity")
-                            .child(Switch::new("toggle-1").checked(true)),
-                    ),
+                    GroupBox::new()
+                        .id("privacy")
+                        .aria_label("Privacy settings")
+                        .outline()
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .min_w_0()
+                                .gap_3()
+                                .justify_between()
+                                .child(
+                                    div().min_w_0().flex_1().child(
+                                        "Make profile private and hide activity across connected services",
+                                    ),
+                                )
+                                .child(
+                                    Switch::new("privacy-toggle")
+                                        .checked(true)
+                                        .flex_none(),
+                                ),
+                        ),
                 ),
             )
             .child(
                 section("Custom style").w_128().child(
                     GroupBox::new()
+                        .id("custom-group")
+                        .aria_label("Custom styled group")
                         .outline()
                         .bg(cx.theme().group_box)
                         .rounded_xl()

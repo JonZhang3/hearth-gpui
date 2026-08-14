@@ -1,10 +1,10 @@
-use chrono::{Datelike, Days, Duration, Utc};
+use chrono::{Datelike, Days, Duration, Local, Months, NaiveDate, Utc};
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement as _, Render,
     Styled as _, Subscription, Window, div, px,
 };
 use gpui_component::{
-    ActiveTheme as _, Sizable as _, calendar,
+    ActiveTheme as _, Disableable as _, Sizable as _, calendar,
     date_picker::{DatePicker, DatePickerEvent, DatePickerState, DateRangePreset},
     v_flex,
 };
@@ -12,12 +12,17 @@ use gpui_component::{
 use crate::section;
 
 pub struct DatePickerStory {
+    empty_picker: Entity<DatePickerState>,
+    disabled_picker: Entity<DatePickerState>,
     date_picker: Entity<DatePickerState>,
     date_picker_small: Entity<DatePickerState>,
     date_picker_large: Entity<DatePickerState>,
     data_picker_custom: Entity<DatePickerState>,
     date_picker_value: Option<String>,
     date_range_picker: Entity<DatePickerState>,
+    localized_single_picker: Entity<DatePickerState>,
+    localized_range_picker: Entity<DatePickerState>,
+    cross_month_range_picker: Entity<DatePickerState>,
     default_range_mode_picker: Entity<DatePickerState>,
     birthday_picker: Entity<DatePickerState>,
     without_appearance_picker: Entity<DatePickerState>,
@@ -45,6 +50,12 @@ impl DatePickerStory {
 
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let now = chrono::Local::now().naive_local().date();
+        let empty_picker = cx.new(|cx| DatePickerState::new(window, cx));
+        let disabled_picker = cx.new(|cx| {
+            let mut picker = DatePickerState::new(window, cx);
+            picker.set_date(now, window, cx);
+            picker
+        });
         let date_picker = cx.new(|cx| {
             let mut picker = DatePickerState::new(window, cx).disabled_matcher(vec![0, 6]);
             picker.set_date(now, window, cx);
@@ -86,6 +97,35 @@ impl DatePickerStory {
             );
             picker
         });
+        let localized_single_picker = cx.new(|cx| {
+            let mut picker = DatePickerState::new(window, cx);
+            picker.set_date(NaiveDate::from_ymd_opt(2026, 9, 16).unwrap(), window, cx);
+            picker
+        });
+        let localized_range_picker = cx.new(|cx| {
+            let mut picker = DatePickerState::range(window, cx);
+            picker.set_date(
+                (
+                    NaiveDate::from_ymd_opt(2025, 9, 28).unwrap(),
+                    NaiveDate::from_ymd_opt(2025, 10, 15).unwrap(),
+                ),
+                window,
+                cx,
+            );
+            picker
+        });
+        let cross_month_range_picker = cx.new(|cx| {
+            let mut picker = DatePickerState::range(window, cx);
+            picker.set_date(
+                (
+                    NaiveDate::from_ymd_opt(2026, 7, 26).unwrap(),
+                    NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
+                ),
+                window,
+                cx,
+            );
+            picker
+        });
 
         let default_range_mode_picker = cx.new(|cx| DatePickerState::range(window, cx));
 
@@ -116,11 +156,16 @@ impl DatePickerStory {
         ];
 
         Self {
+            empty_picker,
+            disabled_picker,
             date_picker,
             date_picker_large,
             date_picker_small,
             data_picker_custom,
             date_range_picker,
+            localized_single_picker,
+            localized_range_picker,
+            cross_month_range_picker,
             default_range_mode_picker,
             birthday_picker,
             without_appearance_picker,
@@ -149,7 +194,10 @@ impl Render for DatePickerStory {
             ),
             DateRangePreset::single(
                 "Last Month",
-                (Utc::now() - Duration::days(30)).naive_local().date(),
+                Local::now()
+                    .date_naive()
+                    .checked_sub_months(Months::new(1))
+                    .expect("the previous calendar month must be representable"),
             ),
         ];
         let range_presets = vec![
@@ -178,10 +226,26 @@ impl Render for DatePickerStory {
         v_flex()
             .gap_3()
             .child(
+                section("Canonical").max_w_128().child(
+                    DatePicker::new(&self.empty_picker)
+                        .placeholder("Pick a date")
+                        .number_of_months(1)
+                        .w(px(240.)),
+                ),
+            )
+            .child(
                 section("Normal").max_w_128().child(
                     DatePicker::new(&self.date_picker)
                         .cleanable(true)
-                        .presets(presets),
+                        .presets(presets)
+                        .w(px(240.)),
+                ),
+            )
+            .child(
+                section("Disabled").max_w_128().child(
+                    DatePicker::new(&self.disabled_picker)
+                        .disabled(true)
+                        .w(px(240.)),
                 ),
             )
             .child(
@@ -204,7 +268,28 @@ impl Render for DatePickerStory {
                     DatePicker::new(&self.date_range_picker)
                         .number_of_months(2)
                         .cleanable(true)
-                        .presets(range_presets.clone()),
+                        .presets(range_presets.clone())
+                        .w(px(300.)),
+                ),
+            )
+            .child(
+                section("Localized Single Value")
+                    .max_w_128()
+                    .child(DatePicker::new(&self.localized_single_picker).w(px(280.))),
+            )
+            .child(
+                section("Localized Range Value").max_w_128().child(
+                    DatePicker::new(&self.localized_range_picker)
+                        .number_of_months(2)
+                        .w(px(360.)),
+                ),
+            )
+            .child(
+                section("Cross-month Range Reopen").max_w_128().child(
+                    DatePicker::new(&self.cross_month_range_picker)
+                        .number_of_months(2)
+                        .cleanable(true)
+                        .w(px(300.)),
                 ),
             )
             .child(

@@ -12,11 +12,12 @@ use lsp_types::{
     DiagnosticSeverity, Position, TextEdit,
 };
 use ropey::Rope;
+use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, IconName, Selectable, Sizable, TITLE_BAR_HEIGHT,
+    ActiveTheme, IconName, Sizable, TITLE_BAR_HEIGHT,
     alert::Alert,
-    button::{Button, ButtonVariants},
+    button::{Button, Toggle},
     clipboard::Clipboard,
     description_list::DescriptionList,
     h_flex,
@@ -439,7 +440,12 @@ impl Render for DivInspector {
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Input::new(&self.rust_state.state).h_full())
                                 .when_some(self.rust_state.error.clone(), |this, err| {
-                                    this.child(Alert::error("rust-error", err).text_xs())
+                                    this.child(
+                                        Alert::new("rust-error")
+                                            .destructive()
+                                            .description(err)
+                                            .text_xs(),
+                                    )
                                 }),
                         ),
                 )
@@ -467,7 +473,12 @@ impl Render for DivInspector {
                                 .text_size(cx.theme().mono_font_size)
                                 .child(Input::new(&self.json_state.state).h_full())
                                 .when_some(self.json_state.error.clone(), |this, err| {
-                                    this.child(Alert::error("json-error", err).text_xs())
+                                    this.child(
+                                        Alert::new("json-error")
+                                            .destructive()
+                                            .description(err)
+                                            .text_xs(),
+                                    )
                                 }),
                         ),
                 )
@@ -511,12 +522,10 @@ fn render_inspector(
                         .gap_2()
                         .text_sm()
                         .child(
-                            Button::new("inspect")
+                            Toggle::new("inspect")
                                 .icon(IconName::Inspector)
-                                .selected(inspector.is_picking())
-                                .toggled(inspector.is_picking())
+                                .checked(inspector.is_picking())
                                 .small()
-                                .ghost()
                                 .on_click(cx.listener(|this, _, window, _| {
                                     this.start_picking();
                                     window.refresh();
@@ -526,6 +535,7 @@ fn render_inspector(
                 )
                 .child(
                     Button::new("close")
+                        .aria_label(t!("Common.Close"))
                         .icon(IconName::Close)
                         .small()
                         .ghost()

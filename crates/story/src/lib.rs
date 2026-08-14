@@ -8,6 +8,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, IconName, Root, TitleBar, WindowExt,
     button::Button,
+    dialog::AlertDialogAction,
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle, register_panel},
     group_box::{GroupBox, GroupBoxVariants as _},
     h_flex,
@@ -45,7 +46,7 @@ pub struct SelectFont(usize);
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = story, no_json)]
-pub struct SelectRadius(usize);
+pub struct SelectStyle(SharedString);
 
 actions!(
     story,
@@ -114,6 +115,9 @@ pub fn create_new_window_with_size<F, E>(
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
             titlebar: Some(TitleBar::title_bar_options()),
+            // TitleBar implements dragging itself; prevent AppKit from also
+            // treating interactive titlebar content as a native drag region.
+            app_owns_titlebar_drag: true,
             window_min_size: Some(gpui::Size {
                 width: px(480.),
                 height: px(320.),
@@ -229,11 +233,17 @@ pub fn init(cx: &mut App) {
                     .update(cx, |_, window, cx| {
                         window.defer(cx, |window, cx| {
                             window.open_alert_dialog(cx, |alert, _, _| {
-                                alert.title("About").description(markdown(
-                                    "GPUI Component Storybook\n\n\
-                                    Version 0.1.0\n\n\
-                                    https://longbridge.github.io/gpui-component",
-                                ))
+                                alert.content(|content, _, _| {
+                                    content
+                                        .title("About")
+                                        .description_element(markdown(
+                                            "GPUI Component Storybook\n\n\
+                                            Version 0.1.0\n\n\
+                                            https://longbridge.github.io/gpui-component",
+                                        ))
+                                        .aria_description("GPUI Component Storybook version 0.1.0")
+                                        .action(AlertDialogAction::new("about-ok", "OK"))
+                                })
                             });
                         });
                     })
@@ -344,7 +354,7 @@ impl RenderOnce for StorySection {
             )
             .content_style(
                 StyleRefinement::default()
-                    .rounded(cx.theme().radius_lg)
+                    .rounded(cx.theme().style.radii.lg)
                     .overflow_x_hidden()
                     .items_center()
                     .justify_center(),
@@ -432,7 +442,7 @@ impl StoryContainer {
         view
     }
 
-    pub fn width(mut self, width: gpui::Pixels) -> Self {
+    pub fn w(mut self, width: gpui::Pixels) -> Self {
         self.width = Some(width);
         self
     }
@@ -498,13 +508,17 @@ impl StoryState {
         match self.story_klass.to_string().as_str() {
             "BreadcrumbStory" => story!(BreadcrumbStory),
             "ButtonStory" => story!(ButtonStory),
+            "CardStory" => story!(CardStory),
             "CalendarStory" => story!(CalendarStory),
+            "CommandStory" => story!(CommandStory),
             "SelectStory" => story!(SelectStory),
+            "NativeSelectStory" => story!(NativeSelectStory),
             "IconStory" => story!(IconStory),
             "ImageStory" => story!(ImageStory),
             "InputStory" => story!(InputStory),
             "ListStory" => story!(ListStory),
             "DialogStory" => story!(DialogStory),
+            "EmptyStory" => story!(EmptyStory),
             "SeparatorStory" => story!(SeparatorStory),
             "PopoverStory" => story!(PopoverStory),
             "ProgressStory" => story!(ProgressStory),
@@ -733,6 +747,10 @@ mod tests {
         assert_eq!(
             gpui_component::_rust_i18n_try_translate("en", "Calendar.month.January"),
             Some("January".into())
+        );
+        assert_eq!(
+            gpui_component::_rust_i18n_try_translate("fr", "Calendar.month_short.January"),
+            Some("Janv.".into())
         );
     }
 }

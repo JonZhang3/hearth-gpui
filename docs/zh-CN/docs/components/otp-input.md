@@ -1,385 +1,119 @@
 ---
 title: OtpInput
-description: 带多输入框、自动聚焦和粘贴处理的一次性验证码输入组件。
+description: 具备原生编辑能力并与 shadcn 对齐的可组合一次性验证码输入框。
 ---
 
 # OtpInput
 
-OtpInput 是为一次性验证码（OTP）设计的输入组件，会以网格方式显示多个输入框，适合短信验证码、验证器 App 动态码以及 PIN 码输入场景。
+`OtpInput` 将一次性验证码显示为多个可视 Slot，同时只使用一个真实 `InputState` 负责编辑和辅助功能。文本选择、光标移动、删除、粘贴、IME 和 AccessKit 值更新因此与普通 Input 保持一致。
 
 ## 导入
 
 ```rust
-use gpui_component::input::{OtpInput, OtpState};
+use gpui_component::input::{
+    InputEvent, OtpEvent, OtpInput, OtpInputGroup, OtpInputSeparator,
+    OtpInputSlot, OtpState,
+};
 ```
 
-## 用法
-
-### 基础 OTP 输入
+## 基础组合
 
 ```rust
 let otp_state = cx.new(|cx| OtpState::new(6, window, cx));
 
+let first = OtpInputGroup::new()
+    .child(OtpInputSlot::new(0))
+    .child(OtpInputSlot::new(1))
+    .child(OtpInputSlot::new(2));
+let second = OtpInputGroup::new()
+    .child(OtpInputSlot::new(3))
+    .child(OtpInputSlot::new(4))
+    .child(OtpInputSlot::new(5));
+
 OtpInput::new(&otp_state)
+    .child(first)
+    .child(OtpInputSeparator::new())
+    .child(second)
+    .aria_label("一次性验证码")
 ```
 
-### 默认值
+未提供子组件时，`OtpInput` 会自动创建一个包含全部 Slot 的连续 Group。需要 Separator 或自定义 Slot 样式时，建议使用显式组合 API。
+
+## Pattern 与粘贴
+
+默认 Pattern 只接受数字。每个 Slot 对应一个 Mask Token：`9` 接受数字，`A` 接受字母，`#` 接受字母或数字，`*` 接受任意字符。
 
 ```rust
-let otp_state = cx.new(|cx|
+let code_state = cx.new(|cx| {
     OtpState::new(6, window, cx)
-        .default_value("123456")
-);
-
-OtpInput::new(&otp_state)
+        .pattern("######")
+        .paste_transformer(|text| text.replace('-', ""))
+        .default_value("A1B2")
+});
 ```
 
-### 掩码输入
+剪贴板和 AccessKit 提供的值会先经过转换，再按 Mask 规范化并截断到固定 Slot 数量。全角数字会转换为 ASCII 数字。
+
+## 状态与尺寸
 
 ```rust
-let otp_state = cx.new(|cx|
-    OtpState::new(6, window, cx)
-        .masked(true)
-        .default_value("123456")
-);
-
-OtpInput::new(&otp_state)
+OtpInput::new(&otp_state).invalid(true);
+OtpInput::new(&otp_state).disabled(true);
+OtpInput::new(&otp_state).small();
+OtpInput::new(&otp_state).large();
+OtpInput::new(&otp_state).with_size(px(44.));
 ```
 
-### 不同尺寸
+通过 State 控制掩码显示：
 
 ```rust
-OtpInput::new(&otp_state).small()
-OtpInput::new(&otp_state)
-OtpInput::new(&otp_state).large()
-OtpInput::new(&otp_state).with_size(px(55.))
+let otp_state = cx.new(|cx| OtpState::new(6, window, cx).masked(true));
+
+otp_state.update(cx, |state, cx| {
+    state.set_masked(false, window, cx);
+});
 ```
 
-### 分组布局
+Slot 高度、圆角、阴影、焦点 Ring 和表面颜色均来自语义化 Style Preset 与 Color Theme。Vega 是默认基准；Nova 与 Maia 分别解析紧凑和舒适几何，不判断 Preset ID。
+
+## 事件
+
+每次值变化都会发出 `InputEvent::Change`。未完成的验证码首次达到指定长度时，会单独发出一次 `OtpEvent::Complete`。
 
 ```rust
-OtpInput::new(&otp_state).groups(1)
-OtpInput::new(&otp_state).groups(2)
-OtpInput::new(&otp_state).groups(3)
-```
-
-### 禁用状态
-
-```rust
-OtpInput::new(&otp_state).disabled(true)
-```
-
-### 不同长度的验证码
-
-```rust
-let pin_state = cx.new(|cx| OtpState::new(4, window, cx));
-OtpInput::new(&pin_state).groups(1)
-
-let sms_state = cx.new(|cx| OtpState::new(6, window, cx));
-OtpInput::new(&sms_state)
-
-let auth_state = cx.new(|cx| OtpState::new(8, window, cx));
-OtpInput::new(&auth_state).groups(2)
-```
-
-### 处理 OTP 事件
-
-```rust
-let otp_state = cx.new(|cx| OtpState::new(6, window, cx));
-
 cx.subscribe(&otp_state, |this, state, event: &InputEvent, cx| {
-    match event {
-        InputEvent::Change => {
-            let code = state.read(cx).value();
-            if code.len() == 6 {
-                println!("Complete OTP: {}", code);
-                this.verify_otp(&code, cx);
-            }
-        }
-        InputEvent::Focus => println!("OTP input focused"),
-        InputEvent::Blur => println!("OTP input lost focus"),
-        _ => {}
+    if matches!(event, InputEvent::Change) {
+        this.code = state.read(cx).value().clone();
+        cx.notify();
+    }
+});
+
+cx.subscribe(&otp_state, |this, _, event: &OtpEvent, cx| {
+    if matches!(event, OtpEvent::Complete) {
+        this.submit_code(cx);
     }
 });
 ```
 
-### 程序化控制
+程序化更新不会发出 `InputEvent::Change`：
 
 ```rust
 otp_state.update(cx, |state, cx| {
     state.set_value("123456", window, cx);
-});
-
-otp_state.update(cx, |state, cx| {
-    state.set_masked(true, window, cx);
-});
-
-otp_state.update(cx, |state, cx| {
     state.focus(window, cx);
 });
-
-let current_value = otp_state.read(cx).value();
 ```
+
+## 辅助功能
+
+可视 Slot 不会分别进入 Tab 顺序。一个隐藏的编辑器负责暴露 `Role::TextInput`、`OneTimeCode` 内容类型、选择范围和规范化后的值。应提供 `aria_label`，必要时补充 `aria_description`。掩码值不会暴露到辅助功能树。
 
 ## API 参考
 
-### OtpState
-
-| 方法 | 说明 |
-| ------------------------------ | -------------------------------------------- |
-| `new(length, window, cx)` | 创建指定长度的 OTP 状态 |
-| `default_value(str)` | 设置初始值 |
-| `masked(bool)` | 开启掩码显示 |
-| `set_value(str, window, cx)` | 以代码方式设置值 |
-| `value()` | 获取当前值 |
-| `set_masked(bool, window, cx)` | 切换掩码状态 |
-| `focus(window, cx)` | 聚焦输入框 |
-| `focus_handle(cx)` | 获取焦点句柄 |
-
-### OtpInput
-
-| 方法 | 说明 |
-| ---------------- | ---------------------------------------- |
-| `new(state)` | 使用状态实体创建 OTP 输入组件 |
-| `groups(n)` | 设置可视分组数量，默认值为 2 |
-| `disabled(bool)` | 设置禁用状态 |
-| `small()` | 小尺寸 |
-| `large()` | 大尺寸 |
-| `with_size(px)` | 自定义单格尺寸 |
-
-### InputEvent
-
-| 事件 | 说明 |
-| -------- | ------------------------------------------------- |
-| `Change` | 所有数字输入完毕后触发 |
-| `Focus` | 输入框获得焦点 |
-| `Blur` | 输入框失去焦点 |
-
-## 示例
-
-### 短信验证码
-
-```rust
-struct SmsVerification {
-    otp_state: Entity<OtpState>,
-    phone_number: String,
-    is_verifying: bool,
-}
-
-impl SmsVerification {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let otp_state = cx.new(|cx| OtpState::new(6, window, cx));
-
-        cx.subscribe(&otp_state, |this, state, event: &InputEvent, cx| {
-            if let InputEvent::Change = event {
-                let code = state.read(cx).value();
-                this.verify_sms_code(&code, cx);
-            }
-        });
-
-        Self {
-            otp_state,
-            phone_number: "+1234567890".to_string(),
-            is_verifying: false,
-        }
-    }
-
-    fn verify_sms_code(&mut self, code: &str, cx: &mut Context<Self>) {
-        self.is_verifying = true;
-        println!("Verifying SMS code: {}", code);
-        cx.notify();
-    }
-}
-
-impl Render for SmsVerification {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_4()
-            .child(format!("Enter the 6-digit code sent to {}", self.phone_number))
-            .child(OtpInput::new(&self.otp_state))
-            .when(self.is_verifying, |this| {
-                this.child("Verifying...")
-            })
-    }
-}
-```
-
-### 双因素认证
-
-```rust
-struct TwoFactorAuth {
-    otp_state: Entity<OtpState>,
-    is_masked: bool,
-}
-
-impl TwoFactorAuth {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let otp_state = cx.new(|cx|
-            OtpState::new(6, window, cx)
-                .masked(true)
-        );
-
-        Self {
-            otp_state,
-            is_masked: true,
-        }
-    }
-
-    fn toggle_visibility(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.is_masked = !self.is_masked;
-        self.otp_state.update(cx, |state, cx| {
-            state.set_masked(self.is_masked, window, cx);
-        });
-    }
-}
-
-impl Render for TwoFactorAuth {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .gap_4()
-            .child("Enter your authenticator code")
-            .child(OtpInput::new(&self.otp_state))
-            .child(
-                Button::new("toggle-visibility")
-                    .label(if self.is_masked { "Show" } else { "Hide" })
-                    .on_click(cx.listener(Self::toggle_visibility))
-            )
-    }
-}
-```
-
-### PIN 码输入
-
-```rust
-struct PinEntry {
-    pin_state: Entity<OtpState>,
-    attempts: usize,
-    max_attempts: usize,
-}
-
-impl PinEntry {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let pin_state = cx.new(|cx|
-            OtpState::new(4, window, cx)
-                .masked(true)
-        );
-
-        cx.subscribe(&pin_state, |this, state, event: &InputEvent, cx| {
-            if let InputEvent::Change = event {
-                let pin = state.read(cx).value();
-                this.verify_pin(&pin, cx);
-            }
-        });
-
-        Self {
-            pin_state,
-            attempts: 0,
-            max_attempts: 3,
-        }
-    }
-
-    fn verify_pin(&mut self, pin: &str, cx: &mut Context<Self>) {
-        self.attempts += 1;
-
-        if pin == "1234" {
-            println!("PIN verified successfully!");
-        } else {
-            println!("Incorrect PIN. Attempts: {}/{}", self.attempts, self.max_attempts);
-
-            self.pin_state.update(cx, |state, cx| {
-                state.set_value("", window, cx);
-            });
-        }
-
-        cx.notify();
-    }
-}
-
-impl Render for PinEntry {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let is_locked = self.attempts >= self.max_attempts;
-
-        v_flex()
-            .gap_4()
-            .child("Enter your 4-digit PIN")
-            .child(
-                OtpInput::new(&self.pin_state)
-                    .groups(1)
-                    .disabled(is_locked)
-            )
-            .when(is_locked, |this| {
-                this.child("Too many attempts. Please try again later.")
-            })
-            .when(self.attempts > 0 && !is_locked, |this| {
-                this.child(format!(
-                    "Incorrect PIN. {} attempts remaining.",
-                    self.max_attempts - self.attempts
-                ))
-            })
-    }
-}
-```
-
-## 行为说明
-
-### 输入处理
-
-- **仅数字**：只接受 `0-9`。
-- **自动聚焦**：输入数字后自动跳到下一个输入框。
-- **退格**：删除当前数字并回到前一个输入框。
-- **长度限制**：不会超过设定长度。
-- **自动完成**：所有输入框填满后触发 `Change` 事件。
-
-### 视觉反馈
-
-- **焦点态**：当前输入框显示高亮边框与闪烁光标。
-- **掩码**：启用后显示星号而不是数字。
-- **分组**：可将输入框按组分隔，提升可读性。
-- **禁用态**：禁用后显示灰化样式。
-
-### 键盘导航
-
-- **方向键**：在输入框之间移动。
-- **Tab**：切换到下一个可聚焦元素。
-- **Shift+Tab**：切换到上一个可聚焦元素。
-- **Backspace**：删除当前数字并向前移动。
-- **Delete**：清空当前输入框。
-
-## 常见模式
-
-### 输入完成后自动提交
-
-```rust
-cx.subscribe(&otp_state, |this, state, event: &InputEvent, cx| {
-    if let InputEvent::Change = event {
-        let code = state.read(cx).value();
-        if code.len() == 6 {
-            this.submit_verification_code(&code, cx);
-        }
-    }
-});
-```
-
-### 聚焦时清空旧值
-
-```rust
-cx.subscribe(&otp_state, |this, state, event: &InputEvent, cx| {
-    if let InputEvent::Focus = event {
-        state.update(cx, |state, cx| {
-            state.set_value("", window, cx);
-        });
-    }
-});
-```
-
-### 重发验证码计时器
-
-```rust
-struct OtpWithResend {
-    otp_state: Entity<OtpState>,
-    resend_timer: Option<Timer>,
-    can_resend: bool,
-}
-
-// Implementation would include timer logic for resend functionality
-```
+| 类型 | 主要 API |
+| --- | --- |
+| `OtpState` | `new`、`default_value`、`pattern`、`paste_transformer`、`masked`、`set_value`、`set_masked`、`value`、`length`、`focus` |
+| `OtpInput` | `new`、`child`、`invalid`、`disabled`、`with_size`、`aria_label`、`aria_description` |
+| `OtpInputGroup` | `new`、`child(OtpInputSlot)` |
+| `OtpInputSlot` | `new(index)` 与 `Styled` 样式覆盖 |
+| `OtpInputSeparator` | `new`、`child` 与 `Styled` 样式覆盖 |

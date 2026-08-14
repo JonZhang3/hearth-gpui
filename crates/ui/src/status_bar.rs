@@ -1,10 +1,39 @@
 use gpui::{
-    AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
-    prelude::FluentBuilder as _,
+    AnyElement, App, IntoElement, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled,
+    Window, prelude::FluentBuilder as _, px,
 };
 use smallvec::SmallVec;
 
-use crate::{ActiveTheme, StyledExt, h_flex};
+use crate::{ActiveTheme, Density, StylePreset, StyledExt, h_flex};
+
+/// Component-local geometry derived from the active Style Preset.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct StatusBarMetrics {
+    padding_x: Pixels,
+    padding_y: Pixels,
+    item_gap: Pixels,
+    region_gap: Pixels,
+    min_height: Pixels,
+}
+
+impl StatusBarMetrics {
+    /// Resolves StatusBar density without coupling the component to preset IDs.
+    fn resolve(style: &StylePreset) -> Self {
+        let (padding_x, padding_y, item_gap, region_gap) = match style.density {
+            Density::Compact => (px(6.), px(2.), px(4.), px(6.)),
+            Density::Standard => (px(8.), px(4.), px(8.), px(8.)),
+            Density::Comfortable => (px(12.), px(6.), px(12.), px(12.)),
+        };
+
+        Self {
+            padding_x,
+            padding_y,
+            item_gap,
+            region_gap,
+            min_height: style.controls.xs.height + padding_y * 2.,
+        }
+    }
+}
 
 /// A horizontal status bar, usually placed at the bottom of a window or pane.
 ///
@@ -80,27 +109,78 @@ impl RenderOnce for StatusBar {
         // right, or neither) — so a bar with just `child`s reads like a container.
         let has_left = !self.left.is_empty();
         let has_right = !self.right.is_empty();
-        let region = || h_flex().overflow_hidden().items_center().gap_2();
+        let metrics = StatusBarMetrics::resolve(&cx.theme().style);
+        let pinned_region = || {
+            h_flex()
+                .min_w_0()
+                .flex_shrink_0()
+                .items_center()
+                .gap(metrics.item_gap)
+        };
 
         h_flex()
+            .w_full()
+            .min_w_0()
+            .min_h(metrics.min_height)
+            .flex_shrink_0()
             .items_center()
-            .gap_2()
-            .py_1()
-            .px_2()
+            .gap(metrics.region_gap)
+            .py(metrics.padding_y)
+            .px(metrics.padding_x)
             .border_t_1()
             .border_color(cx.theme().status_bar_border)
             .bg(cx.theme().tokens.status_bar)
             .text_xs()
             .text_color(cx.theme().muted_foreground)
             .refine_style(&self.style)
-            .when(has_left, |this| this.child(region().children(self.left)))
+            .when(has_left, |this| {
+                this.child(pinned_region().children(self.left))
+            })
             .child(
-                region()
+                h_flex()
+                    .min_w_0()
                     .flex_1()
+                    .overflow_hidden()
+                    .items_center()
+                    .gap(metrics.item_gap)
                     .when(has_left && has_right, |this| this.justify_center())
                     .when(has_left && !has_right, |this| this.justify_end())
                     .children(self.children),
             )
-            .when(has_right, |this| this.child(region().children(self.right)))
+            .when(has_right, |this| {
+                this.child(pinned_region().children(self.right))
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StatusBar, StatusBarMetrics};
+    use crate::StylePreset;
+    use gpui::ParentElement as _;
+
+    #[test]
+    fn status_bar_metrics_follow_preset_density() {
+        let compact = StatusBarMetrics::resolve(&StylePreset::nova());
+        let standard = StatusBarMetrics::resolve(&StylePreset::vega());
+        let comfortable = StatusBarMetrics::resolve(&StylePreset::maia());
+
+        assert!(compact.padding_x < standard.padding_x);
+        assert!(standard.padding_x < comfortable.padding_x);
+        assert!(compact.padding_y < standard.padding_y);
+        assert!(standard.padding_y < comfortable.padding_y);
+        assert!(compact.item_gap < standard.item_gap);
+        assert!(standard.item_gap < comfortable.item_gap);
+        assert!(compact.min_height < standard.min_height);
+        assert!(standard.min_height < comfortable.min_height);
+    }
+
+    #[test]
+    fn status_bar_builder_preserves_regions() {
+        let bar = StatusBar::new().left("left").child("center").right("right");
+
+        assert_eq!(bar.left.len(), 1);
+        assert_eq!(bar.children.len(), 1);
+        assert_eq!(bar.right.len(), 1);
     }
 }

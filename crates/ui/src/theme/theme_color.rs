@@ -69,6 +69,10 @@ pub struct ThemeColor {
     pub background: Hsla,
     /// Default border color
     pub border: Hsla,
+    /// Background color for Card surfaces.
+    pub card: Hsla,
+    /// Text color for Card surfaces.
+    pub card_foreground: Hsla,
     /// Default Button background color.
     pub button: Hsla,
     /// Default Button active background color.
@@ -129,6 +133,8 @@ pub struct ThemeColor {
     pub group_box: Hsla,
     /// Text color for GroupBox.
     pub group_box_foreground: Hsla,
+    /// Title text color for GroupBox.
+    pub group_box_title_foreground: Hsla,
     /// Input caret color (Blinking cursor).
     pub caret: Hsla,
     /// Chart 1 color.
@@ -376,6 +382,8 @@ define_theme_tokens! {
     accordion_hover,
     background,
     border,
+    card,
+    card_foreground,
     button,
     button_active,
     button_foreground,
@@ -406,6 +414,7 @@ define_theme_tokens! {
     button_warning_hover,
     group_box,
     group_box_foreground,
+    group_box_title_foreground,
     caret,
     chart_1,
     chart_2,
@@ -521,5 +530,17 @@ impl ThemeColor {
     /// Get the default dark theme colors.
     pub fn dark() -> Arc<Self> {
         DEFAULT_THEME_COLORS[&ThemeMode::Dark].0.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{neutral_400, neutral_500};
+
+    #[test]
+    fn default_focus_ring_matches_shadcn_neutral_theme() {
+        assert_eq!(ThemeColor::light().ring, neutral_400());
+        assert_eq!(ThemeColor::dark().ring, neutral_500());
     }
 }

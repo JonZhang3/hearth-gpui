@@ -1,13 +1,104 @@
 use gpui::{
-    AnyElement, App, Axis, DefiniteLength, IntoElement, ParentElement, RenderOnce, SharedString,
-    Styled, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, Axis, DefiniteLength, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, Pixels, RenderOnce, Role, SharedString, Stateful,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px, relative,
 };
 
-use crate::{ActiveTheme as _, AxisExt, Sizable, Size, h_flex, text::Text, v_flex};
+use crate::{
+    ActiveTheme as _, AxisExt, Sizable, Size, StylePreset, StyleSized as _, StyledExt as _, h_flex,
+    text::Text, v_flex,
+};
+
+/// DescriptionList geometry resolved from shared data-surface metrics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DescriptionListMetrics {
+    padding_x: Pixels,
+    padding_y: Pixels,
+    gap: Pixels,
+    separator_height: Pixels,
+    radius: Pixels,
+}
+
+/// Radius refinements for surfaces that paint against the outer DescriptionList edge.
+struct DescriptionListEdgeStyles {
+    top_left: StyleRefinement,
+    top_right: StyleRefinement,
+    bottom_left: StyleRefinement,
+    top: StyleRefinement,
+    bottom: StyleRefinement,
+}
+
+/// Resolves data density without branching on a built-in Style Preset identity.
+fn description_list_metrics(size: Size, style: &StylePreset) -> DescriptionListMetrics {
+    let index = match size {
+        Size::XSmall => 0,
+        Size::Small => 1,
+        Size::Medium | Size::Size(_) => 2,
+        Size::Large => 3,
+    };
+    let padding_x = style.data.cell_padding_x[index];
+    let padding_y = style.data.cell_padding_y[index];
+
+    DescriptionListMetrics {
+        padding_x,
+        padding_y,
+        gap: padding_y,
+        separator_height: padding_y * 2.,
+        radius: style.radii.md,
+    }
+}
+
+/// Mirrors the resolved outer radius onto colored edge children because GPUI's
+/// overflow mask does not clip descendants to a rounded content shape.
+fn description_list_edge_styles(
+    metrics: DescriptionListMetrics,
+    root_style: &StyleRefinement,
+) -> DescriptionListEdgeStyles {
+    let top_left = root_style
+        .corner_radii
+        .top_left
+        .or_else(|| Some(metrics.radius.into()));
+    let top_right = root_style
+        .corner_radii
+        .top_right
+        .or_else(|| Some(metrics.radius.into()));
+    let bottom_right = root_style
+        .corner_radii
+        .bottom_right
+        .or_else(|| Some(metrics.radius.into()));
+    let bottom_left = root_style
+        .corner_radii
+        .bottom_left
+        .or_else(|| Some(metrics.radius.into()));
+
+    let mut top_left_style = StyleRefinement::default();
+    top_left_style.corner_radii.top_left = top_left;
+    let mut top_right_style = StyleRefinement::default();
+    top_right_style.corner_radii.top_right = top_right;
+    let mut bottom_left_style = StyleRefinement::default();
+    bottom_left_style.corner_radii.bottom_left = bottom_left;
+    let mut top_style = StyleRefinement::default();
+    top_style.corner_radii.top_left = top_left;
+    top_style.corner_radii.top_right = top_right;
+    let mut bottom_style = StyleRefinement::default();
+    bottom_style.corner_radii.bottom_right = bottom_right;
+    bottom_style.corner_radii.bottom_left = bottom_left;
+
+    DescriptionListEdgeStyles {
+        top_left: top_left_style,
+        top_right: top_right_style,
+        bottom_left: bottom_left_style,
+        top: top_style,
+        bottom: bottom_style,
+    }
+}
 
 /// A description list.
 #[derive(IntoElement)]
 pub struct DescriptionList {
+    id: Option<ElementId>,
+    style: StyleRefinement,
     items: Vec<DescriptionItem>,
     size: Size,
     layout: Axis,
@@ -32,6 +123,16 @@ pub enum DescriptionText {
     String(SharedString),
     Text(Text),
     AnyElement(AnyElement),
+}
+
+impl DescriptionText {
+    /// Returns text that can name a semantic Term or Definition node.
+    fn accessibility_label(&self) -> Option<SharedString> {
+        match self {
+            Self::String(text) => Some(text.clone()),
+            Self::Text(_) | Self::AnyElement(_) => None,
+        }
+    }
 }
 
 impl From<&str> for DescriptionText {
@@ -105,26 +206,14 @@ impl DescriptionItem {
         }
         self
     }
-
-    fn _label(&self) -> Option<&DescriptionText> {
-        match self {
-            DescriptionItem::Item { label, .. } => Some(label),
-            _ => None,
-        }
-    }
-
-    fn _span(&self) -> Option<usize> {
-        match self {
-            DescriptionItem::Item { span, .. } => Some(*span),
-            _ => None,
-        }
-    }
 }
 
 impl DescriptionList {
     /// Create a new description list with the default layout (Horizontal).
     pub fn new() -> Self {
         Self {
+            id: None,
+            style: StyleRefinement::default(),
             items: Vec::new(),
             layout: Axis::Horizontal,
             label_width: px(120.).into(),
@@ -132,6 +221,12 @@ impl DescriptionList {
             bordered: true,
             columns: 3,
         }
+    }
+
+    /// Sets a stable identity and enables DescriptionList accessibility semantics.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     /// Create a vertical description list.
@@ -159,8 +254,7 @@ impl DescriptionList {
     }
 
     /// Set the border of the description list, default is `true`.
-    ///
-    /// `Horizontal` layout only.
+    /// Both horizontal and vertical layouts support the bordered presentation.
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
@@ -214,8 +308,14 @@ impl DescriptionList {
     fn group_item_rows(items: Vec<DescriptionItem>, columns: usize) -> Vec<Vec<DescriptionItem>> {
         let mut rows = vec![];
         let mut current_span = 0;
-        for item in items.into_iter() {
-            let span = item._span().unwrap_or(columns);
+        for mut item in items {
+            let span = match &mut item {
+                DescriptionItem::Item { span, .. } => {
+                    *span = (*span).clamp(1, columns);
+                    *span
+                }
+                DescriptionItem::Separator => columns,
+            };
             if rows.is_empty() {
                 rows.push(vec![]);
             }
@@ -240,6 +340,18 @@ impl DescriptionList {
     }
 }
 
+impl Default for DescriptionList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Styled for DescriptionList {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+}
+
 impl Sizable for DescriptionList {
     fn with_size(mut self, size: impl Into<Size>) -> Self {
         self.size = size.into();
@@ -247,121 +359,179 @@ impl Sizable for DescriptionList {
     }
 }
 
+/// Exposes a visual container only when stable semantic identity is available.
+fn description_semantic_container(
+    element: gpui::Div,
+    id: ElementId,
+    role: Role,
+    label: Option<SharedString>,
+) -> Stateful<gpui::Div> {
+    element
+        .id(id)
+        .role(role)
+        .when_some(label, |this, label| this.aria_label(label))
+}
+
+/// Keeps anonymous instances visual-only so multiple lists cannot collide in the accessibility tree.
+fn description_semantic_element(
+    element: gpui::Div,
+    semantics: Option<(ElementId, Role, Option<SharedString>)>,
+) -> AnyElement {
+    match semantics {
+        Some((id, role, label)) => {
+            description_semantic_container(element, id, role, label).into_any_element()
+        }
+        None => element.into_any_element(),
+    }
+}
+
 impl RenderOnce for DescriptionList {
     fn render(self, _: &mut Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
-        let base_gap = match self.size {
-            Size::XSmall | Size::Small => px(2.),
-            Size::Medium => px(4.),
-            Size::Large => px(8.),
-            _ => px(4.),
-        };
+        let Self {
+            id,
+            style,
+            items,
+            size,
+            layout,
+            label_width,
+            bordered,
+            columns,
+        } = self;
+        let metrics = description_list_metrics(size, &cx.theme().style);
+        let edge_styles = description_list_edge_styles(metrics, &style);
+        let padding_x = if bordered { metrics.padding_x } else { px(0.) };
+        let padding_y = if bordered { metrics.padding_y } else { px(0.) };
+        let gap = if bordered { px(0.) } else { metrics.gap };
+        let label_width = layout.is_horizontal().then_some(label_width);
+        let root_id = id.clone();
 
-        // Only for Horizontal layout
-        let (mut padding_x, mut padding_y) = match self.size {
-            Size::XSmall | Size::Small => (px(4.), px(2.)),
-            Size::Medium => (px(8.), px(4.)),
-            Size::Large => (px(12.), px(6.)),
-            _ => (px(8.), px(4.)),
-        };
-
-        let label_width = if self.layout.is_horizontal() {
-            Some(self.label_width)
-        } else {
-            None
-        };
-        if !self.bordered {
-            padding_x = px(0.);
-            padding_y = px(0.);
-        }
-        let gap = if self.bordered { px(0.) } else { base_gap };
-
-        // Group items by columns
-        let rows = Self::group_item_rows(self.items, self.columns);
+        // Rows are packed after spans have been normalized to the configured grid.
+        let rows = Self::group_item_rows(items, columns);
         let rows_len = rows.len();
-
-        v_flex()
+        let root = v_flex()
+            .w_full()
             .gap(gap)
             .overflow_hidden()
-            .when(self.bordered, |this| {
-                this.rounded(padding_x)
+            .input_text_size(size)
+            .when(bordered, |this| {
+                this.rounded(metrics.radius)
                     .border_1()
                     .border_color(cx.theme().border)
             })
+            .refine_style(&style)
             .children(rows.into_iter().enumerate().map(|(ix, items)| {
+                let is_first = ix == 0;
                 let is_last = ix == rows_len - 1;
+                let mut consumed_columns = 0;
                 h_flex()
-                    .when(self.bordered && !is_last, |this| {
+                    .items_stretch()
+                    .when(bordered && !is_last, |this| {
                         this.border_b_1().border_color(cx.theme().border)
                     })
-                    .children({
-                        items.into_iter().enumerate().map(|(item_ix, item)| {
-                            let is_first_col = item_ix == 0;
+                    .children(items.into_iter().enumerate().map(|(item_ix, item)| {
+                        let is_first_col = item_ix == 0;
 
-                            match item {
-                                DescriptionItem::Item { label, value, span } => {
-                                    let el = if self.layout.is_vertical() {
-                                        v_flex()
-                                    } else {
-                                        div().flex().flex_row().h_full()
-                                    };
+                        match item {
+                            DescriptionItem::Item { label, value, span } => {
+                                consumed_columns += span;
+                                let reaches_last_column = consumed_columns == columns;
+                                let label_a11y = label.accessibility_label();
+                                let value_a11y = value.accessibility_label();
+                                let label_semantics = root_id.clone().map(|id| {
+                                    (
+                                        (id, format!("term-{ix}-{item_ix}")).into(),
+                                        Role::Term,
+                                        label_a11y,
+                                    )
+                                });
+                                let value_semantics = root_id.clone().map(|id| {
+                                    (
+                                        (id, format!("definition-{ix}-{item_ix}")).into(),
+                                        Role::Definition,
+                                        value_a11y,
+                                    )
+                                });
+                                let item = if layout.is_vertical() {
+                                    v_flex()
+                                } else {
+                                    div().flex().flex_row().h_full()
+                                };
+                                let label = div()
+                                    .min_w_0()
+                                    .when(layout.is_horizontal(), |this| this.h_full())
+                                    .text_color(cx.theme().description_list_label_foreground)
+                                    .px(padding_x)
+                                    .py(padding_y)
+                                    .when(bordered, |this| {
+                                        this.when(layout.is_horizontal(), |this| {
+                                            this.border_r_1()
+                                                .when(!is_first_col, |this| this.border_l_1())
+                                        })
+                                        .when(layout.is_vertical(), |this| this.border_b_1())
+                                        .border_color(cx.theme().border)
+                                        .bg(cx.theme().tokens.description_list_label)
+                                        .when(is_first && is_first_col, |this| {
+                                            this.refine_style(&edge_styles.top_left)
+                                        })
+                                        .when(
+                                            is_first && layout.is_vertical() && reaches_last_column,
+                                            |this| this.refine_style(&edge_styles.top_right),
+                                        )
+                                        .when(
+                                            is_last && layout.is_horizontal() && is_first_col,
+                                            |this| this.refine_style(&edge_styles.bottom_left),
+                                        )
+                                    })
+                                    .map(|this| match label_width {
+                                        Some(label_width) => this.w(label_width).flex_shrink_0(),
+                                        None => this,
+                                    })
+                                    .child(label);
+                                let value = div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .px(padding_x)
+                                    .py(padding_y)
+                                    .overflow_x_hidden()
+                                    .child(value);
 
-                                    el.flex_1()
-                                        .flex_basis(relative((span as f32) / (self.columns as f32)))
-                                        .overflow_x_hidden()
-                                        .child(
-                                            div()
-                                                .when(self.layout.is_horizontal(), |this| {
-                                                    this.h_full()
-                                                })
-                                                .text_color(
-                                                    cx.theme().description_list_label_foreground,
-                                                )
-                                                .text_sm()
-                                                .px(padding_x)
-                                                .py(padding_y)
-                                                .when(self.bordered, |this| {
-                                                    this.when(self.layout.is_horizontal(), |this| {
-                                                        this.border_r_1()
-                                                            .when(!is_first_col, |this| {
-                                                                this.border_l_1()
-                                                            })
-                                                    })
-                                                    .when(self.layout.is_vertical(), |this| {
-                                                        this.border_b_1()
-                                                    })
-                                                    .border_color(cx.theme().border)
-                                                    .bg(cx.theme().tokens.description_list_label)
-                                                })
-                                                .map(|this| match label_width {
-                                                    Some(label_width) => {
-                                                        this.w(label_width).flex_shrink_0()
-                                                    }
-                                                    None => this,
-                                                })
-                                                .child(label),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex_1()
-                                                .px(padding_x)
-                                                .py(padding_y)
-                                                .overflow_hidden()
-                                                .child(value),
-                                        )
-                                }
-                                _ => div().h_2().w_full().when(self.bordered, |this| {
-                                    this.bg(cx.theme().tokens.description_list_label)
-                                }),
+                                item.flex_grow_0()
+                                    .flex_shrink_1()
+                                    .flex_basis(relative((span as f32) / (columns as f32)))
+                                    .min_w_0()
+                                    .overflow_x_hidden()
+                                    .child(description_semantic_element(label, label_semantics))
+                                    .child(description_semantic_element(value, value_semantics))
                             }
-                        })
-                    })
-            }))
+                            DescriptionItem::Separator => div()
+                                .h(metrics.separator_height)
+                                .w_full()
+                                .when(bordered, |this| {
+                                    this.bg(cx.theme().tokens.description_list_label)
+                                        .when(is_first, |this| this.refine_style(&edge_styles.top))
+                                        .when(is_last, |this| {
+                                            this.refine_style(&edge_styles.bottom)
+                                        })
+                                }),
+                        }
+                    }))
+            }));
+
+        description_semantic_element(root, id.map(|id| (id, Role::DescriptionList, None)))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DescriptionItem;
+    use super::*;
+    use gpui::{Element as _, accesskit, px};
+
+    fn item_span(item: &DescriptionItem) -> Option<usize> {
+        match item {
+            DescriptionItem::Item { span, .. } => Some(*span),
+            DescriptionItem::Separator => None,
+        }
+    }
 
     #[test]
     fn test_group_item_rows() {
@@ -380,5 +550,60 @@ mod tests {
         assert_eq!(rows[1].len(), 3);
         assert_eq!(rows[2].len(), 1);
         assert_eq!(rows[3].len(), 1);
+    }
+
+    #[test]
+    fn spans_are_normalized_and_separators_own_their_rows() {
+        let rows = DescriptionList::group_item_rows(
+            vec![
+                DescriptionItem::new("zero").span(0),
+                DescriptionItem::new("oversized").span(9),
+                DescriptionItem::Separator,
+                DescriptionItem::Separator,
+                DescriptionItem::new("tail"),
+            ],
+            3,
+        );
+
+        assert_eq!(rows.len(), 5);
+        assert_eq!(item_span(&rows[0][0]), Some(1));
+        assert_eq!(item_span(&rows[1][0]), Some(3));
+        assert!(matches!(rows[2][0], DescriptionItem::Separator));
+        assert!(matches!(rows[3][0], DescriptionItem::Separator));
+        assert_eq!(item_span(&rows[4][0]), Some(1));
+    }
+
+    #[test]
+    fn metrics_follow_shared_data_density() {
+        let vega = description_list_metrics(Size::Medium, &StylePreset::vega());
+        let nova = description_list_metrics(Size::Medium, &StylePreset::nova());
+        let maia = description_list_metrics(Size::Medium, &StylePreset::maia());
+
+        assert_eq!(vega.padding_x, px(8.));
+        assert_eq!(vega.padding_y, px(4.));
+        assert_eq!(vega.separator_height, px(8.));
+        assert_eq!(vega.radius, StylePreset::vega().radii.md);
+        assert!(nova.padding_y < vega.padding_y);
+        assert!(maia.padding_x > vega.padding_x);
+        assert!(maia.radius > vega.radius);
+    }
+
+    #[test]
+    fn stable_ids_expose_description_roles_and_string_labels() {
+        let term = description_semantic_container(
+            div(),
+            "description-term".into(),
+            Role::Term,
+            Some("Name".into()),
+        );
+        let mut node = accesskit::Node::new(Role::Term);
+        term.write_a11y_info(&mut node);
+
+        assert_eq!(term.a11y_role(), Some(Role::Term));
+        assert_eq!(node.label(), Some("Name"));
+        assert_eq!(
+            DescriptionText::from("Version").accessibility_label(),
+            Some("Version".into())
+        );
     }
 }

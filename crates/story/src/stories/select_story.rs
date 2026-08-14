@@ -35,6 +35,42 @@ impl SelectItem for Country {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FrameworkOption {
+    name: SharedString,
+    disabled: bool,
+}
+
+impl FrameworkOption {
+    fn new(name: impl Into<SharedString>) -> Self {
+        Self {
+            name: name.into(),
+            disabled: false,
+        }
+    }
+
+    fn disabled(mut self) -> Self {
+        self.disabled = true;
+        self
+    }
+}
+
+impl SelectItem for FrameworkOption {
+    type Value = SharedString;
+
+    fn title(&self) -> SharedString {
+        self.name.clone()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.name
+    }
+
+    fn disabled(&self) -> bool {
+        self.disabled
+    }
+}
+
 pub struct SelectStory {
     disabled: bool,
     country_select: Entity<SelectState<SearchableVec<SelectGroup<Country>>>>,
@@ -44,7 +80,14 @@ pub struct SelectStory {
     simple_select3: Entity<SelectState<Vec<SharedString>>>,
     menu_max_h_select: Entity<SelectState<Vec<&'static str>>>,
     disabled_select: Entity<SelectState<Vec<SharedString>>>,
+    invalid_select: Entity<SelectState<Vec<&'static str>>>,
+    disabled_item_select: Entity<SelectState<Vec<FrameworkOption>>>,
+    default_select: Entity<SelectState<Vec<&'static str>>>,
+    small_select: Entity<SelectState<Vec<&'static str>>>,
     appearance_select: Entity<SelectState<Vec<SharedString>>>,
+    item_aligned_select: Entity<SelectState<Vec<&'static str>>>,
+    grouped_item_aligned_select: Entity<SelectState<SearchableVec<SelectGroup<&'static str>>>>,
+    popper_select: Entity<SelectState<Vec<&'static str>>>,
     input_state: Entity<InputState>,
 }
 
@@ -114,6 +157,9 @@ impl SelectStory {
             "Avocado",
         ]);
         let fruit_select = cx.new(|cx| SelectState::new(fruits, None, window, cx).searchable(true));
+        let mut grouped_items = SearchableVec::new(Vec::new());
+        grouped_items.push(SelectGroup::new("Fruits").items(["Apple", "Banana", "Blueberry"]));
+        grouped_items.push(SelectGroup::new("Vegetables").items(["Carrot", "Broccoli", "Spinach"]));
 
         cx.new(|cx| {
             cx.subscribe_in(&country_select, window, Self::on_select_event)
@@ -161,7 +207,51 @@ impl SelectStory {
                 }),
                 disabled_select: cx
                     .new(|cx| SelectState::new(Vec::<SharedString>::new(), None, window, cx)),
+                invalid_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Email", "Phone", "Push notification"],
+                        None,
+                        window,
+                        cx,
+                    )
+                }),
+                disabled_item_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec![
+                            FrameworkOption::new("GPUI"),
+                            FrameworkOption::new("Iced").disabled(),
+                            FrameworkOption::new("egui"),
+                        ],
+                        None,
+                        window,
+                        cx,
+                    )
+                }),
+                default_select: cx.new(|cx| {
+                    SelectState::new(vec!["Default", "Compact", "Comfortable"], None, window, cx)
+                }),
+                small_select: cx.new(|cx| {
+                    SelectState::new(vec!["Default", "Compact", "Comfortable"], None, window, cx)
+                }),
                 appearance_select,
+                item_aligned_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Apple", "Orange", "Banana", "Grape", "Pineapple"],
+                        Some(IndexPath::new(2)),
+                        window,
+                        cx,
+                    )
+                }),
+                grouped_item_aligned_select: cx
+                    .new(|cx| SelectState::new(grouped_items, None, window, cx)),
+                popper_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Apple", "Orange", "Banana", "Grape", "Pineapple"],
+                        Some(IndexPath::new(2)),
+                        window,
+                        cx,
+                    )
+                }),
                 input_state,
             }
         })
@@ -207,7 +297,20 @@ impl Render for SelectStory {
                     Select::new(&self.country_select)
                         .search_placeholder("Search country by name or code")
                         .cleanable(true)
+                        .group_separators(true)
                         .disabled(self.disabled),
+                ),
+            )
+            .child(
+                section("Sizes").max_w_128().child(
+                    v_flex()
+                        .gap_3()
+                        .child(Select::new(&self.default_select).placeholder("Default size"))
+                        .child(
+                            Select::new(&self.small_select)
+                                .small()
+                                .placeholder("Small size"),
+                        ),
                 ),
             )
             .child(
@@ -220,9 +323,38 @@ impl Render for SelectStory {
                 ),
             )
             .child(
+                section("Content position").max_w_128().child(
+                    v_flex()
+                        .gap_3()
+                        .child(Select::new(&self.item_aligned_select))
+                        .child(
+                            Select::new(&self.grouped_item_aligned_select)
+                                .placeholder("Select a fruit")
+                                .group_separators(true),
+                        )
+                        .child(Select::new(&self.popper_select).position(SelectPosition::Popper)),
+                ),
+            )
+            .child(
                 section("Disabled")
                     .max_w_128()
                     .child(Select::new(&self.disabled_select).disabled(true)),
+            )
+            .child(
+                section("Invalid").max_w_128().child(
+                    Select::new(&self.invalid_select)
+                        .placeholder("Preferred contact method")
+                        .aria_label("Preferred contact method")
+                        .aria_description("Choose one contact method")
+                        .invalid(true),
+                ),
+            )
+            .child(
+                section("Disabled option").max_w_128().child(
+                    Select::new(&self.disabled_item_select)
+                        .placeholder("Select a framework")
+                        .aria_label("Framework"),
+                ),
             )
             .child(
                 section("With preview label").max_w_128().child(
@@ -271,7 +403,7 @@ impl Render for SelectStory {
                     h_flex()
                         .border_1()
                         .border_color(cx.theme().input)
-                        .rounded(cx.theme().radius_lg)
+                        .rounded(cx.theme().style.radii.lg)
                         .text_color(cx.theme().secondary_foreground)
                         .w_full()
                         .gap_1()

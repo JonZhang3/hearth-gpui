@@ -19,11 +19,11 @@ struct MyTable {
 impl MyTable {
     fn new(_: &mut App) -> Self {
         let columns = vec![
-            Column::new("id", "ID").width(px(50.)),
-            Column::new("name", "Name").width(px(150.)),
-            Column::new("email", "Email").width(px(250.)),
-            Column::new("role", "Role").width(px(150.)),
-            Column::new("status", "Status").width(px(100.)),
+            Column::new("id", "ID").w(px(50.)),
+            Column::new("name", "Name").w(px(150.)),
+            Column::new("email", "Email").w(px(250.)),
+            Column::new("role", "Role").w(px(150.)),
+            Column::new("status", "Status").w(px(100.)),
         ];
 
         Self { columns }

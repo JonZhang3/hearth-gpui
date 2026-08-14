@@ -5,7 +5,7 @@ description: Displays a callout for user attention.
 
 # Alert
 
-A versatile alert component for displaying important messages to users. Supports multiple variants (info, success, warning, error), custom icons, optional titles, closable functionality, and banner mode. Perfect for notifications, status messages, and user feedback.
+Alert displays important status or guidance. Its icon, title, description, and action are independent optional slots.
 
 ## Import
 
@@ -13,201 +13,123 @@ A versatile alert component for displaying important messages to users. Supports
 use gpui_component::alert::Alert;
 ```
 
-## Usage
-
-### Basic Alert
+## Basic
 
 ```rust
-Alert::new("alert-id", "This is a basic alert message.")
+Alert::new("payment-success")
+    .icon(IconName::CircleCheck)
+    .title("Payment successful")
+    .description(
+        "Your payment of $29.99 has been processed. A receipt has been sent to your email address."
+    )
 ```
 
-### Alert with Title
+Every content slot is optional:
 
 ```rust
-Alert::new("alert-with-title", "Your changes have been saved successfully.")
-    .title("Success!")
+Alert::new("title-only").title("Changes saved")
+
+Alert::new("description-only")
+    .description("This alert has no title or icon.")
 ```
 
-### Alert Variants
+## Destructive
+
+Use `destructive` for errors or failed actions. Variants do not add icons automatically.
 
 ```rust
-// Info alert (blue)
-Alert::info("info-alert", "This is an informational message.")
-    .title("Information")
-
-// Success alert (green)
-Alert::success("success-alert", "Your operation completed successfully.")
-    .title("Success!")
-
-// Warning alert (yellow/orange)
-Alert::warning("warning-alert", "Please review your settings before proceeding.")
-    .title("Warning")
-
-// Error alert (red)
-Alert::error("error-alert", "An error occurred while processing your request.")
-    .title("Error")
+Alert::new("payment-failed")
+    .destructive()
+    .icon(IconName::TriangleAlert)
+    .title("Payment failed")
+    .description("Your payment could not be processed. Please try again.")
 ```
 
-### Alert Sizes
+## Action
+
+Use `action` to place a button or another element in the top-right corner.
 
 ```rust
-use gpui_component::{alert::Alert, Sizable as _};
-
-Alert::info("alert", "Message content")
-    .xsmall()
-    .title("XSmall Alert")
-Alert::info("alert", "Message content")
-    .small()
-    .title("Small Alert")
-
-Alert::info("alert", "Message content")
-    .title("Medium Alert")
-
-Alert::info("alert", "Message content")
-    .large()
-    .title("Large Alert")
+Alert::new("dark-mode")
+    .title("Dark mode is now available")
+    .description("Enable it under your profile settings to get started.")
+    .action(Button::new("enable-dark-mode").xsmall().label("Enable"))
 ```
 
-### Closable Alerts
+## Custom Colors
 
-When you add an `on_close` handler, a close button appears on the alert:
+Alert implements `Styled`. Root foreground overrides are inherited by the icon and title, while the default description remains muted.
 
 ```rust
-Alert::info("closable-alert", "This alert can be dismissed.")
-    .title("Dismissible")
-    .on_close(|_event, _window, _cx| {
-        println!("Alert was closed");
-        // Handle alert dismissal
-    })
+Alert::new("subscription-warning")
+    .icon(IconName::TriangleAlert)
+    .title("Your subscription will expire in 3 days.")
+    .description("Renew now to avoid service interruption.")
+    .bg(cx.theme().warning.opacity(0.08))
+    .border_color(cx.theme().warning.opacity(0.5))
+    .text_color(cx.theme().warning)
 ```
 
-### Banner Mode
+## Closable
 
-Banner alerts take full width and don't display titles:
+`on_close` replaces a custom action with an accessible icon-only close button. The callback owns visibility state.
 
 ```rust
-Alert::info("banner-alert", "This is a banner alert that spans the full width.")
+Alert::new("closable")
+    .title("Maintenance scheduled")
+    .description("The service will be unavailable tonight.")
+    .visible(is_visible)
+    .on_close(cx.listener(|this, _, _, cx| {
+        this.is_visible = false;
+        cx.notify();
+    }))
+```
+
+## Banner
+
+Banner appearance removes the border and radius without hiding content slots.
+
+```rust
+Alert::new("maintenance-banner")
     .banner()
-
-Alert::success("banner-success", "Operation completed successfully!")
-    .banner()
-
-Alert::warning("banner-warning", "System maintenance scheduled for tonight.")
-    .banner()
-
-Alert::error("banner-error", "Service temporarily unavailable.")
-    .banner()
+    .icon(IconName::Info)
+    .title("Maintenance scheduled")
+    .description("The service will be unavailable tonight.")
 ```
 
-### Custom Icons
+## Rich Content
+
+`title` and `description` retain ordinary strings for accessibility metadata. Use `title_element` or `description_element` for arbitrary GPUI elements. Because arbitrary elements cannot be converted back to text reliably, provide an `aria_label` that summarizes all important content.
 
 ```rust
-use gpui_component::IconName;
-
-Alert::new("custom-icon", "Meeting scheduled for tomorrow at 3 PM.")
-    .title("Calendar Reminder")
-    .icon(IconName::Calendar)
+Alert::new("validation-error")
+    .destructive()
+    .title("Validation failed")
+    .description_element(markdown(
+        "Please correct the following errors:\n\
+        - Email address is required\n\
+        - Password must be at least 8 characters"
+    ))
+    .aria_label(
+        "Validation failed. Email address is required. Password must be at least 8 characters."
+    )
 ```
 
-### With Markdown Content
+## Accessibility
 
-We can use `TextView` to render formatted (Markdown or HTML) text within the alert,
-for displaying lists, bold text, links, etc.
-
-```rust
-use gpui_component::text::markdown;
-
-Alert::error(
-    "error-with-markdown",
-    markdown(
-        "Please verify your billing information and try again.\n\
-        - Check your card details\n\
-        - Ensure sufficient funds\n\
-        - Verify billing address"
-    ),
-)
-.title("Payment Failed")
-```
-
-### Conditional Visibility
+Alert exposes the AccessKit Alert role. Text titles become its accessible name, and text descriptions become its accessible description. A description-only Alert uses its description as the name. Use `aria_label` when custom element slots do not provide suitable text metadata.
 
 ```rust
-Alert::info("conditional-alert", "This alert may be hidden.")
-    .title("Conditional")
-    .visible(should_show_alert) // boolean condition
+Alert::new("sync-status")
+    .aria_label("Synchronization failed")
+    .destructive()
+    .description_element(custom_status_view)
 ```
 
 ## API Reference
 
 - [Alert]
-
-## Examples
-
-### Form Validation Errors
-
-```rust
-Alert::error(
-    "validation-error",
-    "Please correct the following errors before submitting:\n\
-    - Email address is required\n\
-    - Password must be at least 8 characters\n\
-    - Terms of service must be accepted"
-)
-.title("Validation Failed")
-```
-
-### Success Notification
-
-```rust
-Alert::success("save-success", "Your profile has been updated successfully.")
-    .title("Changes Saved")
-    .on_close(|_, _, _| {
-        // Auto-dismiss after showing
-    })
-```
-
-### System Status Banner
-
-```rust
-Alert::warning(
-    "maintenance-banner",
-    "Scheduled maintenance will occur tonight from 2:00 AM to 4:00 AM EST. \
-    Some services may be temporarily unavailable."
-)
-.banner()
-.large()
-```
-
-### Interactive Alert with Custom Action
-
-```rust
-Alert::info("update-available", "A new version of the application is available.")
-    .title("Update Available")
-    .icon(IconName::Download)
-    .on_close(cx.listener(|this, _, _, cx| {
-        // Handle update or dismiss
-        this.handle_update_notification(cx);
-    }))
-```
-
-### Multi-line Content with Formatting
-
-```rust
-use gpui_component::text::markdown;
-
-Alert::warning(
-    "security-alert",
-    markdown(
-        "**Security Notice**: Unusual activity detected on your account.\n\n\
-        Recent activity:\n\
-        - Login from new device (Chrome on Windows)\n\
-        - Location: San Francisco, CA\n\
-        - Time: Today at 2:30 PM\n\n\
-        If this wasn't you, please [change your password](/) immediately."
-    )
-)
-.title("Security Alert")
-.icon(IconName::Shield)
-```
+- [AlertVariant]
 
 [Alert]: https://docs.rs/gpui-component/latest/gpui_component/alert/struct.Alert.html
+[AlertVariant]: https://docs.rs/gpui-component/latest/gpui_component/alert/enum.AlertVariant.html

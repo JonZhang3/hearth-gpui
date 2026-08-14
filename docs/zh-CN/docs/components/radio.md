@@ -1,208 +1,164 @@
 ---
-title: Radio
-description: 一组互斥的单选按钮，同一时间只能选中一个选项。
+title: Radio Group
+description: 与 shadcn Radio Group 对齐的一组互斥选项。
 ---
 
-# Radio
+# Radio Group
 
-Radio 用于在一组选项中选择唯一结果。适合“多选一”的场景，例如设置项、问卷和支付方式选择等。
+`RadioGroup` 通过受控 value 协调 `RadioGroupItem` 子项的选择、焦点、键盘导航、禁用状态和
+Accessibility。`Radio` 仍可用于独立的受控渲染；互斥选项应优先使用 `RadioGroup`。
 
 ## 导入
 
 ```rust
-use gpui_component::radio::{Radio, RadioGroup};
+use gpui_component::radio::{Radio, RadioGroup, RadioGroupItem};
 ```
 
-## 用法
-
-### 基础单选按钮
+## 基本用法
 
 ```rust
-Radio::new("radio-option-1")
-    .label("Option 1")
-    .checked(false)
-    .on_click(|checked, _, _| {
-        println!("Radio is now: {}", checked);
-    })
-```
-
-### 受控单选按钮
-
-```rust
-struct MyView {
-    radio_checked: bool,
+struct SettingsView {
+    density: Option<SharedString>,
 }
 
-impl Render for MyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        Radio::new("radio")
-            .label("Select this option")
-            .checked(self.radio_checked)
-            .on_click(cx.listener(|view, checked, _, cx| {
-                view.radio_checked = *checked;
-                cx.notify();
-            }))
-    }
-}
-```
-
-### RadioGroup（推荐）
-
-```rust
-struct MyView {
-    selected_option: Option<usize>,
-}
-
-impl Render for MyView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        RadioGroup::horizontal("options")
-            .children(["Option 1", "Option 2", "Option 3"])
-            .selected_index(self.selected_option)
-            .on_change(cx.listener(|view, selected_index: &usize, _, cx| {
-                view.selected_option = Some(*selected_index);
-                cx.notify();
-            }))
-    }
-}
-```
-
-### 不同尺寸
-
-```rust
-Radio::new("small").label("Small").xsmall()
-Radio::new("medium").label("Medium")
-Radio::new("large").label("Large").large()
-```
-
-### 禁用状态
-
-```rust
-Radio::new("disabled")
-    .label("Disabled option")
-    .disabled(true)
-    .checked(false)
-
-Radio::new("disabled-checked")
-    .label("Disabled and checked")
-    .checked(true)
-    .disabled(true)
-```
-
-### 多行标签与自定义内容
-
-```rust
-Radio::new("custom")
-    .label("Primary option")
-    .child(
-        div()
-            .text_color(cx.theme().muted_foreground)
-            .child("This is additional descriptive text that provides more context.")
-    )
-    .w(px(300.))
-```
-
-### 自定义 Tab 顺序
-
-```rust
-Radio::new("radio")
-    .label("Custom tab order")
-    .tab_index(2)
-    .tab_stop(true)
-```
-
-## Radio Group 用法
-
-### 横向布局
-
-```rust
-RadioGroup::horizontal("horizontal-group")
-    .children(["First", "Second", "Third"])
-    .selected_index(Some(0))
-    .on_change(cx.listener(|view, index, _, cx| {
-        println!("Selected index: {}", index);
+RadioGroup::new("density")
+    .aria_label("Density")
+    .value(self.density.clone())
+    .child(RadioGroupItem::new("default").label("Default"))
+    .child(RadioGroupItem::new("comfortable").label("Comfortable"))
+    .child(RadioGroupItem::new("compact").label("Compact"))
+    .on_change(cx.listener(|this, value: &SharedString, _, cx| {
+        this.density = Some(value.clone());
         cx.notify();
     }))
 ```
 
-### 纵向布局
+value 在项目重新排序后仍保持稳定。再次选择当前项目不会清空选择。
+
+## 排列方向
 
 ```rust
-RadioGroup::vertical("vertical-group")
-    .child(Radio::new("option1").label("United States"))
-    .child(Radio::new("option2").label("Canada"))
-    .child(Radio::new("option3").label("Mexico"))
-    .selected_index(Some(1))
-    .disabled(false)
+RadioGroup::horizontal("language")
+    .aria_label("Language")
+    .value(Some("rust"))
+    .children([
+        RadioGroupItem::new("rust").label("Rust"),
+        RadioGroupItem::new("go").label("Go"),
+        RadioGroupItem::new("swift").label("Swift"),
+    ])
 ```
 
-### 带样式的分组
+`RadioGroup::new` 和 `RadioGroup::vertical` 默认使用垂直排列。方向同时控制布局和方向键行为。
+
+## 标签与描述
 
 ```rust
-RadioGroup::vertical("styled-group")
-    .w(px(220.))
-    .p_2()
-    .border_1()
-    .border_color(cx.theme().border)
-    .rounded(cx.theme().radius)
-    .child(Radio::new("option1").label("Option 1"))
-    .child(Radio::new("option2").label("Option 2"))
-    .child(Radio::new("option3").label("Option 3"))
-    .selected_index(Some(0))
+RadioGroup::vertical("plan")
+    .aria_label("Plan")
+    .value(Some("pro"))
+    .child(
+        RadioGroupItem::new("plus")
+            .label("Plus")
+            .aria_description("For individuals and small teams")
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("For individuals and small teams"),
+            ),
+    )
+    .child(
+        RadioGroupItem::new("pro")
+            .label("Pro")
+            .aria_description("For growing businesses")
+            .child(
+                div()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("For growing businesses"),
+            ),
+    )
 ```
 
-### 禁用整个分组
+集成标签会成为项目的可访问名称。补充内容如果包含选择所必需的信息，还应显式设置
+`aria_description`。
+
+## 禁用与无效状态
 
 ```rust
-RadioGroup::vertical("disabled-group")
-    .children(["Option A", "Option B", "Option C"])
-    .selected_index(Some(1))
-    .disabled(true)
+RadioGroup::vertical("notifications")
+    .aria_label("Notifications")
+    .value(Some("email"))
+    .child(RadioGroupItem::new("email").label("Email"))
+    .child(RadioGroupItem::new("sms").label("SMS").disabled(true))
+    .child(
+        RadioGroupItem::new("push")
+            .label("Push")
+            .invalid(true),
+    )
 ```
 
-## API 参考
+Group 的 `disabled(true)` 会在渲染时与项目自身的 disabled 状态合并，不会永久改写项目状态。
 
-### Radio
+## 独立 Radio
 
-| 方法 | 说明 |
-| --- | --- |
-| `new(id)` | 使用给定 ID 创建单选按钮 |
-| `label(text)` | 设置标签文本 |
-| `checked(bool)` | 设置选中状态 |
-| `disabled(bool)` | 设置禁用状态 |
-| `on_click(fn)` | 点击回调，参数为新的 `&bool` 选中状态 |
-| `tab_stop(bool)` | 是否允许通过 Tab 聚焦，默认 `true` |
-| `tab_index(isize)` | 设置 Tab 顺序，默认 `0` |
+```rust
+Radio::new("standalone-radio")
+    .label("Standalone option")
+    .checked(self.checked)
+    .on_click(cx.listener(|this, checked: &bool, _, cx| {
+        this.checked = *checked;
+        cx.notify();
+    }))
+```
+
+Radio 激活只会请求 `true`；再次激活已经选中的 Radio 不会取消选择。
+
+## 键盘行为
+
+| 按键 | 行为 |
+|---|---|
+| `Tab` / `Shift+Tab` | 通过已选项目进入或离开 Group；没有选择时使用首个可用项目 |
+| `ArrowLeft` / `ArrowRight` | 在横向 Group 内移动并选择，到边界后循环 |
+| `ArrowUp` / `ArrowDown` | 在纵向 Group 内移动并选择，到边界后循环 |
+| `Home` / `End` | 选择首个或最后一个可用项目 |
+| `Space` | 选择当前获得焦点的项目 |
+
+导航会跳过禁用项目。鼠标焦点不会显示仅供键盘使用的 Focus Ring。
+
+## 视觉与动效
+
+- 默认 Vega 几何为 16px 圆形控件和 8px 选中圆点。
+- Vega、Maia 的 Group 间距为 12px；紧凑的 Nova 为 8px。
+- Light 模式下未选中控件透明；Dark 模式使用语义化 input 表面色。
+- Checked、unchecked、invalid 和 focus 的颜色变化立即完成。固定版本 shadcn 没有为 Radio Group
+  声明 Indicator 或颜色过渡。
+- `Sizable` 是 GPUI Component 为特殊紧凑或大尺寸组合保留的扩展；默认尺寸是 shadcn 验收基准。
+
+## API
 
 ### RadioGroup
 
 | 方法 | 说明 |
-| --- | --- |
-| `horizontal(id)` | 创建横向分组 |
-| `vertical(id)` | 创建纵向分组 |
-| `layout(Axis)` | 设置布局方向 |
-| `child(Radio)` | 添加单个 Radio |
-| `children(items)` | 通过迭代器批量添加 Radio |
-| `selected_index(Option<usize>)` | 设置选中项索引 |
-| `disabled(bool)` | 禁用分组内所有 Radio |
-| `on_change(fn)` | 选择变化回调，参数为选中的 `&usize` 索引 |
+|---|---|
+| `new(id)` | 创建纵向受控 Group |
+| `horizontal(id)` / `vertical(id)` | 创建指定方向的 Group |
+| `orientation(Axis)` | 修改布局和方向键导航轴 |
+| `value(Option<T>)` | 设置受控选择值 |
+| `aria_label(text)` | 设置 Group 的可访问名称 |
+| `child(item)` / `children(items)` | 添加带稳定 value 的类型化项目 |
+| `disabled(bool)` | 在渲染时禁用全部项目 |
+| `on_change(fn)` | 返回新选择的稳定 value |
 
-### 样式
+### RadioGroupItem
 
-Radio 和 RadioGroup 都实现了 `Styled` trait。
+| 方法 | 说明 |
+|---|---|
+| `new(value)` | 使用稳定 value 和默认 ID 创建项目 |
+| `label(text)` | 设置可见标签和可访问名称 |
+| `aria_label(text)` | 设置不依赖可见文本的可访问名称 |
+| `aria_description(text)` | 设置补充可访问描述 |
+| `disabled(bool)` | 禁用当前项目 |
+| `invalid(bool)` | 设置无效语义和视觉状态 |
+| `tooltip(text)` | 添加 Tooltip |
 
-Radio 还实现了 `Sizable` trait：
-
-- `xsmall()`：超小尺寸
-- `small()`：小尺寸
-- `medium()`：中尺寸，默认值
-- `large()`：大尺寸
-
-## 最佳实践
-
-1. 互斥选项优先使用 `RadioGroup`，不要手动管理一组独立的 `Radio`。
-2. 标签要明确，用户应当一眼看懂每个选项的含义。
-3. 对必填项可以提供合理的默认选中项。
-4. 选项顺序应符合业务逻辑，例如频率、重要性或字母顺序。
-5. 单选项数量应保持适中，通常建议 2 到 7 个。
-6. 多组单选项应配合清晰标题和视觉分组。
-7. 选项较少时可横向排列，较多时更适合纵向排列。
+`Radio`、`RadioGroupItem` 和 `RadioGroup` 均实现 `Styled`。`Radio` 和 `RadioGroupItem` 还实现
+`Sizable`。

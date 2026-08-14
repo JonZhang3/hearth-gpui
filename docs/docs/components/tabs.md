@@ -178,10 +178,9 @@ impl Render for TabsView {
 
 ### Tabs with Menu
 
-Use `menu` option to enable a dropdown menu for tab selection when there are many tabs,
-this is default `false`.
-
-If enable, the will have a dropdown button at the end of the tab bar to show all tabs in a menu.
+Use `menu(true)` to keep an explicit dropdown button at the end of the tab bar.
+The menu lists every tab and uses the same callback as direct tab activation. It is not
+automatically hidden when every tab fits.
 
 ```rust
 TabBar::new("tabs-with-menu")
@@ -216,15 +215,34 @@ impl Render for ScrollableTabsView {
 }
 ```
 
+### Keyboard Navigation
+
+`TabBar` uses one roving Tab stop. Disabled tabs are skipped.
+
+| Key | Behavior |
+| --- | --- |
+| `Left` / `Right` | Move focus and selection, wrapping at the ends |
+| `Home` / `End` | Move to the first or last enabled tab |
+| `Enter` / `Space` | Activate the focused tab |
+
+Keyboard focus uses the active Style Preset's semantic focus ring. Pointer focus does not
+show that ring.
+
+### Style Presets
+
+All five variants consume semantic control height, horizontal padding, gap, radius,
+elevation, and motion metrics. Vega remains the default baseline; Nova and Maia adjust
+density without component code branching on preset IDs. Custom heights are supported with
+`.with_size(Size::Size(px(44.)))`.
+
 ### Individual Tab Configuration
 
 ```rust
 TabBar::new("custom-tabs")
     .child(
         Tab::new().label("Custom Tab")
-            .id("custom-id")
-            .prefix(IconName::Star)
-            .suffix(IconName::X)
+            .prefix(Icon::new(IconName::Star))
+            .suffix(Icon::new(IconName::Close))
             .on_click(|_, _, _| {
                 println!("Custom tab clicked");
             })
@@ -246,7 +264,7 @@ TabBar::new("custom-tabs")
 | `suffix(element)`           | Add element after the tabs                         |
 | `last_empty_space(element)` | Custom element for empty space at the end          |
 | `track_scroll(handle)`      | Enable scrolling with a scroll handle              |
-| `with_menu(bool)`           | Enable dropdown menu for tab selection             |
+| `menu(bool)`                | Keep the dropdown menu trigger visible              |
 
 ### TabBar Variants
 
@@ -262,10 +280,10 @@ TabBar::new("custom-tabs")
 
 | Method                  | Description                                    |
 | ----------------------- | ---------------------------------------------- |
-| `new(label)`            | Create a new tab with a label                  |
-| `empty()`               | Create an empty tab                            |
+| `new()`                 | Create a new composable tab                    |
+| `label(text)`           | Set the visible and default accessible label   |
+| `aria_label(text)`      | Override the accessible label                  |
 | `icon(icon)`            | Create a tab with only an icon                 |
-| `id(id)`                | Set custom ID for the tab                      |
 | `with_variant(variant)` | Set the tab variant                            |
 | `pill()`                | Use pill variant                               |
 | `outline()`             | Use outline variant                            |
@@ -303,7 +321,7 @@ Both `TabBar` and `Tab` implement `Sizable` trait:
 ### Custom Tab Content
 
 ```rust
-Tab::empty()
+Tab::new()
     .child(
         h_flex()
             .items_center()
@@ -422,6 +440,6 @@ impl Render for CloseableTabsView {
 - The `TabBar` manages the selection state of all child tabs
 - Individual tab `on_click` handlers are ignored when `TabBar.on_click` is set
 - Tabs automatically inherit the variant and size from their parent `TabBar`
-- The `with_menu` option adds a dropdown for tab selection when there are many tabs
+- `menu(true)` keeps a dropdown containing all tabs visible
 - Scrolling is automatically enabled when tabs overflow the container width
 - The dock system provides advanced closeable tab functionality for complex layouts

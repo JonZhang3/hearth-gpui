@@ -11,7 +11,8 @@ use autocorrect::ignorer::Ignorer;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme, IconName, Sizable, WindowExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
+    dialog::AlertDialogAction,
     h_flex,
     highlighter::{Diagnostic, DiagnosticSeverity, Language, LanguageConfig, LanguageRegistry},
     input::{
@@ -780,9 +781,16 @@ impl Example {
             });
 
             dialog
-                .title("Go to line")
-                .child(Input::new(&input_state))
-                .on_ok({
+                .content({
+                    let input_state = input_state.clone();
+                    move |content, _, _| {
+                        content
+                            .title("Go to line")
+                            .child(Input::new(&input_state))
+                            .action(AlertDialogAction::new("go-to-line-action", "Go"))
+                    }
+                })
+                .on_action({
                     let editor = editor.clone();
                     let input_state = input_state.clone();
                     move |_, window, cx| {
@@ -938,7 +946,7 @@ impl Example {
 
                     ListItem::new(ix)
                         .w_full()
-                        .rounded(cx.theme().radius)
+                        .rounded(cx.theme().style.radii.md)
                         .py_0p5()
                         .px_2()
                         .pl(px(16.) * entry.depth() + px(8.))

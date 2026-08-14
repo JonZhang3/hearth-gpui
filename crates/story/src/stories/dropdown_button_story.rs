@@ -1,12 +1,12 @@
-use gpui::{ Anchor,
-    Action, App, AppContext as _, Context, Entity, Focusable, IntoElement,
-    ParentElement as _, Render, Styled as _, Window, prelude::FluentBuilder as _,
+use gpui::{
+    Action, Anchor, App, AppContext as _, Context, Entity, Focusable, IntoElement,
+    ParentElement as _, Render, Styled as _, Window,
 };
 use serde::Deserialize;
 
 use crate::section;
 use gpui_component::{
-    ActiveTheme, Disableable, Selectable as _, Sizable as _, Theme,
+    Disableable, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _, DropdownButton},
     checkbox::Checkbox,
     h_flex, v_flex,
@@ -16,17 +16,14 @@ use gpui_component::{
 #[action(namespace = dropdown_button_story, no_json)]
 enum ButtonAction {
     Disabled,
-    Loading,
     Selected,
-    Compact,
 }
 
 pub struct DropdownButtonStory {
     focus_handle: gpui::FocusHandle,
     disabled: bool,
-    loading: bool,
     selected: bool,
-    compact: bool,
+    primary_action_count: usize,
 }
 
 impl DropdownButtonStory {
@@ -34,9 +31,8 @@ impl DropdownButtonStory {
         cx.new(|cx| Self {
             focus_handle: cx.focus_handle(),
             disabled: false,
-            loading: false,
             selected: false,
-            compact: false,
+            primary_action_count: 0,
         })
     }
 }
@@ -68,9 +64,8 @@ impl Focusable for DropdownButtonStory {
 impl Render for DropdownButtonStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let disabled = self.disabled;
-        let loading = self.loading;
         let selected = self.selected;
-        let compact = self.compact;
+        let primary_label = format!("Primary Dropdown ({})", self.primary_action_count);
 
         v_flex()
             .gap_6()
@@ -87,15 +82,6 @@ impl Render for DropdownButtonStory {
                             })),
                     )
                     .child(
-                        Checkbox::new("loading-button")
-                            .label("Loading")
-                            .checked(self.loading)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.loading = !view.loading;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
                         Checkbox::new("selected-button")
                             .label("Selected")
                             .checked(self.selected)
@@ -103,35 +89,19 @@ impl Render for DropdownButtonStory {
                                 view.selected = !view.selected;
                                 cx.notify();
                             })),
-                    )
-                    .child(
-                        Checkbox::new("compact-button")
-                            .label("Compact")
-                            .checked(self.compact)
-                            .on_click(cx.listener(|view, _, _, cx| {
-                                view.compact = !view.compact;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        Checkbox::new("shadow-button")
-                            .label("Shadow")
-                            .checked(cx.theme().shadow)
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                let mut theme = cx.theme().clone();
-                                theme.shadow = !theme.shadow;
-                                cx.set_global::<Theme>(theme);
-                                window.refresh();
-                            })),
                     ),
             )
             .child(
                 section("Dropdown Button").child(
                     DropdownButton::new("btn0")
-                        .primary()
-                        .button(Button::new("btn").label("Primary Dropdown"))
-                        .when(self.compact, |this| this.compact())
-                        .loading(self.loading)
+                        .aria_label("Primary actions")
+                        .menu_aria_label("Open primary options")
+                        .button(Button::new("btn0-main").label(primary_label).on_click(
+                            cx.listener(|view, _, _, cx| {
+                                view.primary_action_count += 1;
+                                cx.notify();
+                            }),
+                        ))
                         .disabled(self.disabled)
                         .selected(selected)
                         .dropdown_menu_with_anchor(Anchor::BottomRight, move |this, _, _| {
@@ -140,12 +110,10 @@ impl Render for DropdownButtonStory {
                                 disabled,
                                 Box::new(ButtonAction::Disabled),
                             )
-                            .menu_with_check("Loading", loading, Box::new(ButtonAction::Loading))
-                            .menu_with_check("Selected", selected, Box::new(ButtonAction::Selected))
                             .menu_with_check(
-                                "Compact",
-                                compact,
-                                Box::new(ButtonAction::Compact),
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
                             )
                         }),
                 ),
@@ -154,9 +122,7 @@ impl Render for DropdownButtonStory {
                 section("Small Size").child(
                     DropdownButton::new("btn-sm")
                         .small()
-                        .button(Button::new("btn").label("Small Dropdown"))
-                        .when(self.compact, |this| this.compact())
-                        .loading(self.loading)
+                        .button(Button::new("btn-sm-main").label("Small Dropdown"))
                         .disabled(self.disabled)
                         .selected(selected)
                         .dropdown_menu(move |this, _, _| {
@@ -165,12 +131,31 @@ impl Render for DropdownButtonStory {
                                 disabled,
                                 Box::new(ButtonAction::Disabled),
                             )
-                            .menu_with_check("Loading", loading, Box::new(ButtonAction::Loading))
-                            .menu_with_check("Selected", selected, Box::new(ButtonAction::Selected))
                             .menu_with_check(
-                                "Compact",
-                                compact,
-                                Box::new(ButtonAction::Compact),
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
+                            )
+                        }),
+                ),
+            )
+            .child(
+                section("Large Size").child(
+                    DropdownButton::new("btn-lg")
+                        .large()
+                        .button(Button::new("btn-lg-main").label("Large Dropdown"))
+                        .disabled(self.disabled)
+                        .selected(selected)
+                        .dropdown_menu(move |this, _, _| {
+                            this.menu_with_check(
+                                "Disabled",
+                                disabled,
+                                Box::new(ButtonAction::Disabled),
+                            )
+                            .menu_with_check(
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
                             )
                         }),
                 ),
@@ -179,10 +164,7 @@ impl Render for DropdownButtonStory {
                 section("Outline").child(
                     DropdownButton::new("btn-outline")
                         .outline()
-                        .danger()
-                        .button(Button::new("btn").label("Outline Dropdown"))
-                        .when(self.compact, |this| this.compact())
-                        .loading(self.loading)
+                        .button(Button::new("btn-outline-main").label("Outline Dropdown"))
                         .disabled(self.disabled)
                         .selected(selected)
                         .dropdown_menu(move |this, _, _| {
@@ -191,12 +173,52 @@ impl Render for DropdownButtonStory {
                                 disabled,
                                 Box::new(ButtonAction::Disabled),
                             )
-                            .menu_with_check("Loading", loading, Box::new(ButtonAction::Loading))
-                            .menu_with_check("Selected", selected, Box::new(ButtonAction::Selected))
                             .menu_with_check(
-                                "Compact",
-                                compact,
-                                Box::new(ButtonAction::Compact),
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
+                            )
+                        }),
+                ),
+            )
+            .child(
+                section("Secondary").child(
+                    DropdownButton::new("btn-secondary")
+                        .secondary()
+                        .button(Button::new("btn-secondary-main").label("Secondary Dropdown"))
+                        .disabled(self.disabled)
+                        .selected(selected)
+                        .dropdown_menu(move |this, _, _| {
+                            this.menu_with_check(
+                                "Disabled",
+                                disabled,
+                                Box::new(ButtonAction::Disabled),
+                            )
+                            .menu_with_check(
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
+                            )
+                        }),
+                ),
+            )
+            .child(
+                section("Destructive").child(
+                    DropdownButton::new("btn-destructive")
+                        .destructive()
+                        .button(Button::new("btn-destructive-main").label("Delete"))
+                        .disabled(self.disabled)
+                        .selected(selected)
+                        .dropdown_menu(move |this, _, _| {
+                            this.menu_with_check(
+                                "Disabled",
+                                disabled,
+                                Box::new(ButtonAction::Disabled),
+                            )
+                            .menu_with_check(
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
                             )
                         }),
                 ),
@@ -205,9 +227,7 @@ impl Render for DropdownButtonStory {
                 section("Ghost").child(
                     DropdownButton::new("btn-ghost")
                         .ghost()
-                        .button(Button::new("btn").label("Ghost Dropdown"))
-                        .when(self.compact, |this| this.compact())
-                        .loading(self.loading)
+                        .button(Button::new("btn-ghost-main").label("Ghost Dropdown"))
                         .disabled(self.disabled)
                         .selected(selected)
                         .dropdown_menu(move |this, _, _| {
@@ -216,12 +236,10 @@ impl Render for DropdownButtonStory {
                                 disabled,
                                 Box::new(ButtonAction::Disabled),
                             )
-                            .menu_with_check("Loading", loading, Box::new(ButtonAction::Loading))
-                            .menu_with_check("Selected", selected, Box::new(ButtonAction::Selected))
                             .menu_with_check(
-                                "Compact",
-                                compact,
-                                Box::new(ButtonAction::Compact),
+                                "Selected",
+                                selected,
+                                Box::new(ButtonAction::Selected),
                             )
                         }),
                 ),

@@ -19,6 +19,9 @@ pub struct InputStory {
     input_text_right: Entity<InputState>,
     mask_input: Entity<InputState>,
     disabled_input: Entity<InputState>,
+    read_only_input: Entity<InputState>,
+    invalid_input: Entity<InputState>,
+    loading_input: Entity<InputState>,
     prefix_input1: Entity<InputState>,
     suffix_input1: Entity<InputState>,
     both_input1: Entity<InputState>,
@@ -308,6 +311,12 @@ impl InputStory {
             cx.subscribe_in(&input2, window, Self::on_input_event),
             cx.subscribe_in(&phone_input, window, Self::on_input_event),
         ];
+        let loading_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Loading input")
+                .default_value("Checking availability")
+        });
+        loading_input.update(cx, |state, cx| state.set_loading(true, window, cx));
 
         Self {
             input1,
@@ -316,6 +325,17 @@ impl InputStory {
             mask_input,
             disabled_input: cx
                 .new(|cx| InputState::new(window, cx).default_value("This is disabled input")),
+            read_only_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Read-only input")
+                    .default_value("Selectable, but not editable")
+            }),
+            invalid_input: cx.new(|cx| {
+                InputState::new(window, cx)
+                    .placeholder("Invalid input")
+                    .default_value("Invalid value")
+            }),
+            loading_input,
             large_input: cx.new(|cx| InputState::new(window, cx).placeholder("Large input")),
             small_input: cx.new(|cx| {
                 InputState::new(window, cx)
@@ -490,7 +510,27 @@ impl Render for InputStory {
             .child(
                 section("Input State")
                     .max_w_md()
-                    .child(Input::new(&self.disabled_input).disabled(true))
+                    .child(
+                        Input::new(&self.disabled_input)
+                            .aria_label("Disabled input")
+                            .disabled(true),
+                    )
+                    .child(
+                        Input::new(&self.read_only_input)
+                            .aria_label("Read-only input")
+                            .read_only(true),
+                    )
+                    .child(
+                        Input::new(&self.invalid_input)
+                            .aria_label("Invalid input")
+                            .aria_description("The current value is invalid")
+                            .invalid(true),
+                    )
+                    .child(
+                        Input::new(&self.loading_input)
+                            .aria_label("Loading input")
+                            .read_only(true),
+                    )
                     .child(
                         Input::new(&self.mask_input)
                             .content_type(InputContentType::Password)
@@ -527,12 +567,12 @@ impl Render for InputStory {
                         Input::new(&self.both_input1)
                             .cleanable(true)
                             .prefix(div().child(Icon::new(IconName::Search).small()))
-                            .suffix(Button::new("info").text().icon(IconName::Info).xsmall()),
+                            .suffix(Button::new("info").ghost().icon(IconName::Info).xsmall()),
                     )
                     .child(
                         Input::new(&self.suffix_input1)
                             .cleanable(true)
-                            .suffix(Button::new("info").text().icon(IconName::Info).xsmall()),
+                            .suffix(Button::new("info").ghost().icon(IconName::Info).xsmall()),
                     ),
             )
             .child(
@@ -544,7 +584,7 @@ impl Render for InputStory {
                             .prefix(Icon::new(IconName::Search).small())
                             .suffix(
                                 Button::new("complete-input-info")
-                                    .text()
+                                    .ghost()
                                     .icon(IconName::Info)
                                     .xsmall(),
                             ),
@@ -556,7 +596,7 @@ impl Render for InputStory {
                             .prefix(Icon::new(IconName::Search).small())
                             .suffix(
                                 Button::new("complete-disabled-input-info")
-                                    .text()
+                                    .ghost()
                                     .icon(IconName::Info)
                                     .xsmall(),
                             ),
@@ -648,7 +688,7 @@ impl Render for InputStory {
                 section("Text Decorations").max_w_md().child(
                     Input::new(&self.decorations_input).suffix(
                         Button::new("toggle-text-decorations")
-                            .text()
+                            .ghost()
                             .xsmall()
                             .label(if self.decorations_visible {
                                 "Hide decorations"
@@ -663,7 +703,7 @@ impl Render for InputStory {
                 section("Single line code editor").max_w_md().child(
                     Input::new(&self.code_input).suffix(
                         Button::new("code-reset")
-                            .text()
+                            .ghost()
                             .label("Reset")
                             .xsmall()
                             .on_click(cx.listener(Self::on_click_reset)),

@@ -24,7 +24,7 @@ For richer selection UIs with custom trigger rendering or multi-select, see [Com
 ```rust
 use gpui_component::select::{
     Select, SelectState, SelectItem, SelectDelegate,
-    SelectEvent, SearchableVec, SelectGroup
+    SelectEvent, SelectPosition, SearchableVec, SelectGroup
 };
 ```
 
@@ -82,6 +82,19 @@ let state = cx.new(|cx| {
 
 Select::new(&state)
     .icon(IconName::Search) // Shows search icon
+```
+
+### Content Position
+
+Non-searchable Selects use `SelectPosition::ItemAligned` by default. With automatic menu width, the content uses the trigger width but never becomes narrower than shadcn's 9rem minimum. It overlays the trigger and aligns the selected option, or the first enabled option when no value is selected. This temporary cursor does not commit a value. The popup is clamped to an 8 px window margin.
+
+Searchable Selects always use `SelectPosition::Popper`, which opens 4 px below the trigger. This keeps the search field outside selected-item alignment. An explicit `menu_width` continues to override automatic trigger-width matching in either mode.
+
+Use an explicit position when the default does not fit the surrounding composition:
+
+```rust
+Select::new(&state)
+    .position(SelectPosition::Popper)
 ```
 
 ### Impl SelectItem
@@ -149,20 +162,33 @@ let state = cx.new(|cx| {
 });
 
 Select::new(&state)
+    .group_separators(true)
 ```
 
 ### Sizes
 
 ```rust
-Select::new(&state).large()
-Select::new(&state) // medium (default)
 Select::new(&state).small()
+Select::new(&state) // default
 ```
+
+`small` and `default` match the canonical shadcn sizes. `xsmall` and `large` remain GPUI Component extensions for dense desktop layouts.
 
 ### Disabled State
 
 ```rust
 Select::new(&state).disabled(true)
+```
+
+Individual options can be disabled by returning `true` from `SelectItem::disabled`.
+
+### Invalid State
+
+```rust
+Select::new(&state)
+    .aria_label("Contact method")
+    .aria_description("Choose one contact method")
+    .invalid(true)
 ```
 
 ### Cleanable
@@ -191,13 +217,13 @@ let state = cx.new(|cx| {
 });
 
 Select::new(&state)
-    .empty(
+    .empty(|_, cx| {
         h_flex()
             .h_24()
             .justify_center()
             .text_color(cx.theme().muted_foreground)
             .child("No options available")
-    )
+    })
 ```
 
 ### Events
@@ -325,7 +351,7 @@ Select::new(&state)
 h_flex()
     .border_1()
     .border_color(cx.theme().input)
-    .rounded(cx.theme().radius_lg)
+    .rounded(cx.theme().style.radii.lg)
     .w_full()
     .gap_1()
     .child(
@@ -365,8 +391,19 @@ let state = cx.new(|cx| {
 });
 
 Select::new(&state)
+    .group_separators(true)
     .menu_width(px(350.))
     .placeholder("Select country...")
+```
+
+## Accessibility
+
+Provide an accessible trigger name with `aria_label`. Use `aria_description` for supporting instructions. The selected item title is exposed as the AccessKit value; expanded, invalid, and disabled states are exposed automatically.
+
+```rust
+Select::new(&state)
+    .aria_label("Country")
+    .aria_description("Choose a country or region")
 ```
 
 ## Keyboard Shortcuts
@@ -376,10 +413,16 @@ Select::new(&state)
 | `Tab`     | Focus dropdown                          |
 | `Enter`   | Open menu or select current item        |
 | `Up/Down` | Navigate options (opens menu if closed) |
+| `Home/End` | Move to the first or last enabled option |
 | `Escape`  | Close menu                              |
 | `Space`   | Open menu                               |
+| Printable characters | Select the next matching option in a non-searchable Select |
 
-## Theming
+## Style Presets
+
+Select consumes semantic Control, Focus, Radius, Elevation, and Motion metrics. Vega is the default baseline; Nova and Maia change density, radius, padding, and popup elevation without changing Color Theme selection. Search, the clear action, custom item rendering, and virtualized desktop scrolling are GPUI Component extensions.
+
+## Color Theme
 
 The dropdown respects the current theme and uses the following theme tokens:
 

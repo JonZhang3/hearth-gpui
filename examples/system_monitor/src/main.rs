@@ -97,13 +97,13 @@ impl ProcessTableDelegate {
         Self {
             processes: Vec::new(),
             columns: vec![
-                Column::new("pid", "PID").width(70.).sortable(),
-                Column::new("name", "Name").width(380.).sortable(),
+                Column::new("pid", "PID").w(70.).sortable(),
+                Column::new("name", "Name").w(380.).sortable(),
                 Column::new("cpu", "CPU %")
-                    .width(80.)
+                    .w(80.)
                     .sortable()
                     .sort(ColumnSort::Descending),
-                Column::new("memory", "Memory").width(100.).sortable(),
+                Column::new("memory", "Memory").w(100.).sortable(),
             ],
             sort_field: ProcessSortField::Cpu,
             sort_order: ColumnSort::Descending,
@@ -618,6 +618,7 @@ fn main() {
 
         let window_options = WindowOptions {
             titlebar: Some(TitleBar::title_bar_options()),
+            app_owns_titlebar_drag: true,
             window_bounds: Some(WindowBounds::centered(size(px(680.), px(600.)), cx)),
             ..Default::default()
         };

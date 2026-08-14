@@ -5,7 +5,7 @@ use gpui::{
 };
 
 /// The style of the separator line.
-#[derive(Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum SeparatorStyle {
     #[default]
     Solid,
@@ -15,7 +15,6 @@ pub enum SeparatorStyle {
 /// A separator that can be either vertical or horizontal.
 #[derive(IntoElement)]
 pub struct Separator {
-    base: Div,
     style: StyleRefinement,
     label: Option<SharedString>,
     axis: Axis,
@@ -24,11 +23,10 @@ pub struct Separator {
 }
 
 impl Separator {
-    /// Creates a vertical separator.
-    pub fn vertical() -> Self {
+    /// Creates a horizontal separator.
+    pub fn new() -> Self {
         Self {
-            base: div().h_full(),
-            axis: Axis::Vertical,
+            axis: Axis::Horizontal,
             label: None,
             color: None,
             style: StyleRefinement::default(),
@@ -36,16 +34,20 @@ impl Separator {
         }
     }
 
+    /// Creates a vertical separator.
+    pub fn vertical() -> Self {
+        Self::new().orientation(Axis::Vertical)
+    }
+
     /// Creates a horizontal separator.
     pub fn horizontal() -> Self {
-        Self {
-            base: div(),
-            axis: Axis::Horizontal,
-            label: None,
-            color: None,
-            style: StyleRefinement::default(),
-            line_style: SeparatorStyle::Solid,
-        }
+        Self::new()
+    }
+
+    /// Sets the separator orientation.
+    pub fn orientation(mut self, orientation: Axis) -> Self {
+        self.axis = orientation;
+        self
     }
 
     /// Creates a vertical dashed separator.
@@ -117,6 +119,12 @@ impl Separator {
     }
 }
 
+impl Default for Separator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Styled for Separator {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
@@ -129,11 +137,16 @@ impl RenderOnce for Separator {
         let axis = self.axis;
         let line_style = self.line_style;
 
-        self.base
+        div()
+            .relative()
             .flex()
             .flex_shrink_0()
             .items_center()
             .justify_center()
+            .map(|this| match axis {
+                Axis::Vertical => this.w(px(1.)).self_stretch(),
+                Axis::Horizontal => this.h(px(1.)).w_full(),
+            })
             .refine_style(&self.style)
             .child(match line_style {
                 SeparatorStyle::Solid => Self::render_solid(axis, color).into_any_element(),
@@ -151,5 +164,25 @@ impl RenderOnce for Separator {
                         .child(label),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn separator_builder_preserves_orientation_and_extensions() {
+        let default = Separator::new();
+        assert_eq!(default.axis, Axis::Horizontal);
+        assert_eq!(default.line_style, SeparatorStyle::Solid);
+
+        let vertical = Separator::default()
+            .orientation(Axis::Vertical)
+            .label("Section")
+            .dashed();
+        assert_eq!(vertical.axis, Axis::Vertical);
+        assert_eq!(vertical.line_style, SeparatorStyle::Dashed);
+        assert_eq!(vertical.label.as_deref(), Some("Section"));
     }
 }

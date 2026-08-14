@@ -1,11 +1,11 @@
 use gpui::{
-    App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
-    Window, div, px,
+    App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, SharedString,
+    Styled, Window, div, px,
 };
 
 use gpui_component::{
-    ActiveTheme, Sizable, h_flex,
-    radio::{Radio, RadioGroup},
+    ActiveTheme, Disableable, Sizable, h_flex,
+    radio::{Radio, RadioGroup, RadioGroupItem},
     v_flex,
 };
 
@@ -15,7 +15,7 @@ pub struct RadioStory {
     focus_handle: gpui::FocusHandle,
     radio_check1: bool,
     radio_check2: bool,
-    radio_group_checked: Option<usize>,
+    radio_group_value: Option<SharedString>,
 }
 
 impl super::Story for RadioStory {
@@ -42,7 +42,7 @@ impl RadioStory {
             focus_handle: cx.focus_handle(),
             radio_check1: false,
             radio_check2: true,
-            radio_group_checked: Some(1),
+            radio_group_value: Some("two".into()),
         }
     }
 }
@@ -84,6 +84,20 @@ impl Render for RadioStory {
                             .label("Disabled with Checked")
                             .checked(true)
                             .disabled(true),
+                    ),
+            )
+            .child(
+                section("Invalid")
+                    .child(
+                        Radio::new("invalid-radio")
+                            .label("Invalid option")
+                            .invalid(true),
+                    )
+                    .child(
+                        Radio::new("invalid-radio-selected")
+                            .label("Invalid selected option")
+                            .checked(true)
+                            .invalid(true),
                     ),
             )
             .child(
@@ -129,13 +143,59 @@ impl Render for RadioStory {
                 section("Radio Group").max_w_md().child(
                     v_flex().child(
                         RadioGroup::horizontal("radio_group_1")
-                            .children(["One", "Two", "Three"])
-                            .selected_index(self.radio_group_checked)
-                            .on_click(cx.listener(|this, selected_ix: &usize, _, cx| {
-                                this.radio_group_checked = Some(*selected_ix);
+                            .aria_label("Horizontal options")
+                            .children([
+                                RadioGroupItem::new("one").label("One"),
+                                RadioGroupItem::new("two").label("Two"),
+                                RadioGroupItem::new("three").label("Three"),
+                            ])
+                            .value(self.radio_group_value.clone())
+                            .on_change(cx.listener(|this, value: &SharedString, _, cx| {
+                                this.radio_group_value = Some(value.clone());
                                 cx.notify();
                             })),
                     ),
+                ),
+            )
+            .child(
+                section("Radio Group With Descriptions").max_w_md().child(
+                    RadioGroup::vertical("radio_group_descriptions")
+                        .aria_label("Plan")
+                        .value(self.radio_group_value.clone())
+                        .child(
+                            RadioGroupItem::new("one")
+                                .label("Plus")
+                                .aria_description("For individuals and small teams")
+                                .child(
+                                    div()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("For individuals and small teams"),
+                                ),
+                        )
+                        .child(
+                            RadioGroupItem::new("two")
+                                .label("Pro")
+                                .aria_description("For growing businesses")
+                                .child(
+                                    div()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("For growing businesses"),
+                                ),
+                        )
+                        .child(
+                            RadioGroupItem::new("three")
+                                .label("Enterprise")
+                                .disabled(true)
+                                .child(
+                                    div()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Disabled option"),
+                                ),
+                        )
+                        .on_change(cx.listener(|this, value: &SharedString, _, cx| {
+                            this.radio_group_value = Some(value.clone());
+                            cx.notify();
+                        })),
                 ),
             )
             .child(
@@ -144,16 +204,17 @@ impl Render for RadioStory {
                     .child(
                         v_flex().items_center().content_center().child(
                             RadioGroup::vertical("radio_group_2")
+                                .aria_label("Country")
                                 .w(px(220.))
                                 .p_2()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(cx.theme().radius)
+                                .rounded(cx.theme().style.radii.md)
                                 .disabled(true)
-                                .child(Radio::new("one1").label("United States"))
-                                .child(Radio::new("one2").label("Canada"))
-                                .child(Radio::new("one3").label("Mexico"))
-                                .selected_index(Some(1)),
+                                .child(RadioGroupItem::new("us").label("United States"))
+                                .child(RadioGroupItem::new("ca").label("Canada"))
+                                .child(RadioGroupItem::new("mx").label("Mexico"))
+                                .value(Some("ca")),
                         ),
                     ),
             )

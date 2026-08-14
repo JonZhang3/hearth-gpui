@@ -100,6 +100,25 @@ Notification::new()
     .autohide(true)
 ```
 
+当前 Style Preset 会控制 Notification 的宽度、内边距、间距、圆角、阴影与动效，但不会改变队列行为。全局运行时设置仍由 `Theme` 管理：
+
+```rust
+use std::time::Duration;
+
+Theme::global_mut(cx).notification.max_items = 5;
+Theme::global_mut(cx).notification.duration = Duration::from_secs(8);
+Theme::global_mut(cx).notification.placement = Anchor::BottomRight;
+```
+
+单条 Notification 可以覆盖全局位置；未覆盖时仍继承 `Theme.notification.placement`。
+`max_items` 会分别应用到每个位置分组。
+
+```rust
+Notification::success("Your changes were saved.")
+    .title("Saved")
+    .placement(Anchor::BottomRight);
+```
+
 ### 操作按钮
 
 ```rust
@@ -108,7 +127,7 @@ Notification::new()
     .message("Unable to connect to server.")
     .with_type(NotificationType::Error)
     .autohide(false)
-    .action(|_, cx| {
+    .action(|_, _, cx| {
         Button::new("retry")
             .primary()
             .label("Retry")
@@ -136,6 +155,10 @@ Notification::new()
 use gpui_component::text::markdown;
 
 let markdown_content = r#"
+## 可访问性
+
+Notification 会暴露 AccessKit Alert role。设置标题时使用标题作为可访问名称，否则使用消息文本；仅图标关闭按钮使用本地化的“关闭”标签。
+
 ## Custom Notification
 - **Feature**: New dashboard available
 - **Status**: Ready to use

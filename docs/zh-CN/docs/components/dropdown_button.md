@@ -5,9 +5,9 @@ description: DropdownButton 由一个主按钮和一个触发下拉菜单的按�
 
 # DropdownButton
 
-[DropdownButton] 是一个组合型按钮组件。点击左侧主按钮时可以执行独立动作，点击右侧触发按钮时则会展开下拉菜单。
+[DropdownButton] 将主操作按钮与相邻的菜单 Trigger 组合在一起。左侧主按钮保留自己的点击处理逻辑，右侧按钮负责打开 [PopupMenu]。
 
-它同时继承了 [Button] 的许多能力，例如变体、尺寸、图标和加载状态。
+组件会把变体、尺寸、禁用状态、选中状态和圆角配置统一传递给两个按钮。几何、颜色、焦点环、阴影和密度直接复用 [Button] 的 Color Theme 与 Style Preset 语义，不维护额外的固定样式。
 
 ## 导入
 
@@ -21,7 +21,15 @@ use gpui_component::button::{Button, DropdownButton};
 use gpui::Anchor;
 
 DropdownButton::new("dropdown")
-    .button(Button::new("btn").label("Click Me"))
+    .aria_label("文档操作")
+    .menu_aria_label("打开文档选项")
+    .button(
+        Button::new("dropdown-primary")
+            .label("保存")
+            .on_click(|_, _, _| {
+                // 执行主操作。
+            }),
+    )
     .dropdown_menu(|menu, _, _| {
         menu.menu("Option 1", Box::new(MyAction))
             .menu("Option 2", Box::new(MyAction))
@@ -36,8 +44,7 @@ DropdownButton::new("dropdown")
 
 ```rust
 DropdownButton::new("dropdown")
-    .primary()
-    .button(Button::new("btn").label("Primary"))
+    .button(Button::new("btn").label("Default"))
     .dropdown_menu(|menu, _, _| {
         menu.menu("Option 1", Box::new(MyAction))
     })
@@ -53,7 +60,11 @@ DropdownButton::new("dropdown")
     })
 ```
 
+### 无障碍
+
+当周围上下文不能充分说明组合按钮用途时，使用 `.aria_label(...)` 为组合控件命名。菜单 Trigger 默认使用本地化的“更多选项”无障碍名称；菜单用途更具体时可通过 `.menu_aria_label(...)` 覆盖。
+
 [Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
 [DropdownButton]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.DropdownButton.html
-[ButtonCustomVariant]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.ButtonCustomVariant.html
+[PopupMenu]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenu.html
 [Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html

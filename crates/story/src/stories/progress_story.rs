@@ -3,7 +3,7 @@ use gpui::{
     Window, div, prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
-    ActiveTheme, IconName, Selectable, Sizable,
+    ActiveTheme, IconName, Selectable, Sizable, StyledExt,
     button::Button,
     h_flex,
     progress::{Progress, ProgressCircle},
@@ -48,8 +48,10 @@ impl ProgressStory {
         }
     }
 
-    pub fn set_value(&mut self, value: f32) {
+    /// Updates the displayed value and refreshes all progress examples.
+    pub fn set_value(&mut self, value: f32, cx: &mut Context<Self>) {
         self.value = value;
+        cx.notify();
     }
 
     fn start_animation(&mut self, cx: &mut Context<Self>) {
@@ -103,23 +105,23 @@ impl Render for ProgressStory {
                         h_flex()
                             .gap_2()
                             .child(Button::new("button-1").small().label("0%").on_click(
-                                cx.listener(|this, _, _, _| {
-                                    this.set_value(0.);
+                                cx.listener(|this, _, _, cx| {
+                                    this.set_value(0., cx);
                                 }),
                             ))
                             .child(Button::new("button-2").small().label("25%").on_click(
-                                cx.listener(|this, _, _, _| {
-                                    this.set_value(25.);
+                                cx.listener(|this, _, _, cx| {
+                                    this.set_value(25., cx);
                                 }),
                             ))
                             .child(Button::new("button-3").small().label("75%").on_click(
-                                cx.listener(|this, _, _, _| {
-                                    this.set_value(75.);
+                                cx.listener(|this, _, _, cx| {
+                                    this.set_value(75., cx);
                                 }),
                             ))
                             .child(Button::new("button-4").small().label("100%").on_click(
-                                cx.listener(|this, _, _, _| {
-                                    this.set_value(100.);
+                                cx.listener(|this, _, _, cx| {
+                                    this.set_value(100., cx);
                                 }),
                             ))
                             .child(
@@ -147,15 +149,15 @@ impl Render for ProgressStory {
                             .child(
                                 Button::new("circle-button-5")
                                     .icon(IconName::Minus)
-                                    .on_click(cx.listener(|this, _, _, _| {
-                                        this.set_value((this.value - 1.).max(0.));
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_value((this.value - 1.).max(0.), cx);
                                     })),
                             )
                             .child(
                                 Button::new("circle-button-6")
                                     .icon(IconName::Plus)
-                                    .on_click(cx.listener(|this, _, _, _| {
-                                        this.set_value((this.value + 1.).min(100.));
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.set_value((this.value + 1.).min(100.), cx);
                                     })),
                             ),
                     ),
@@ -163,13 +165,73 @@ impl Render for ProgressStory {
             .child(
                 section("Progress Bar").max_w_md().child(
                     Progress::new("progress-1")
+                        .aria_label("Task progress")
                         .value(self.value)
                         .loading(self.loading),
                 ),
             )
             .child(
+                section("Progress Sizes").max_w_md().child(
+                    v_flex()
+                        .gap_3()
+                        .child(
+                            Progress::new("progress-size-xs")
+                                .aria_label("Extra small progress")
+                                .value(self.value)
+                                .xsmall(),
+                        )
+                        .child(
+                            Progress::new("progress-size-sm")
+                                .aria_label("Small progress")
+                                .value(self.value)
+                                .small(),
+                        )
+                        .child(
+                            Progress::new("progress-size-md")
+                                .aria_label("Medium progress")
+                                .value(self.value),
+                        )
+                        .child(
+                            Progress::new("progress-size-lg")
+                                .aria_label("Large progress")
+                                .value(self.value)
+                                .large(),
+                        ),
+                ),
+            )
+            .child(
+                section("Progress with Label").max_w_md().child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .justify_between()
+                                .text_sm()
+                                .child(div().font_medium().child("Uploading"))
+                                .child(
+                                    div()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("{}%", self.value as i32)),
+                                ),
+                        )
+                        .child(
+                            Progress::new("progress-labeled")
+                                .aria_label("Upload progress")
+                                .aria_value(if self.loading {
+                                    "Loading".to_string()
+                                } else {
+                                    format!("{} percent", self.value as i32)
+                                })
+                                .value(self.value)
+                                .loading(self.loading),
+                        ),
+                ),
+            )
+            .child(
                 section("Custom Style").max_w_md().child(
                     Progress::new("progress-2")
+                        .aria_label("Custom progress")
                         .value(32.)
                         .loading(self.loading)
                         .h(px(16.))

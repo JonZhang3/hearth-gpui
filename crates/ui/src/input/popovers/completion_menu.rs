@@ -13,7 +13,8 @@ const MAX_MENU_HEIGHT: Pixels = px(240.);
 const POPOVER_GAP: Pixels = px(4.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, Disableable, IndexPath, Selectable, Sizable, Size, StyleSized as _, actions,
+    h_flex,
     input::{
         self, InputState, RopeExt,
         popovers::{editor_popover, render_markdown},
@@ -47,6 +48,8 @@ struct CompletionMenuItem {
     children: Vec<AnyElement>,
     selected: bool,
     highlight_prefix: SharedString,
+    size: Size,
+    disabled: bool,
 }
 
 impl CompletionMenuItem {
@@ -57,6 +60,8 @@ impl CompletionMenuItem {
             children: vec![],
             selected: false,
             highlight_prefix: "".into(),
+            size: Size::default(),
+            disabled: false,
         }
     }
 
@@ -73,6 +78,18 @@ impl Selectable for CompletionMenuItem {
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+}
+impl Sizable for CompletionMenuItem {
+    fn with_size(mut self, size: impl Into<Size>) -> Self {
+        self.size = size.into();
+        self
+    }
+}
+impl Disableable for CompletionMenuItem {
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
@@ -104,12 +121,14 @@ impl RenderOnce for CompletionMenuItem {
         h_flex()
             .id(self.ix)
             .gap_2()
-            .p_1()
-            .text_xs()
+            .list_size(self.size, cx)
             .line_height(relative(1.))
-            .rounded(cx.theme().radius.half())
+            .rounded(cx.theme().style.radii.md.half())
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
-            .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
+            .when(!self.disabled, |this| {
+                this.hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
+            })
+            .when(self.disabled, |this| this.opacity(0.5).cursor_not_allowed())
             .when(self.selected, |this| {
                 this.bg(cx.theme().tokens.accent)
                     .text_color(cx.theme().accent_foreground)
@@ -136,14 +155,21 @@ impl ListDelegate for ContextMenuDelegate {
         self.items.len()
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> SharedString {
+        self.items
+            .get(ix.row)
+            .map(|item| item.label.clone().into())
+            .unwrap_or_default()
+    }
+
     fn render_item(
         &mut self,
         ix: crate::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
-        let item = self.items.get(ix.row)?;
-        Some(CompletionMenuItem::new(ix.row, item.clone()).highlight_prefix(self.query.clone()))
+    ) -> Self::Item {
+        let item = self.items[ix.row].clone();
+        CompletionMenuItem::new(ix.row, item).highlight_prefix(self.query.clone())
     }
 
     fn set_selected_index(

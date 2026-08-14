@@ -11,6 +11,7 @@ use crate::{
     ActiveTheme,
     plot::{
         AXIS_GAP, Grid, Plot, PlotAxis, StrokeStyle,
+        label::plot_text_size,
         scale::{Scale, ScaleLinear, ScalePoint, Sealed},
         shape::Area,
         tooltip::{CrossLine, Dot, Tooltip, TooltipState},
@@ -18,6 +19,15 @@ use crate::{
 };
 
 use super::build_point_x_labels;
+
+/// How multiple AreaChart series share the value axis.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum AreaStackMode {
+    #[default]
+    None,
+    Stacked,
+    Expand,
+}
 
 #[derive(IntoPlot)]
 pub struct AreaChart<T, X, Y>
@@ -37,6 +47,7 @@ where
     x_axis: bool,
     grid: bool,
     id: Option<ElementId>,
+    stack_mode: AreaStackMode,
 }
 
 impl<T, X, Y> AreaChart<T, X, Y>
@@ -60,6 +71,7 @@ where
             x_axis: true,
             grid: true,
             id: None,
+            stack_mode: AreaStackMode::None,
         }
     }
 
@@ -133,11 +145,23 @@ where
         self
     }
 
+    /// Stacks every series on top of the previous series.
+    pub fn stacked(mut self) -> Self {
+        self.stack_mode = AreaStackMode::Stacked;
+        self
+    }
+
+    /// Normalizes each category to 100% before stacking its series.
+    pub fn stacked_expand(mut self) -> Self {
+        self.stack_mode = AreaStackMode::Expand;
+        self
+    }
+
     /// Build the x (point) and y (linear) scales for the given bounds.
     ///
     /// Shared by `paint` and `tooltip_state` so the two stay in sync. Returns `None` when there
     /// is no x accessor or no series.
-    fn scales(&self, bounds: Bounds<Pixels>) -> Option<(ScalePoint<X>, ScaleLinear<Y>)> {
+    fn scales(&self, bounds: Bounds<Pixels>) -> Option<(ScalePoint<X>, ScaleLinear<f64>)> {
         let x_fn = self.x.as_ref()?;
         if self.y.is_empty() {
             return None;
@@ -148,12 +172,26 @@ where
         let height = bounds.size.height.as_f32() - axis_gap;
 
         let x = ScalePoint::new(self.data.iter().map(|v| x_fn(v)).collect(), vec![0., width]);
-        let domain = self
-            .data
-            .iter()
-            .flat_map(|v| self.y.iter().map(|y_fn| y_fn(v)))
-            .chain(Some(Y::zero()))
-            .collect::<Vec<_>>();
+        let domain = match self.stack_mode {
+            AreaStackMode::None => self
+                .data
+                .iter()
+                .flat_map(|datum| self.y.iter().filter_map(|value| value(datum).to_f64()))
+                .chain(Some(0.))
+                .collect(),
+            AreaStackMode::Stacked => self
+                .data
+                .iter()
+                .map(|datum| {
+                    self.y
+                        .iter()
+                        .filter_map(|value| value(datum).to_f64())
+                        .sum::<f64>()
+                })
+                .chain(Some(0.))
+                .collect(),
+            AreaStackMode::Expand => vec![0., 1.],
+        };
         let y = ScaleLinear::new(domain, vec![height, 10.]);
 
         Some((x, y))
@@ -185,6 +223,7 @@ where
                 &x,
                 self.tick_margin,
                 cx.theme().muted_foreground,
+                plot_text_size(cx),
             );
             axis = axis.x(height).x_label(labels);
         }
@@ -194,8 +233,7 @@ where
         if self.grid {
             Grid::new()
                 .y((0..=3).map(|i| height * i as f32 / 4.0).collect())
-                .stroke(cx.theme().border)
-                .dash_array(&[px(4.), px(2.)])
+                .stroke(cx.theme().border.opacity(0.5))
                 .paint(&bounds, window);
         }
 
@@ -205,6 +243,9 @@ where
             let y = y.clone();
             let x_fn = x_fn.clone();
             let y_fn = y_fn.clone();
+            let lower_series = self.y[..i].to_vec();
+            let all_series = self.y.clone();
+            let stack_mode = self.stack_mode;
 
             let fill = *self
                 .fills
@@ -221,8 +262,50 @@ where
             Area::new()
                 .data(&self.data)
                 .x(move |d| x.tick(&x_fn(d)))
-                .y0(height)
-                .y1(move |d| y.tick(&y_fn(d)))
+                .y0_fn({
+                    let y = y.clone();
+                    let lower_series = lower_series.clone();
+                    let all_series = all_series.clone();
+                    move |d| {
+                        let lower = match stack_mode {
+                            AreaStackMode::None => 0.,
+                            AreaStackMode::Stacked | AreaStackMode::Expand => lower_series
+                                .iter()
+                                .filter_map(|value| value(d).to_f64())
+                                .sum(),
+                        };
+                        let total = all_series
+                            .iter()
+                            .filter_map(|value| value(d).to_f64())
+                            .sum::<f64>();
+                        let lower = if stack_mode == AreaStackMode::Expand && total > 0. {
+                            lower / total
+                        } else {
+                            lower
+                        };
+                        y.tick(&lower)
+                    }
+                })
+                .y1(move |d| {
+                    let value = y_fn(d).to_f64()?;
+                    let lower = match stack_mode {
+                        AreaStackMode::None => 0.,
+                        AreaStackMode::Stacked | AreaStackMode::Expand => lower_series
+                            .iter()
+                            .filter_map(|series| series(d).to_f64())
+                            .sum(),
+                    };
+                    let total = all_series
+                        .iter()
+                        .filter_map(|series| series(d).to_f64())
+                        .sum::<f64>();
+                    let upper = if stack_mode == AreaStackMode::Expand && total > 0. {
+                        (lower + value) / total
+                    } else {
+                        lower + value
+                    };
+                    y.tick(&upper)
+                })
                 .stroke(stroke)
                 .stroke_style(stroke_style)
                 .fill(fill)
@@ -254,10 +337,26 @@ where
         let x_tick = x.tick(&x_fn(d))?;
 
         // One dot per series at the hovered x.
+        let total = self
+            .y
+            .iter()
+            .filter_map(|value| value(d).to_f64())
+            .sum::<f64>();
+        let mut cumulative = 0.;
         let dots = self
             .y
             .iter()
-            .filter_map(|y_fn| Some(point(px(x_tick), px(y.tick(&y_fn(d))?))))
+            .filter_map(|value| {
+                let raw = value(d).to_f64()?;
+                cumulative += raw;
+                let resolved = match self.stack_mode {
+                    AreaStackMode::None => raw,
+                    AreaStackMode::Stacked => cumulative,
+                    AreaStackMode::Expand if total > 0. => cumulative / total,
+                    AreaStackMode::Expand => 0.,
+                };
+                Some(point(px(x_tick), px(y.tick(&resolved)?)))
+            })
             .collect();
 
         Some(TooltipState::new(
@@ -308,5 +407,40 @@ where
         }
 
         Some(tooltip.into_any_element())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Clone)]
+    struct Datum {
+        category: SharedString,
+        a: f64,
+        b: f64,
+    }
+
+    #[test]
+    fn area_chart_supports_stacked_and_expand_modes() {
+        let data = [Datum {
+            category: "A".into(),
+            a: 1.,
+            b: 2.,
+        }];
+        let stacked = AreaChart::new(data.clone())
+            .x(|datum| datum.category.clone())
+            .y(|datum| datum.a)
+            .y(|datum| datum.b)
+            .stacked();
+        let expanded = AreaChart::new(data)
+            .x(|datum| datum.category.clone())
+            .y(|datum| datum.a)
+            .y(|datum| datum.b)
+            .stacked_expand();
+
+        assert_eq!(stacked.stack_mode, AreaStackMode::Stacked);
+        assert_eq!(expanded.stack_mode, AreaStackMode::Expand);
+        assert_eq!(stacked.y.len(), 2);
     }
 }

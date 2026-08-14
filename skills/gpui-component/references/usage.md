@@ -251,17 +251,34 @@ Button::new("btn").icon(IconName::Trash).tooltip("Delete")
 ### Form
 
 ```rust
-use gpui_component::form::{v_form, h_form, field};
+use gpui_component::form::{field, h_form, v_form, FieldBody, FieldContent, FieldLabel};
 
 // Vertical form
 v_form()
-    .child(field().label("Name").child(Input::new(&self.name)))
-    .child(field().label("Email").child(Input::new(&self.email)))
-    .child(Button::new("submit").primary().label("Submit"))
+    .child(
+        field("name")
+            .aria_label("Name")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("Name"))
+                .child(FieldContent::new().child(Input::new(&self.name)))),
+    )
+    .child(
+        field("email")
+            .aria_label("Email")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("Email"))
+                .child(FieldContent::new().child(Input::new(&self.email)))),
+    )
 
 // Horizontal label alignment
 h_form()
-    .child(field().label("Username").child(Input::new(&self.username)))
+    .child(
+        field("username")
+            .aria_label("Username")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("Username"))
+                .child(FieldContent::new().child(Input::new(&self.username)))),
+    )
 ```
 
 ### List (searchable, virtualized)

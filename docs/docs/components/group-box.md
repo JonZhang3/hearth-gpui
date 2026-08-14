@@ -1,11 +1,11 @@
 ---
 title: GroupBox
-description: A styled container element with an optional title to group related content together.
+description: A lightweight semantic container for grouping related content.
 ---
 
 # GroupBox
 
-The GroupBox component is a versatile container that groups related content together with optional borders, backgrounds, and titles. It provides visual organization and semantic grouping for form controls, settings panels, and other related UI elements.
+`GroupBox` groups related controls or content without introducing Card elevation or interaction behavior. It supports plain, filled, and outlined surfaces while preserving application-defined content composition.
 
 ## Import
 
@@ -13,290 +13,115 @@ The GroupBox component is a versatile container that groups related content toge
 use gpui_component::group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants as _};
 ```
 
-## Usage
-
-### Basic GroupBox
+## Basic usage
 
 ```rust
 GroupBox::new()
-    .child("Subscriptions")
+    .id("subscriptions")
+    .aria_label("Subscription settings")
+    .title("Subscriptions")
     .child(Checkbox::new("all").label("All"))
     .child(Checkbox::new("newsletter").label("Newsletter"))
-    .child(Button::new("save").primary().label("Save"))
+    .child(Button::new("save").label("Save"))
 ```
 
-### GroupBox Variants
+An explicit ID lets GPUI expose the root as an accessibility `Group`. Add `aria_label` when the group contains interactive controls or when its title is a custom element.
+
+## Variants
 
 ```rust
-// Normal variant (default) - no background or border
+// Plain content without a painted surface or content padding.
 GroupBox::new()
-    .child("Content without visual container")
+    .id("plain")
+    .normal()
+    .title("Plain")
+    .child("Content")
 
-// Fill variant - with background color
+// Semantic GroupBox background with density-aware content padding.
 GroupBox::new()
+    .id("filled")
     .fill()
-    .title("Settings")
-    .child("Content with background")
+    .title("Filled")
+    .child("Content")
 
-// Outline variant - with border, no background
+// Semantic border with density-aware content padding.
 GroupBox::new()
+    .id("outlined")
     .outline()
-    .title("Preferences")
-    .child("Content with border")
+    .title("Outlined")
+    .child("Content")
 ```
 
-### With Title
+| Variant | Background | Border | Content padding |
+| --- | --- | --- | --- |
+| `Normal` | None | None | None |
+| `Fill` | `tokens.group_box` | None | Style Preset density |
+| `Outline` | None | Theme `border` | Style Preset density |
+
+GroupBox does not add shadows. Use Card when content needs an elevated, sectioned surface.
+
+## Theme and Style Presets
+
+GroupBox consumes these semantic values:
+
+- `group_box.background`
+- `group_box.foreground`
+- `group_box.title.foreground`
+- Theme `border`
+- Style Preset `radii.md`
+- Style Preset `density`
+
+Compact, Standard, and Comfortable presets adjust content padding, content gap, title-to-content gap, and title line height. The implementation never branches on Vega, Nova, or Maia IDs.
+
+## Styling layers
 
 ```rust
 GroupBox::new()
-    .fill()
-    .title("Account Settings")
-    .child(
-        h_flex()
-            .justify_between()
-            .child("Make profile private")
-            .child(Switch::new("privacy").checked(false))
-    )
-    .child(Button::new("save").primary().label("Save Changes"))
-```
-
-### Custom ID
-
-```rust
-GroupBox::new()
-    .id("user-preferences")
+    .id("custom")
+    .aria_label("Custom group")
     .outline()
-    .title("User Preferences")
-    .child("Preference controls...")
-```
-
-### Custom Title Styling
-
-```rust
-use gpui::{StyleRefinement, relative};
-
-GroupBox::new()
-    .outline()
-    .title("Custom Title")
-    .title_style(
-        StyleRefinement::default()
-            .font_semibold()
-            .line_height(relative(1.0))
-            .px_3()
-            .text_color(cx.theme().accent)
-    )
-    .child("Content with custom title styling")
-```
-
-### Custom Content Styling
-
-```rust
-GroupBox::new()
-    .fill()
-    .title("Custom Content Area")
+    // Styled refinements apply to the outer group layout.
+    .gap_6()
+    .title("Custom title")
+    // title_style applies only to the title wrapper.
+    .title_style(StyleRefinement::default().font_semibold())
+    // content_style applies only to the content surface.
     .content_style(
         StyleRefinement::default()
-            .rounded_xl()
-            .py_3()
-            .px_4()
-            .border_2()
-            .border_color(cx.theme().accent)
-    )
-    .child("Content with custom styling")
-```
-
-### Complex Example
-
-```rust
-GroupBox::new()
-    .id("notification-settings")
-    .outline()
-    .bg(cx.theme().group_box)
-    .rounded_xl()
-    .p_5()
-    .title("Notification Preferences")
-    .title_style(
-        StyleRefinement::default()
-            .font_semibold()
-            .line_height(relative(1.0))
-            .px_3()
-    )
-    .content_style(
-        StyleRefinement::default()
-            .rounded_xl()
-            .py_3()
-            .px_4()
+            .rounded_lg()
             .border_2()
     )
-    .child(
-        v_flex()
-            .gap_3()
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child("Email notifications")
-                    .child(Switch::new("email").checked(true))
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child("Push notifications")
-                    .child(Switch::new("push").checked(false))
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child("SMS notifications")
-                    .child(Switch::new("sms").checked(false))
-            )
-    )
-    .child(
-        h_flex()
-            .justify_end()
-            .gap_2()
-            .child(Button::new("cancel").label("Cancel"))
-            .child(Button::new("save").primary().label("Save Settings"))
-    )
+    .child("Content")
 ```
 
-## Examples
+Built-in metrics are applied before refinements, so explicit caller styles remain authoritative.
 
-### Form Section
+## Long content
 
-```rust
-GroupBox::new()
-    .fill()
-    .title("Personal Information")
-    .child(
-        v_flex()
-            .gap_4()
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(Input::new("first-name").placeholder("First Name"))
-                    .child(Input::new("last-name").placeholder("Last Name"))
-            )
-            .child(Input::new("email").placeholder("Email Address"))
-            .child(
-                h_flex()
-                    .justify_end()
-                    .child(Button::new("update").primary().label("Update Profile"))
-            )
-    )
-```
+The root, title, and content surfaces use `min_w_0`, allowing text and nested layouts to shrink inside constrained parents. Child content still owns its desired wrapping or truncation behavior.
 
-### Settings Panel
+## API reference
 
-```rust
-GroupBox::new()
-    .outline()
-    .title("Display Settings")
-    .child(
-        v_flex()
-            .gap_3()
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child(Label::new("Theme"))
-                    .child(
-                        RadioGroup::horizontal("theme")
-                            .child(Radio::new("light").label("Light"))
-                            .child(Radio::new("dark").label("Dark"))
-                            .child(Radio::new("auto").label("Auto"))
-                    )
-            )
-            .child(
-                h_flex()
-                    .justify_between()
-                    .child(Label::new("Font Size"))
-                    .child(
-                        Select::new("font-size")
-                            .option("small", "Small")
-                            .option("medium", "Medium")
-                            .option("large", "Large")
-                    )
-            )
-    )
-```
+### GroupBox
 
-### Subscription Management
+| Method | Description |
+| --- | --- |
+| `new()` | Create a plain GroupBox |
+| `id(id)` | Set stable GPUI and accessibility identity |
+| `aria_label(label)` | Set the accessible group name |
+| `title(element)` | Set optional title content |
+| `title_style(style)` | Refine the title wrapper |
+| `content_style(style)` | Refine the content surface |
+| `normal()` | Use the plain variant |
+| `fill()` | Use the filled variant |
+| `outline()` | Use the outlined variant |
 
-```rust
-GroupBox::new()
-    .title("Email Subscriptions")
-    .child(
-        v_flex()
-            .gap_2()
-            .child(Checkbox::new("newsletter").label("Weekly Newsletter"))
-            .child(Checkbox::new("updates").label("Product Updates"))
-            .child(Checkbox::new("security").label("Security Alerts"))
-            .child(Checkbox::new("marketing").label("Marketing Communications"))
-    )
-    .child(
-        h_flex()
-            .justify_between()
-            .mt_4()
-            .child(Button::new("unsubscribe-all").link().label("Unsubscribe All"))
-            .child(Button::new("save").primary().label("Update Preferences"))
-    )
-```
+### GroupBoxVariant
 
-### Without Title
+`GroupBoxVariant` supports `Normal`, `Fill`, and `Outline`, plus `from_str` and `as_str` for settings persistence.
 
-```rust
-GroupBox::new()
-    .outline()
-    .child(
-        h_flex()
-            .justify_between()
-            .items_center()
-            .child("Enable two-factor authentication")
-            .child(Switch::new("2fa").checked(false))
-    )
-```
+## Related components
 
-## Styling
-
-The GroupBox component supports extensive customization through both built-in variants and custom styling:
-
-### Theme Integration
-
-```rust
-// Using theme colors
-GroupBox::new()
-    .fill()
-    .bg(cx.theme().group_box)
-    .title("Themed Group Box")
-```
-
-### Custom Appearance
-
-```rust
-GroupBox::new()
-    .outline()
-    .border_2()
-    .border_color(cx.theme().accent)
-    .rounded(cx.theme().radius_lg)
-    .title("Custom Styled Group Box")
-    .title_style(
-        StyleRefinement::default()
-            .text_color(cx.theme().accent)
-            .font_bold()
-    )
-```
-
-## Best Practices
-
-1. **Use titles for clarity** - Always include a descriptive title when grouping form controls
-2. **Choose appropriate variants** - Use `fill()` for primary content groups, `outline()` for secondary groupings
-3. **Maintain visual hierarchy** - Use GroupBox to create clear sections without overwhelming the interface
-4. **Group related content** - Only group logically related controls and information
-5. **Consider spacing** - The component automatically handles internal spacing, but consider external margins
-6. **Responsive design** - GroupBox adapts well to different screen sizes and container widths
-
-## Related Components
-
-- **Form**: Use GroupBox within forms to organize sections
-- **Dialog**: GroupBox works well within dialogs for organizing content
-- **Accordion**: For collapsible grouped content, consider using Accordion instead
-- **Card**: For elevated content containers with more visual weight
+- **Settings** uses GroupBox as its visual grouping surface.
+- **Card** provides a stronger, sectioned and optionally elevated surface.
+- **Accordion** groups collapsible content.

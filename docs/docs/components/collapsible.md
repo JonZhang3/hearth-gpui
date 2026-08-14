@@ -19,6 +19,7 @@ use gpui_component::collapsible::Collapsible;
 
 ```rust
 Collapsible::new()
+    .id("account-details")
     .max_w_128()
     .gap_1()
     .open(self.open)
@@ -52,6 +53,6 @@ Collapsible::new()
     )
 ```
 
-We can use `open` method to control the collapsed state. If false, the `content` method added child elements will be hidden.
+Use `open` to control the expanded state. Add a stable `id` to enable measured dynamic-height enter and exit motion. Closing content remains mounted until the shared Style motion duration completes, and reopening interrupts a pending close safely. Reduced motion removes the delay. Without an `id`, `Collapsible` keeps the legacy immediate show/hide behavior.
 
 [Collapsible]: https://docs.rs/gpui-component/latest/gpui_component/collapsible/struct.Collapsible.html

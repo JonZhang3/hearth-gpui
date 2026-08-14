@@ -29,7 +29,7 @@ This method is almost like the `overflow_scroll()` method, but it adds scrollbar
 - `overflow_y_scrollbar()` - Adds vertical scrollbar as needed.
 
 ```rust
-use gpui::{div, Axis};
+use gpui::div;
 use gpui_component::ScrollableElement;
 
 div()
@@ -38,6 +38,16 @@ div()
     .child("Your content here")
     .overflow_scrollbar()
 ```
+
+Give every independently scrollable area a stable, unique `.id(...)`. The ID is
+preserved on the source element and is used to isolate its scroll and scrollbar
+interaction state. When rendering scroll areas in a loop, include the item key
+in the ID.
+
+The scrollbar keeps a 16 px pointer target while painting a slimmer semantic
+track and thumb. Thumb radius and auto-hide duration follow the active Style
+Preset; colors come from the active Theme. A scrollbar is only painted for an
+axis whose content actually overflows.
 
 ### Vertical Scrolling
 

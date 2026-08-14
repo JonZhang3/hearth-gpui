@@ -7,6 +7,10 @@ description: An autocomplete input paired with a searchable dropdown list.
 
 A searchable dropdown for selecting one or multiple values from a list.
 
+The GPUI component uses shadcn's popup-style Combobox composition: the trigger displays the
+committed selection and the optional search input is rendered inside the popup. It intentionally
+does not expose a DOM-like slot API or treat the trigger as a free-form editable value.
+
 ## Select vs Combobox
 
 | Feature | Select | Combobox |
@@ -102,6 +106,9 @@ let state = cx.new(|cx| {
 
 Combobox::new(&state)
 ```
+
+Add separators before non-first visible groups with `.group_separators(true)`. Empty groups do not
+create leading or trailing separator space.
 
 ### Implementing `SearchableListItem`
 
@@ -217,6 +224,26 @@ Combobox::new(&state).cleanable(true) // show clear button when a value is selec
 Combobox::new(&state).disabled(true)
 ```
 
+### Invalid
+
+Invalid Comboboxes use the same destructive border and focus-ring contract as Input and
+InputGroup, and expose the invalid state to assistive technology.
+
+```rust
+Combobox::new(&state)
+    .aria_label("Framework")
+    .aria_description("Choose a valid framework")
+    .invalid(true)
+```
+
+## Motion
+
+The popup enters and exits over the active Style Preset's fast duration using mirrored 8 px
+vertical translations. It remains fully opaque and mounted until exit completes, supports rapid
+reversal, and reaches its final state immediately when reduced motion is enabled. Opacity and
+shadcn's `0.95` popup scale are intentionally omitted until GPUI can composite and transform the
+complete popup subtree without layout changes.
+
 ### Events
 
 Both `Change` (fired on every toggle) and `Confirm` (fired when the dropdown closes) carry the full selection as `Vec<Value>`.
@@ -265,6 +292,15 @@ let values = state.read(cx).selected_values(); // Vec<Value>
 
 // Read the first selected value (single-select convenience)
 let value = state.read(cx).selected_value(); // Option<Value>
+```
+
+## Accessibility
+
+Provide an accessible trigger name with `aria_label`. Selected item titles are exposed as the AccessKit value; expanded and disabled states are exposed automatically.
+
+```rust
+Combobox::new(&state)
+    .aria_label("Framework")
 ```
 
 ## Keyboard Shortcuts

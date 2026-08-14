@@ -7,7 +7,7 @@ use crate::{
     ActiveTheme, StyledExt,
     group_box::{GroupBox, GroupBoxVariants},
     label::Label,
-    setting::{RenderOptions, SettingItem},
+    setting::{RenderOptions, SettingItem, settings::SettingsMetrics},
     v_flex,
 };
 
@@ -74,29 +74,33 @@ impl SettingGroup {
         self.items.iter().any(|item| item.is_resettable(cx))
     }
 
-    pub(crate) fn render(
+    pub(super) fn render(
         self,
         query: &str,
         options: &RenderOptions,
+        metrics: SettingsMetrics,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
         GroupBox::new()
             .id(SharedString::from(format!("group-{}", options.group_ix)))
+            .when_some(self.title.clone(), |this, title| this.aria_label(title))
             .with_variant(options.group_variant)
             .when_some(self.title.clone(), |this, title| {
-                this.title(v_flex().gap_1().child(title).when_some(
-                    self.description.clone(),
-                    |this, description| {
-                        this.child(
-                            Label::new(description)
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground),
-                        )
-                    },
-                ))
+                this.title(
+                    v_flex()
+                        .gap(metrics.text_gap)
+                        .child(Label::new(title).text_sm().font_medium())
+                        .when_some(self.description.clone(), |this, description| {
+                            this.child(
+                                Label::new(description)
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                        }),
+                )
             })
-            .gap_4()
+            .gap(metrics.section_gap)
             .children(self.items.iter().enumerate().filter_map(|(item_ix, item)| {
                 if item.is_match(&query, cx) {
                     Some(item.clone().render_item(
@@ -104,6 +108,7 @@ impl SettingGroup {
                             item_ix,
                             ..*options
                         },
+                        metrics,
                         window,
                         cx,
                     ))

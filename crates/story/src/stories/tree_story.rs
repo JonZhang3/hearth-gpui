@@ -241,12 +241,11 @@ impl Render for TreeStory {
 
                                             ListItem::new(ix)
                                                 .w_full()
-                                                .rounded(cx.theme().radius)
-                                                .px_3()
-                                                .pl(px(16.) * entry.depth() + px(12.))
+                                                .rounded(cx.theme().style.radii.md)
+                                                .pl(entry.content_inset(cx))
                                                 .child(
                                                     h_flex()
-                                                        .gap_2()
+                                                        .gap(entry.content_gap(cx))
                                                         .child(icon)
                                                         .child(item.label.clone()),
                                                 )
@@ -262,6 +261,7 @@ impl Render for TreeStory {
                                         })
                                     },
                                 )
+                                .aria_label("Project files")
                                 .context_menu(|_ix, entry, menu, _window, _cx| {
                                     let is_folder = entry.is_folder();
                                     menu.when(!is_folder, |m| m.menu("Open", Box::new(OpenFile)))
@@ -272,7 +272,7 @@ impl Render for TreeStory {
                                 .p_1()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(cx.theme().radius)
+                                .rounded(cx.theme().style.radii.md)
                                 .h(px(540.)),
                             )
                             .child(

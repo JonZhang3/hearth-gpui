@@ -1,15 +1,19 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window, px,
+    Styled, Window,
 };
 use gpui_component::{
-    ActiveTheme, IconName, Sizable as _, StyledExt,
-    avatar::{Avatar, AvatarGroup},
+    ActiveTheme, IconName, Sizable as _,
+    avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
     dock::PanelControl,
     v_flex,
 };
 
 use crate::section;
+
+const SHADCN_AVATAR: &str = "https://github.com/shadcn.png";
+const MAX_AVATAR: &str = "https://github.com/maxleiter.png";
+const EVIL_RABBIT_AVATAR: &str = "https://github.com/evilrabbit.png";
 
 pub struct AvatarStory {
     focus_handle: gpui::FocusHandle,
@@ -33,7 +37,7 @@ impl super::Story for AvatarStory {
     }
 
     fn description() -> &'static str {
-        "Avatar is an image that represents a user or organization."
+        "Avatar displays a user image with fallback, badge, group, and count composition."
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render> {
@@ -51,204 +55,150 @@ impl Focusable for AvatarStory {
     }
 }
 
+/// Creates one image Avatar with a deterministic text fallback.
+fn image_avatar(
+    id: &'static str,
+    label: &'static str,
+    initials: &'static str,
+    source: &'static str,
+) -> Avatar {
+    Avatar::new(id, label)
+        .image(AvatarImage::new(source))
+        .fallback(AvatarFallback::text(initials))
+}
+
 impl Render for AvatarStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .gap_4()
             .child(
-                section("Avatar with image")
+                section("Overview")
                     .max_w_md()
+                    .child(image_avatar(
+                        "avatar-overview-basic",
+                        "Shadcn",
+                        "CN",
+                        SHADCN_AVATAR,
+                    ))
                     .child(
-                        Avatar::new()
-                            .name("Jason lee")
-                            .src("https://avatars.githubusercontent.com/u/5518?v=4")
-                            .with_size(px(100.)),
+                        image_avatar(
+                            "avatar-overview-status",
+                            "Evil Rabbit",
+                            "ER",
+                            EVIL_RABBIT_AVATAR,
+                        )
+                        .badge(AvatarBadge::new().bg(cx.theme().green)),
                     )
                     .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/28998859?v=4")
-                            .large(),
-                    )
-                    .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/10757551?s=64&v=4"),
-                    )
-                    .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/20092316?v=4")
-                            .small(),
-                    )
-                    .child(
-                        Avatar::new()
-                            .src("https://avatars.githubusercontent.com/u/150917089?v=4")
-                            .xsmall(),
+                        AvatarGroup::new()
+                            .avatar(image_avatar(
+                                "avatar-overview-group-shadcn",
+                                "Shadcn",
+                                "CN",
+                                SHADCN_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-overview-group-max",
+                                "Max Leiter",
+                                "ML",
+                                MAX_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-overview-group-rabbit",
+                                "Evil Rabbit",
+                                "ER",
+                                EVIL_RABBIT_AVATAR,
+                            ))
+                            .count(AvatarGroupCount::text("+3")),
                     ),
             )
             .child(
-                section("Avatar with text")
-                    .max_w_md()
-                    .child(Avatar::new().name("Jason Lee").large())
-                    .child(Avatar::new().name("Floyd Wang"))
-                    .child(Avatar::new().name("xda").small())
-                    .child(Avatar::new().name("ihavecoke").xsmall()),
-            )
-            .child(
-                section("Placeholder")
-                    .max_w_md()
-                    .child(Avatar::new().large())
-                    .child(Avatar::new())
-                    .child(Avatar::new().small())
-                    .child(Avatar::new().xsmall())
-                    .child(Avatar::new().placeholder(IconName::Building2)),
+                section("Badge with Icon").max_w_md().child(
+                    image_avatar("avatar-badge-icon", "Max Leiter", "ML", MAX_AVATAR)
+                        .badge(AvatarBadge::new().child(IconName::Plus)),
+                ),
             )
             .child(
                 section("Avatar Group")
-                    .v_flex()
                     .max_w_md()
                     .child(
                         AvatarGroup::new()
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/28998859?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20092316?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/22312482?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/150917089?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/1253486?v=4"),
-                            ),
+                            .avatar(image_avatar(
+                                "avatar-group-shadcn",
+                                "Shadcn",
+                                "CN",
+                                SHADCN_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-group-max",
+                                "Max Leiter",
+                                "ML",
+                                MAX_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-group-rabbit",
+                                "Evil Rabbit",
+                                "ER",
+                                EVIL_RABBIT_AVATAR,
+                            )),
                     )
                     .child(
                         AvatarGroup::new()
-                            .small()
-                            .limit(5)
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/28998859?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20092316?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/22312482?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/150917089?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20337280?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/629429?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/583231?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/1264109?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/2936367?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/1253486?v=4"),
-                            ),
-                    )
-                    .child(
-                        AvatarGroup::new()
-                            .xsmall()
-                            .limit(6)
-                            .ellipsis()
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/5518?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/28998859?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20092316?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/22312482?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/150917089?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/20337280?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/2936367?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/583231?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/1264109?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/10757551?v=4"),
-                            )
-                            .child(
-                                Avatar::new()
-                                    .src("https://avatars.githubusercontent.com/u/1506323?v=4"),
-                            ),
+                            .avatar(image_avatar(
+                                "avatar-group-icon-shadcn",
+                                "Shadcn",
+                                "CN",
+                                SHADCN_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-group-icon-max",
+                                "Max Leiter",
+                                "ML",
+                                MAX_AVATAR,
+                            ))
+                            .avatar(image_avatar(
+                                "avatar-group-icon-rabbit",
+                                "Evil Rabbit",
+                                "ER",
+                                EVIL_RABBIT_AVATAR,
+                            ))
+                            .count(AvatarGroupCount::icon(IconName::Plus)),
                     ),
             )
             .child(
-                section("Custom rounded").child(
-                    Avatar::new()
-                        .src("https://avatars.githubusercontent.com/u/5518?v=4")
-                        .with_size(px(100.))
-                        .rounded(px(20.)),
-                ),
+                section("Sizes")
+                    .max_w_md()
+                    .child(
+                        image_avatar("avatar-size-small", "Small Shadcn", "CN", SHADCN_AVATAR)
+                            .small(),
+                    )
+                    .child(image_avatar(
+                        "avatar-size-default",
+                        "Default Shadcn",
+                        "CN",
+                        SHADCN_AVATAR,
+                    ))
+                    .child(
+                        image_avatar("avatar-size-large", "Large Shadcn", "CN", SHADCN_AVATAR)
+                            .large(),
+                    ),
             )
             .child(
-                section("Custom Style").child(
-                    Avatar::new()
-                        .src("https://avatars.githubusercontent.com/u/20092316?v=4")
-                        .with_size(px(100.))
-                        .border_3()
-                        .border_color(cx.theme().foreground)
-                        .shadow_sm(),
-                ),
+                section("Fallback")
+                    .max_w_md()
+                    .child(
+                        Avatar::new("avatar-fallback-text", "Casey Newton")
+                            .fallback(AvatarFallback::text("CN")),
+                    )
+                    .child(
+                        Avatar::new("avatar-fallback-icon", "Organization")
+                            .fallback(AvatarFallback::icon(IconName::Building2)),
+                    )
+                    .child(
+                        Avatar::new("avatar-fallback-error", "Unavailable image")
+                            .image(AvatarImage::new("invalid://avatar"))
+                            .fallback(AvatarFallback::text("NA")),
+                    ),
             )
     }
 }

@@ -36,7 +36,7 @@ impl RenderOnce for Checkerboard {
 
         div()
             .bg(c1)
-            .rounded(cx.theme().radius_lg)
+            .rounded(cx.theme().style.radii.lg)
             .overflow_hidden()
             .size_full()
             .child(

@@ -1,334 +1,128 @@
 ---
-title: Form
-description: 支持字段布局、校验和多列排布的灵活表单容器。
+title: Form 与 Field
+description: 提供组合式表单字段原语、GPUI 原生网格布局和验证语义。
 ---
 
-# Form
+# Form 与 Field
 
-Form 是一个完整的表单布局组件，适合组织字段、描述、校验提示以及多列响应式表单结构。它支持纵向和横向布局、字段分组以及列跨度控制。
+`Field` 采用 shadcn 的组合式模型。`Form` 是用于排列 Field 的 GPUI 原生布局层；校验逻辑和提交值仍由应用状态管理。
 
 ## 导入
 
 ```rust
-use gpui_component::form::{field, v_form, h_form, Form, Field};
+use gpui_component::form::{
+    field, v_form, FieldBody, FieldContent, FieldDescription, FieldError,
+    FieldGroup, FieldLabel, FieldLegend, FieldSet,
+};
 ```
 
-## 用法
+## 基础字段
 
-### 基础表单
+每个 Field 都需要稳定 ID。控件本身应设置语义文本，同时为 Field 设置明确的无障碍名称，因为 GPUI 当前尚未提供完整的 `labelled-by` 关联能力。
 
 ```rust
-v_form()
-    .child(
-        field()
-            .label("Name")
-            .child(Input::new(&name_input))
-    )
-    .child(
-        field()
-            .label("Email")
-            .child(Input::new(&email_input))
-            .required(true)
-    )
+field("account-email")
+    .aria_label("Email")
+    .required(true)
+    .content(move |state| {
+        FieldBody::new()
+            .child(FieldLabel::new("Email").required(state.required()))
+            .child(
+                FieldContent::new()
+                    .child(Input::new(&email).aria_label("Email").disabled(state.disabled()))
+                    .child(FieldDescription::new("用于接收账户通知。")),
+            )
+    })
 ```
 
-### 横向布局
+`FieldLabel::for_focus(&focus_handle)` 提供点击标签聚焦控件的原生行为。目标控件仍需设置自身的无障碍名称。
+
+## 表单验证
 
 ```rust
-h_form()
-    .label_width(px(120.))
-    .child(
-        field()
-            .label("First Name")
-            .child(Input::new(&first_name))
-    )
-    .child(
-        field()
-            .label("Last Name")
-            .child(Input::new(&last_name))
-    )
+field("account-email")
+    .aria_label("Email")
+    .aria_description("请输入有效的邮箱地址。")
+    .required(true)
+    .invalid(true)
+    .content(move |state| {
+        FieldBody::new()
+            .child(FieldLabel::new("Email").required(state.required()))
+            .child(
+                FieldContent::new()
+                    .child(Input::new(&email).aria_label("Email").invalid(state.invalid()))
+                    .child(FieldError::new(
+                        "account-email-error",
+                        "请输入有效的邮箱地址。",
+                    )),
+            )
+    })
 ```
 
-### 多列表单
+`FieldError` 暴露 `Role::Alert`。`errors(...)` 会保留错误顺序并移除重复内容。`FieldState` 会把 Form 与 Field 的有效状态传入内容构建器，由控件消费其支持的状态。
+
+## 字段分组
+
+```rust
+FieldSet::new("notification-preferences")
+    .aria_label("通知偏好")
+    .content(|state| {
+        FieldBody::new()
+            .child(FieldLegend::new("通知偏好"))
+            .child(
+                FieldGroup::new()
+                    .selection()
+                    .child(Checkbox::new("email-updates").label("邮件通知").disabled(state.disabled()))
+                    .child(Checkbox::new("product-updates").label("产品更新").disabled(state.disabled())),
+            )
+    })
+```
+
+组合式组件还包括 `FieldTitle` 和 `FieldSeparator`。`FieldGroup::selection()` 使用 Checkbox 和 Radio 集合所需的紧凑间距。使用 `FieldLegendVariant::Label` 可切换为较小的 Legend 字体。
+
+## Form 布局
 
 ```rust
 v_form()
     .columns(2)
     .child(
-        field()
-            .label("First Name")
-            .child(Input::new(&first_name))
+        field("first-name")
+            .aria_label("名字")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("名字"))
+                .child(FieldContent::new().child(Input::new(&first_name)))),
     )
     .child(
-        field()
-            .label("Last Name")
-            .child(Input::new(&last_name))
+        field("last-name")
+            .aria_label("姓氏")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("姓氏"))
+                .child(FieldContent::new().child(Input::new(&last_name)))),
     )
     .child(
-        field()
-            .label("Bio")
+        field("biography")
             .col_span(2)
-            .child(Input::new(&bio_input))
+            .aria_label("个人简介")
+            .content(move |_| FieldBody::new()
+                .child(FieldLabel::new("个人简介"))
+                .child(FieldContent::new().child(Input::new(&biography)))),
     )
 ```
 
-## 容器与布局
-
-### 纵向布局
+使用 `h_form()` 创建横向 Field。多个横向 Field 需要对齐时，应为 `FieldLabel` 设置明确宽度：
 
 ```rust
-v_form()
-    .gap(px(12.))
-    .child(field().label("Name").child(input))
-    .child(field().label("Email").child(email_input))
+h_form().child(
+    field("username")
+        .aria_label("用户名")
+        .content(move |_| FieldBody::new()
+            .child(FieldLabel::new("用户名").w(px(120.)).flex_shrink_0())
+            .child(FieldContent::new().child(Input::new(&username)))),
+)
 ```
 
-### 横向布局
+`Form` 支持 `Sizable`、`Styled`、`Disableable`、多列布局和 Field 网格定位。`Form::disabled(true)` 会进入每个子 Field 的有效状态。列数为零时会规范为一列。`Field::visible(false)` 会同时从布局和无障碍树中移除 Field。
 
-```rust
-h_form()
-    .label_width(px(100.))
-    .child(field().label("Name").child(input))
-    .child(field().label("Email").child(email_input))
-```
+## Style Preset
 
-### 自定义尺寸
-
-```rust
-v_form()
-    .large()
-    .label_text_size(rems(1.2))
-    .child(field().label("Title").child(input))
-
-v_form()
-    .small()
-    .child(field().label("Code").child(input))
-```
-
-## 校验与说明
-
-### 必填字段
-
-```rust
-field()
-    .label("Email")
-    .required(true)
-    .child(Input::new(&email_input))
-```
-
-### 字段描述
-
-```rust
-field()
-    .label("Password")
-    .description("Must be at least 8 characters long")
-    .child(Input::new(&password_input))
-```
-
-### 动态描述
-
-```rust
-field()
-    .label("Bio")
-    .description_fn(|_, _| {
-        div().child("Use at most 100 words to describe yourself.")
-    })
-    .child(Input::new(&bio_input))
-```
-
-### 字段可见性
-
-```rust
-field()
-    .label("Admin Settings")
-    .visible(user.is_admin())
-    .child(Switch::new("admin-mode"))
-```
-
-## 提交处理
-
-### 基础提交模式
-
-```rust
-struct FormView {
-    name_input: Entity<InputState>,
-    email_input: Entity<InputState>,
-}
-
-impl FormView {
-    fn submit(&mut self, cx: &mut Context<Self>) {
-        let name = self.name_input.read(cx).value();
-        let email = self.email_input.read(cx).value();
-
-        if name.is_empty() || email.is_empty() {
-            return;
-        }
-
-        self.handle_submit(name, email, cx);
-    }
-}
-
-v_form()
-    .child(field().label("Name").child(Input::new(&self.name_input)))
-    .child(field().label("Email").child(Input::new(&self.email_input)))
-    .child(
-        field()
-            .label_indent(false)
-            .child(
-                Button::new("submit")
-                    .primary()
-                    .child("Submit")
-                    .on_click(cx.listener(|this, _, _, cx| this.submit(cx)))
-            )
-    )
-```
-
-### 操作按钮组
-
-```rust
-v_form()
-    .child(field().label("Title").child(Input::new(&title)))
-    .child(field().label("Content").child(Input::new(&content)))
-    .child(
-        field()
-            .label_indent(false)
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(Button::new("save").primary().child("Save"))
-                    .child(Button::new("cancel").child("Cancel"))
-                    .child(Button::new("preview").outline().child("Preview"))
-            )
-    )
-```
-
-## 字段分组
-
-### 相关字段组合
-
-```rust
-v_form()
-    .child(
-        field()
-            .label("Name")
-            .child(
-                h_flex()
-                    .gap_2()
-                    .child(div().flex_1().child(Input::new(&first_name)))
-                    .child(div().flex_1().child(Input::new(&last_name)))
-            )
-    )
-    .child(
-        field()
-            .label("Address")
-            .items_start()
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(Input::new(&street))
-                    .child(
-                        h_flex()
-                            .gap_2()
-                            .child(div().flex_1().child(Input::new(&city)))
-                            .child(div().w(px(100.)).child(Input::new(&zip)))
-                    )
-            )
-    )
-```
-
-### 自定义字段组件
-
-```rust
-field()
-    .label("Theme Color")
-    .child(ColorPicker::new(&color_state).small())
-
-field()
-    .label("Birth Date")
-    .description("We'll send you a birthday gift!")
-    .child(DatePicker::new(&date_state))
-```
-
-### 条件字段
-
-```rust
-v_form()
-    .child(
-        field()
-            .label("Account Type")
-            .child(Select::new(&account_type))
-    )
-    .child(
-        field()
-            .label("Company Name")
-            .visible(is_business_account)
-            .child(Input::new(&company_name))
-    )
-```
-
-## 网格与定位
-
-### 列跨度
-
-```rust
-v_form()
-    .columns(3)
-    .child(field().label("First").child(input1))
-    .child(field().label("Second").child(input2))
-    .child(field().label("Third").child(input3))
-    .child(
-        field()
-            .label("Full Width")
-            .col_span(3)
-            .child(Input::new(&full_width))
-    )
-```
-
-### 响应式布局
-
-```rust
-v_form()
-    .columns(if is_mobile { 1 } else { 2 })
-    .child(field().label("Name").child(name_input))
-    .child(field().label("Email").child(email_input))
-    .child(
-        field()
-            .label("Bio")
-            .when(!is_mobile, |field| field.col_span(2))
-            .child(bio_input)
-    )
-```
-
-## 示例
-
-### 注册表单
-
-```rust
-struct RegistrationForm {
-    first_name: Entity<InputState>,
-    last_name: Entity<InputState>,
-    email: Entity<InputState>,
-    password: Entity<InputState>,
-    confirm_password: Entity<InputState>,
-    terms_accepted: bool,
-}
-```
-
-### 设置表单
-
-```rust
-v_form()
-    .column(2)
-    .child(
-        field()
-            .label("Profile")
-            .label_indent(false)
-            .col_span(2)
-            .child(Separator::horizontal())
-    )
-    .child(
-        field()
-            .label("Display Name")
-            .child(Input::new(&display_name))
-    )
-```
+组件间距由语义 Style Preset density 解析。Vega 是默认基线，Nova 使用紧凑密度，Maia 使用舒适密度。固定版本的 shadcn Field 没有声明 transition，因此这些组件不增加状态动画。

@@ -1,13 +1,119 @@
-use std::{rc::Rc, time::Duration};
+use std::{
+    rc::Rc,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use crate::animation::{Lerp, ease_in_out_cubic};
+use crate::animation::Lerp;
 use crate::{ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Background, ClickEvent, Div, Edges, ElementId,
-    Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement,
+    Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    relative,
 };
+
+use crate::styled::FocusableExt as _;
+use crate::theme::MotionEasing;
+
+/// Creates a structural child ID without flattening the caller's ElementId.
+pub(super) fn tab_child_id(id: &ElementId, name: impl Into<SharedString>) -> ElementId {
+    ElementId::NamedChild(Arc::new(id.clone()), name.into())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ActiveTabForegroundTransition {
+    from: Hsla,
+    target: Hsla,
+    started_at: Instant,
+    duration: Duration,
+    easing: MotionEasing,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TabForegroundTransition {
+    from: Hsla,
+    target: Hsla,
+    duration: Duration,
+    epoch: u64,
+}
+
+/// Retains the sampled Pill foreground color across rapid selection changes.
+#[derive(Debug, Clone, Copy)]
+struct TabForegroundMotionState {
+    target: Hsla,
+    active: Option<ActiveTabForegroundTransition>,
+    epoch: u64,
+}
+
+impl TabForegroundMotionState {
+    fn new(target: Hsla) -> Self {
+        Self {
+            target,
+            active: None,
+            epoch: 0,
+        }
+    }
+
+    /// Returns the currently visible foreground and clears completed motion.
+    fn current(&mut self, now: Instant) -> Hsla {
+        let Some(active) = self.active else {
+            return self.target;
+        };
+        let elapsed = now.saturating_duration_since(active.started_at);
+        let linear_delta = if active.duration.is_zero() {
+            1.
+        } else {
+            elapsed.as_secs_f32() / active.duration.as_secs_f32()
+        };
+        let current = Lerp::lerp(
+            &active.from,
+            &active.target,
+            active.easing.sample(linear_delta),
+        );
+        if linear_delta >= 1. {
+            self.active = None;
+            active.target
+        } else {
+            current
+        }
+    }
+
+    /// Retargets from the currently sampled foreground without a reversal jump.
+    fn transition_to(
+        &mut self,
+        target: Hsla,
+        now: Instant,
+        duration: Duration,
+        easing: MotionEasing,
+    ) -> Option<TabForegroundTransition> {
+        let current = self.current(now);
+        if self.target == target {
+            return None;
+        }
+
+        self.target = target;
+        self.epoch = self.epoch.wrapping_add(1);
+        if duration.is_zero() || current == target {
+            self.active = None;
+            return None;
+        }
+        self.active = Some(ActiveTabForegroundTransition {
+            from: current,
+            target,
+            started_at: now,
+            duration,
+            easing,
+        });
+        Some(TabForegroundTransition {
+            from: current,
+            target,
+            duration,
+            epoch: self.epoch,
+        })
+    }
+}
 
 /// Tab variants.
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
@@ -21,61 +127,58 @@ pub enum TabVariant {
 }
 
 impl TabVariant {
-    fn height(&self, size: Size) -> Pixels {
+    /// Resolves the compact tab control height from the active control metrics.
+    fn base_height(size: Size, cx: &App) -> Pixels {
+        let controls = cx.theme().style.controls;
         match size {
-            Size::XSmall => match self {
-                TabVariant::Underline => px(26.),
-                _ => px(20.),
-            },
-            Size::Small => match self {
-                TabVariant::Underline => px(30.),
-                _ => px(24.),
-            },
-            Size::Large => match self {
-                TabVariant::Underline => px(44.),
-                _ => px(36.),
-            },
-            _ => match self {
-                TabVariant::Underline => px(36.),
-                _ => px(32.),
-            },
+            Size::XSmall => (controls.xs.height - px(4.)).max(px(0.)),
+            Size::Small => controls.xs.height,
+            Size::Medium => controls.sm.height,
+            Size::Large => controls.md.height,
+            Size::Size(height) => height,
         }
     }
 
-    pub(super) fn inner_height(&self, size: Size) -> Pixels {
-        match size {
-            Size::XSmall => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(18.),
-                TabVariant::Segmented => px(16.),
-                TabVariant::Underline => px(20.),
-            },
-            Size::Small => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(22.),
-                TabVariant::Segmented => px(18.),
-                TabVariant::Underline => px(22.),
-            },
-            Size::Large => match self {
-                TabVariant::Tab | TabVariant::Outline | TabVariant::Pill => px(36.),
-                TabVariant::Segmented => px(28.),
-                TabVariant::Underline => px(32.),
-            },
-            _ => match self {
-                TabVariant::Tab => px(30.),
-                TabVariant::Outline | TabVariant::Pill => px(26.),
-                TabVariant::Segmented => px(24.),
-                TabVariant::Underline => px(26.),
-            },
+    pub(super) fn height(&self, size: Size, cx: &App) -> Pixels {
+        let height = Self::base_height(size, cx);
+        if *self != TabVariant::Underline {
+            return height;
         }
+
+        height
+            + match size {
+                Size::XSmall | Size::Small => px(6.),
+                Size::Large => px(8.),
+                Size::Medium | Size::Size(_) => px(4.),
+            }
+    }
+
+    pub(super) fn inner_height(&self, size: Size, cx: &App) -> Pixels {
+        let outer_height = self.height(size, cx);
+        let inset = match (self, size) {
+            (TabVariant::Segmented, Size::XSmall) => px(4.),
+            (TabVariant::Segmented, Size::Small) => px(6.),
+            (TabVariant::Segmented, _) => px(8.),
+            (TabVariant::Underline, Size::XSmall) => px(6.),
+            (TabVariant::Underline, Size::Small) => px(8.),
+            (TabVariant::Underline, Size::Large) => px(12.),
+            (TabVariant::Underline, _) => px(10.),
+            (TabVariant::Outline | TabVariant::Pill, Size::Medium) => px(6.),
+            (TabVariant::Tab | TabVariant::Outline | TabVariant::Pill, Size::Large) => px(0.),
+            _ => px(2.),
+        };
+        (outer_height - inset).max(px(0.))
     }
 
     /// Default px(12) to match panel px_3, See [`crate::dock::TabPanel`]
-    fn inner_paddings(&self, size: Size) -> Edges<Pixels> {
-        let mut padding_x = match size {
-            Size::XSmall => px(8.),
-            Size::Small => px(10.),
-            Size::Large => px(16.),
-            _ => px(12.),
-        };
+    fn inner_paddings(&self, size: Size, cx: &App) -> Edges<Pixels> {
+        let controls = cx.theme().style.controls.for_size(size);
+        let mut padding_x = controls.padding_x
+            + match size {
+                Size::Medium => px(2.),
+                Size::Large => controls.gap,
+                _ => px(0.),
+            };
 
         if matches!(self, TabVariant::Underline) {
             padding_x = px(0.);
@@ -337,9 +440,9 @@ impl TabVariant {
         }
 
         match size {
-            Size::XSmall | Size::Small => cx.theme().radius,
-            Size::Large => cx.theme().radius_lg,
-            _ => cx.theme().radius_lg,
+            Size::XSmall | Size::Small => cx.theme().style.radii.md,
+            Size::Large => cx.theme().style.radii.lg,
+            _ => cx.theme().style.radii.lg,
         }
     }
 
@@ -347,9 +450,9 @@ impl TabVariant {
         match self {
             TabVariant::Outline | TabVariant::Pill => px(99.),
             TabVariant::Segmented => match size {
-                Size::XSmall | Size::Small => cx.theme().radius,
-                Size::Large => cx.theme().radius_lg,
-                _ => cx.theme().radius_lg,
+                Size::XSmall | Size::Small => cx.theme().style.radii.md,
+                Size::Large => cx.theme().style.radii.lg,
+                _ => cx.theme().style.radii.lg,
             },
             _ => px(0.),
         }
@@ -394,6 +497,7 @@ impl Default for TabStyle {
 pub struct Tab {
     ix: usize,
     base: Div,
+    pub(super) state_id: Option<ElementId>,
     pub(super) label: Option<SharedString>,
     aria_label: Option<SharedString>,
     pub(super) icon: Option<Icon>,
@@ -405,13 +509,14 @@ pub struct Tab {
     size: Size,
     pub(super) disabled: bool,
     pub(super) selected: bool,
+    pub(super) focus_handle: Option<FocusHandle>,
+    pub(super) tab_stop: bool,
+    pub(super) on_key_down: Option<Rc<dyn Fn(&KeyDownEvent, &mut Window, &mut App) + 'static>>,
+    pub(super) position_in_set: Option<usize>,
+    pub(super) size_of_set: Option<usize>,
     pub(super) indicator_active: bool,
     pub(super) indicator_ready: bool,
-    /// Animation epoch of the [`super::TabBar`] indicator; increments on every
-    /// tab switch. Used to key the selected tab's text color fade so it
-    /// restarts in sync with the indicator slide.
-    pub(super) indicator_epoch: u64,
-    on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
+    pub(super) on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
 impl From<&'static str> for Tab {
@@ -449,6 +554,7 @@ impl Default for Tab {
         Self {
             ix: 0,
             base: div(),
+            state_id: None,
             label: None,
             aria_label: None,
             icon: None,
@@ -456,9 +562,13 @@ impl Default for Tab {
             children: Vec::new(),
             disabled: false,
             selected: false,
+            focus_handle: None,
+            tab_stop: false,
+            on_key_down: None,
+            position_in_set: None,
+            size_of_set: None,
             indicator_active: false,
             indicator_ready: true,
-            indicator_epoch: 0,
             prefix: None,
             suffix: None,
             variant: TabVariant::default(),
@@ -564,6 +674,28 @@ impl Tab {
         self.tab_bar_prefix = Some(tab_bar_prefix);
         self
     }
+
+    /// Injects the structural state identity owned by the parent TabBar.
+    pub(super) fn state_id(mut self, id: ElementId) -> Self {
+        self.state_id = Some(id);
+        self
+    }
+
+    /// Injects the roving-focus state owned by the parent TabBar.
+    pub(super) fn focus_handle(mut self, focus_handle: FocusHandle, tab_stop: bool) -> Self {
+        self.focus_handle = Some(focus_handle);
+        self.tab_stop = tab_stop;
+        self
+    }
+
+    /// Injects horizontal TabBar keyboard navigation.
+    pub(super) fn on_group_key_down(
+        mut self,
+        handler: impl Fn(&KeyDownEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_key_down = Some(Rc::new(handler));
+        self
+    }
 }
 
 impl ParentElement for Tab {
@@ -605,7 +737,7 @@ impl Sizable for Tab {
 }
 
 impl RenderOnce for Tab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut tab_style = if self.selected {
             self.variant.selected(cx)
         } else {
@@ -625,11 +757,16 @@ impl RenderOnce for Tab {
         }
         let radius = self.variant.radius(self.size, cx);
         let inner_radius = self.variant.inner_radius(self.size, cx);
-        let inner_paddings = self.variant.inner_paddings(self.size);
+        let inner_paddings = self.variant.inner_paddings(self.size, cx);
         let inner_margins = self.variant.inner_margins(self.size);
-        let inner_height = self.variant.inner_height(self.size);
-        let height = self.variant.height(self.size);
+        let inner_height = self.variant.inner_height(self.size, cx);
+        let height = self.variant.height(self.size, cx);
         let aria_label = self.a11y_label();
+        let focus_handle = self.focus_handle.clone();
+        let focus_visible = focus_handle
+            .as_ref()
+            .is_some_and(|handle| handle.is_focused(window))
+            && window.last_input_was_keyboard();
 
         let segmented_indicator_active =
             self.variant == TabVariant::Segmented && self.indicator_active;
@@ -643,7 +780,8 @@ impl RenderOnce for Tab {
         } else {
             (tab_style.inner_bg, hover_style.inner_bg)
         };
-        let inner_shadow = tab_style.shadow && !segmented_indicator_active;
+        let inner_shadow =
+            tab_style.shadow && !segmented_indicator_active && cx.theme().style.elevation.enabled;
 
         // When a sliding indicator is active and ready, it alone represents the
         // selected state. Suppress the selected tab's own active background/border
@@ -667,19 +805,32 @@ impl RenderOnce for Tab {
             tab_style.border_color
         };
 
-        // For Pill, the newly selected tab's text color (`primary_foreground`)
-        // would otherwise snap to white instantly while the indicator is still
-        // sliding into place. Fade it from the normal color in sync with the
-        // indicator slide (keyed on the indicator epoch so it restarts on each
-        // switch). `epoch == 0` is the initial layout (no slide), so we skip it.
-        let animate_fg = self.selected
-            && !self.disabled
+        // Pill foreground motion follows the same semantic timing as the
+        // indicator and resumes from its sampled color after an interruption.
+        let animate_fg = !self.disabled
             && self.variant == TabVariant::Pill
             && self.indicator_active
-            && self.indicator_ready
-            && self.indicator_epoch > 0;
-        let fg_from = self.variant.normal(cx).fg;
-        let fg_to = tab_style.fg;
+            && self.indicator_ready;
+        let foreground_transition = if animate_fg {
+            self.state_id.as_ref().and_then(|state_id| {
+                let state = window.use_keyed_state(
+                    tab_child_id(state_id, "foreground-state"),
+                    cx,
+                    |_, _| TabForegroundMotionState::new(tab_style.fg),
+                );
+                let duration = if cx.reduce_motion() {
+                    Duration::ZERO
+                } else {
+                    cx.theme().style.motion.slow()
+                };
+                let easing = cx.theme().style.motion.move_easing;
+                state.update(cx, |state, _| {
+                    state.transition_to(tab_style.fg, Instant::now(), duration, easing)
+                })
+            })
+        } else {
+            None
+        };
 
         let inner_content = h_flex()
             .flex_1()
@@ -713,23 +864,38 @@ impl RenderOnce for Tab {
             .when(inner_shadow, |this| this.shadow_xs())
             .hover(|this| this.bg(hover_inner_bg).rounded(inner_radius));
 
-        let inner_element = if animate_fg {
+        let inner_element = if let (Some(state_id), Some(transition)) =
+            (self.state_id.as_ref(), foreground_transition)
+        {
+            let easing = cx.theme().style.motion.move_easing;
             inner_content
                 .with_animation(
-                    ElementId::NamedInteger("tab-fg".into(), self.indicator_epoch),
-                    Animation::new(Duration::from_millis(200)).with_easing(ease_in_out_cubic),
-                    move |this, delta| this.text_color(Lerp::lerp(&fg_from, &fg_to, delta)),
+                    tab_child_id(state_id, format!("foreground-{}", transition.epoch)),
+                    Animation::new(transition.duration)
+                        .with_easing(move |delta| easing.sample(delta)),
+                    move |this, delta| {
+                        this.text_color(Lerp::lerp(&transition.from, &transition.target, delta))
+                    },
                 )
                 .into_any_element()
         } else {
             inner_content.into_any_element()
         };
 
-        self.base
+        let tab = self
+            .base
             .id(self.ix)
             .role(Role::Tab)
             .when_some(aria_label, |this, label| this.aria_label(label))
             .aria_selected(self.selected)
+            .when_some(self.position_in_set, |this, position| {
+                this.aria_position_in_set(position)
+            })
+            .when_some(self.size_of_set, |this, size| this.aria_size_of_set(size))
+            .when_some(
+                focus_handle.clone().filter(|_| !self.disabled),
+                |this, handle| this.track_focus(&handle.tab_stop(self.tab_stop)),
+            )
             .relative()
             .flex()
             .flex_wrap()
@@ -751,6 +917,7 @@ impl RenderOnce for Tab {
             .border_b(tab_style.borders.bottom)
             .border_color(outer_border_color)
             .rounded(radius)
+            .focus_ring(focus_visible, px(0.), window, cx)
             .hover(|this| {
                 // Always register the hover style: GPUI only refreshes the cached
                 // hover state while one is present. If the selected tab skipped it,
@@ -783,23 +950,45 @@ impl RenderOnce for Tab {
                                 .h(inner_height)
                                 .bg(inline_inner_bg)
                                 .rounded(inner_radius)
-                                .when(tab_style.shadow, |this| this.shadow_sm()),
+                                .when(
+                                    tab_style.shadow && cx.theme().style.elevation.enabled,
+                                    |this| this.shadow_sm(),
+                                ),
                         ),
                 )
             })
             .when_some(self.prefix, |this, prefix| this.child(prefix))
             .child(inner_element)
-            .when_some(self.suffix, |this, suffix| this.child(suffix))
+            .when_some(self.suffix, |this, suffix| {
+                this.child(
+                    div()
+                        .id("suffix")
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_click(|_, _, cx| cx.stop_propagation())
+                        .child(suffix),
+                )
+            })
             .on_mouse_down(MouseButton::Left, |_, _, cx| {
                 // Stop propagation behavior, for works on TitleBar.
                 // https://github.com/longbridge/gpui-component/issues/1836
                 cx.stop_propagation();
             })
             .when(!self.disabled, |this| {
-                this.when_some(self.on_click.clone(), |this, on_click| {
-                    this.on_click(move |event, window, cx| on_click(event, window, cx))
+                this.when_some(self.on_key_down.clone(), |this, handler| {
+                    this.on_key_down(move |event, window, cx| handler(event, window, cx))
                 })
-            })
+                .when_some(self.on_click.clone(), |this, on_click| {
+                    let focus_handle = focus_handle.clone();
+                    this.on_click(move |event, window, cx| {
+                        if let Some(focus_handle) = focus_handle.as_ref() {
+                            focus_handle.focus(window, cx);
+                        }
+                        on_click(event, window, cx);
+                    })
+                })
+            });
+
+        crate::accessibility::accessibility_state(tab, false, false, self.disabled)
     }
 }
 
@@ -819,5 +1008,41 @@ mod tests {
         let tab = Tab::new().label("Acct").aria_label("Account settings");
 
         assert_eq!(tab.a11y_label(), Some("Account settings".into()));
+    }
+
+    #[test]
+    fn pill_foreground_reverses_from_the_sampled_color() {
+        let off = Hsla::black();
+        let on = Hsla::white();
+        let now = Instant::now();
+        let duration = Duration::from_millis(160);
+        let mut state = TabForegroundMotionState::new(off);
+
+        state
+            .transition_to(on, now, duration, MotionEasing::Linear)
+            .expect("forward transition");
+        let reverse = state
+            .transition_to(
+                off,
+                now + Duration::from_millis(80),
+                duration,
+                MotionEasing::Linear,
+            )
+            .expect("reverse transition");
+
+        assert_ne!(reverse.from, on);
+        assert_ne!(reverse.from, off);
+        assert_eq!(reverse.target, off);
+    }
+
+    #[test]
+    fn internal_ids_preserve_structural_identity() {
+        let structured = ElementId::NamedInteger("tab".into(), 1);
+        let textual = ElementId::Name("tab-1".into());
+        assert_eq!(structured.to_string(), textual.to_string());
+        assert_ne!(
+            tab_child_id(&structured, "indicator"),
+            tab_child_id(&textual, "indicator")
+        );
     }
 }

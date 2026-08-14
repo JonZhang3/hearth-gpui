@@ -1,174 +1,129 @@
 ---
 title: Tooltip
-description: 在悬停或聚焦时显示提示信息，支持快捷键和自定义内容。
+description: 在鼠标悬停或键盘聚焦时显示紧凑的补充信息。
 ---
 
 # Tooltip
 
-Tooltip 用于在鼠标悬停或元素获得焦点时显示补充信息。它支持纯文本、自定义内容、快捷键信息以及多种触发方式，适合做解释说明、状态提示和操作说明。
+Tooltip 用于为 Trigger 显示简短的补充信息。应用的 `Root` 统一管理 provider 和 overlay 生命周期，调用侧不需要额外放置 provider 组件。
 
 ## 导入
 
 ```rust
-use gpui_component::tooltip::Tooltip;
+use gpui_component::tooltip::{
+    Tooltip, TooltipAlign, TooltipSide, TooltipTrigger,
+};
 ```
 
-## 用法
+## 组件内置支持
 
-### 纯文本 Tooltip
-
-```rust
-div()
-    .child("Hover me")
-    .id("basic-tooltip")
-    .tooltip(|window, cx| {
-        Tooltip::new("This is a helpful tooltip").build(window, cx)
-    })
-```
-
-### 按钮 Tooltip
+`Button`、`Checkbox`、`Radio`、`Switch`、`Toggle` 等控件提供文本快捷 API：
 
 ```rust
-Button::new("save-btn")
+Button::new("save")
     .label("Save")
     .tooltip("Save the current document")
 ```
 
-### 携带快捷键信息
+`Button::tooltip_with_action` 可以显示 action 对应的平台快捷键：
 
 ```rust
-actions!(my_actions, [SaveDocument]);
-
-Button::new("save-btn")
+Button::new("save")
     .label("Save")
-    .tooltip_with_action(
-        "Save the current document",
-        &SaveDocument,
-        Some("MyContext")
-    )
+    .tooltip_with_action("Save document", &SaveDocument, Some("Editor"))
 ```
 
-### 自定义内容 Tooltip
+## 组合式 API
+
+任意元素、自定义定位或富内容应使用 `TooltipTrigger`：
 
 ```rust
-div()
-    .child("Hover for rich content")
-    .id("rich-tooltip")
-    .tooltip(|window, cx| {
+TooltipTrigger::new("project-tooltip")
+    .trigger(Button::new("project").label("Project"))
+    .text("Open project settings")
+    .side(TooltipSide::Right)
+    .align(TooltipAlign::Start)
+```
+
+### 自定义内容
+
+```rust
+TooltipTrigger::new("status-tooltip")
+    .trigger(Button::new("status").label("Status"))
+    .content(|window, cx| {
         Tooltip::element(|_, cx| {
-            h_flex()
-                .gap_x_1()
-                .child(IconName::Info)
+            v_flex()
+                .gap_1()
+                .child(div().font_medium().child("Project status"))
                 .child(
                     div()
-                        .child("Muted Text")
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(cx.theme().background.opacity(0.8))
+                        .child("All checks passed"),
                 )
-                .child(
-                    div()
-                        .child("Danger Text")
-                        .text_color(cx.theme().danger)
-                )
-                .child(IconName::ArrowUp)
         })
         .build(window, cx)
     })
 ```
 
-### 手动指定快捷键
+### 延迟和 Arrow
 
 ```rust
-div()
-    .child("Custom keybinding")
-    .id("custom-kb")
-    .tooltip(|window, cx| {
-        Tooltip::new("Delete item")
-            .key_binding(Some(Kbd::new("Delete")))
-            .build(window, cx)
-    })
+TooltipTrigger::new("instant-tooltip")
+    .trigger(Button::new("instant").label("Instant"))
+    .text("Opens immediately")
+    .show_delay(Duration::ZERO)
+    .hide_delay(Duration::from_millis(100))
+    .side_offset(px(6.))
+    .align_offset(px(4.))
+    .show_arrow(false)
 ```
+
+鼠标悬停默认采用桌面端习惯的 500 ms 延迟；相邻 Tooltip 共享 300 ms grace period。键盘聚焦会立即打开。鼠标按下和 Escape 会关闭 Tooltip。
 
 ## API 参考
 
-### Tooltip
+### `TooltipTrigger`
 
 | 方法 | 说明 |
 | --- | --- |
-| `new(text)` | 创建文本型 Tooltip |
-| `element(builder)` | 创建自定义内容 Tooltip |
-| `action(action, context)` | 关联 action，显示对应快捷键信息 |
-| `key_binding(kbd)` | 手动设置快捷键展示 |
-| `build(window, cx)` | 构建并返回 Tooltip 视图 |
+| `new(id)` | 使用稳定 ID 创建 Trigger 状态 |
+| `trigger(element)` | 设置 Trigger 子树 |
+| `text(text)` | 设置文本内容和可访问性描述 |
+| `content(builder)` | 构建自定义 `Tooltip` 内容 |
+| `side(side)` | 使用 `Top`、`Right`、`Bottom` 或 `Left` |
+| `align(align)` | 使用 `Start`、`Center` 或 `End` 交叉轴对齐 |
+| `side_offset(px)` | 设置 Trigger 与 Surface 的距离 |
+| `align_offset(px)` | 设置交叉轴偏移 |
+| `show_delay(duration)` | 设置鼠标打开延迟 |
+| `hide_delay(duration)` | 设置关闭延迟 |
+| `show_arrow(bool)` | 显示或隐藏随方向定位的 Arrow |
+| `arrow_color(color)` | 覆盖 Arrow 的语义颜色 |
 
-### 内置 Tooltip 方法
-
-很多组件内置了 Tooltip 支持，常见形式包括：
+### `Tooltip`
 
 | 方法 | 说明 |
 | --- | --- |
-| `tooltip(text)` | 添加简单文本提示 |
-| `tooltip_with_action(text, action, context)` | 添加带快捷键的提示 |
-| `tooltip(closure)` | 使用构建器生成自定义提示 |
+| `new(text)` | 创建文本内容 |
+| `element(builder)` | 创建自定义元素内容 |
+| `action(action, context)` | 解析并显示 action 快捷键 |
+| `key_binding(stroke)` | 显示明确指定的平台快捷键 |
+| `build(window, cx)` | 将 Surface 构建为 `AnyView` |
 
-## 样式
+## 视觉和动效契约
 
-Tooltip 默认会自动应用与主题匹配的样式：
+- 使用 foreground 背景和 background 文字
+- `text-xs`、12 px 水平 padding、6 px 垂直 padding、6 px 内容 gap
+- 最大宽度 320 px
+- 无边框、无阴影
+- 圆角根据 Vega、Nova、Maia 的语义 Density 和 Radius 解析
+- 使用语义 `motion.fast` 执行随 Side 变化的 8 px 位移和透明度过渡
+- 退出与进入方向相反；Reduced Motion 直接到达最终状态
 
-- 背景：`theme.popover`
-- 文字：`theme.popover_foreground`
-- 边框：`theme.border`
-- 阴影：中等投影
-- 圆角：约 `6px`
+GPUI 当前无法对任意元素子树应用不影响布局的 scale，因此暂不实现 shadcn 的 `zoom-in-95` / `zoom-out-95`。
 
-也可以继续通过 `Styled` trait 自定义：
+## 可访问性
 
-```rust
-Tooltip::new("Custom styled tooltip")
-    .bg(cx.theme().accent)
-    .text_color(cx.theme().accent_foreground)
-    .build(window, cx)
-```
-
-## 示例
-
-### 工具栏提示
-
-```rust
-h_flex()
-    .gap_1()
-    .child(
-        Button::new("new")
-            .icon(IconName::Plus)
-            .tooltip_with_action("Create new file", &NewFile, Some("Editor"))
-    )
-    .child(
-        Button::new("save")
-            .icon(IconName::Save)
-            .tooltip_with_action("Save file", &SaveFile, Some("Editor"))
-    )
-```
-
-### 表单说明
-
-```rust
-v_flex()
-    .gap_4()
-    .child(
-        Input::new("email")
-            .placeholder("Enter your email")
-            .tooltip("We'll never share your email address")
-    )
-    .child(
-        Input::new("password")
-            .input_type(InputType::Password)
-            .placeholder("Password")
-            .tooltip("Must be at least 8 characters with special characters")
-    )
-```
-
-## 最佳实践
-
-- 提示文案应简短直接，不重复界面上已经明显存在的信息。
-- Tooltip 适合做补充说明，不应用来承载关键流程信息。
-- 图标按钮、缩写和危险操作尤其适合配套 Tooltip。
-- 需要高频触发的 Tooltip 应尽量避免复杂内容，以减少渲染开销。
+- 文本 Tooltip 会将文本暴露为 Trigger 的辅助描述。
+- Tooltip Surface 使用 Tooltip accessibility role。
+- Trigger 保留自身 role、键盘激活和焦点行为。
+- Tooltip 只能承载补充信息；必要说明必须同时出现在持久 UI 中。

@@ -1,9 +1,5 @@
 use gpui::*;
-use gpui_component::{
-    Root, TitleBar,
-    button::{Button, ButtonVariants},
-    h_flex, v_flex,
-};
+use gpui_component::{Root, TitleBar, button::Button, h_flex, v_flex};
 
 pub struct Example;
 impl Render for Example {
@@ -31,7 +27,6 @@ impl Render for Example {
                     .child("Hello, World!")
                     .child(
                         Button::new("ok")
-                            .primary()
                             .label("Let's Go!")
                             .on_click(|_, _, _| println!("Clicked!")),
                     ),
@@ -49,6 +44,7 @@ fn main() {
             let window_options = WindowOptions {
                 // Setup GPUI to use custom title bar
                 titlebar: Some(TitleBar::title_bar_options()),
+                app_owns_titlebar_drag: true,
                 ..Default::default()
             };
 

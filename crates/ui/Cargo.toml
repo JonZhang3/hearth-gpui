@@ -97,6 +97,7 @@ tree-sitter-zig = ["tree-sitter", "dep:tree-sitter-zig"]
 [dependencies]
 anyhow.workspace = true
 gpui = { workspace = true }
+gpui-component-motion.workspace = true
 gpui_macros.workspace = true
 gpui-component-macros = { workspace = true }
 gpui-component-assets = { workspace = true }
@@ -217,8 +218,14 @@ windows = { workspace = true, features = [
 ] }
 
 [dev-dependencies]
-gpui = { workspace = true, features = ["test-support"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+gpui = { workspace = true, features = ["bench"] }
+gpui_platform = { workspace = true, features = ["test-support"] }
 indoc = "2"
+
+[[bench]]
+name = "shadcn_alignment"
+harness = false
 
 [lints]
 workspace = true

@@ -46,12 +46,12 @@ impl LoadingRow {
 
 impl RenderOnce for LoadingRow {
     fn render(self, _: &mut gpui::Window, cx: &mut gpui::App) -> impl IntoElement {
-        let paddings = self.size.table_cell_padding();
-        let height = self.size.table_row_height() * 0.5;
+        let paddings = self.size.table_cell_padding(cx);
+        let height = self.size.table_row_height(cx) * 0.5;
 
         h_flex()
             .gap_3()
-            .h(self.size.table_row_height())
+            .h(self.size.table_row_height(cx))
             .overflow_hidden()
             .pt(paddings.top)
             .pb(paddings.bottom)

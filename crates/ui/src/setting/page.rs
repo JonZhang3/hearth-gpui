@@ -9,11 +9,14 @@ use rust_i18n::t;
 
 use crate::{
     ActiveTheme, Icon, IconName, Sizable, StyledExt,
-    button::{Button, ButtonVariants},
+    button::Button,
     h_flex,
     label::Label,
     scroll::ScrollableElement,
-    setting::{RenderOptions, SettingGroup, settings::SettingsState},
+    setting::{
+        RenderOptions, SettingGroup,
+        settings::{SettingsMetrics, SettingsState},
+    },
     v_flex,
 };
 
@@ -121,20 +124,15 @@ impl SettingPage {
     pub(super) fn render(
         &self,
         ix: usize,
+        visible_group_indices: &[usize],
         state: &Entity<SettingsState>,
         options: &RenderOptions,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        let search_input = state.read(cx).search_input.clone();
-        let query = search_input.read(cx).value();
-        let groups = self
-            .groups
-            .iter()
-            .filter(|group| group.is_match(&query, cx))
-            .cloned()
-            .collect::<Vec<_>>();
-        let groups_count = groups.len();
+        let query = state.read(cx).search_input.read(cx).value();
+        let metrics = SettingsMetrics::for_density(cx.theme().style.density);
+        let groups_count = visible_group_indices.len();
 
         let list_state = window
             .use_keyed_state(
@@ -150,11 +148,16 @@ impl SettingPage {
         }
 
         let deferred_scroll_group_ix = state.read(cx).deferred_scroll_group_ix;
-        if let Some(ix) = deferred_scroll_group_ix {
+        if let Some(source_group_ix) = deferred_scroll_group_ix {
             state.update(cx, |state, _| {
                 state.deferred_scroll_group_ix = None;
             });
-            list_state.scroll_to_reveal_item(ix);
+            if let Some(visible_ix) = visible_group_indices
+                .iter()
+                .position(|group_ix| *group_ix == source_group_ix)
+            {
+                list_state.scroll_to_reveal_item(visible_ix);
+            }
         }
 
         v_flex()
@@ -162,8 +165,9 @@ impl SettingPage {
             .size_full()
             .child(
                 v_flex()
-                    .p_4()
-                    .gap_3()
+                    .px(metrics.page_padding_x)
+                    .py(metrics.page_padding_y)
+                    .gap(metrics.item_gap)
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .refine_style(&self.header_style)
@@ -172,8 +176,8 @@ impl SettingPage {
                             .justify_between()
                             .child(
                                 h_flex()
-                                    .gap_1()
-                                    .child(self.title.clone())
+                                    .gap(metrics.text_gap)
+                                    .child(Label::new(self.title.clone()).text_lg().font_semibold())
                                     .when_some(self.title_suffix.clone(), |this, suffix| {
                                         this.child(suffix(window, cx))
                                     }),
@@ -183,7 +187,7 @@ impl SettingPage {
                                     Button::new("reset")
                                         .icon(IconName::Undo2)
                                         .ghost()
-                                        .small()
+                                        .with_size(options.size)
                                         .tooltip(t!("Settings.Reset All"))
                                         .on_click({
                                             let page = self.clone();
@@ -204,18 +208,21 @@ impl SettingPage {
             )
             .child(
                 div()
-                    .px_4()
+                    .px(metrics.page_padding_x)
                     .relative()
                     .flex_1()
                     .w_full()
                     .child(
                         list(list_state.clone(), {
-                            let query = query.clone();
+                            let query = query.to_string();
+                            let visible_group_indices = visible_group_indices.to_vec();
+                            let groups = self.groups.clone();
                             let options = *options;
-                            move |group_ix, window, cx| {
+                            move |visible_group_ix, window, cx| {
+                                let group_ix = visible_group_indices[visible_group_ix];
                                 let group = groups[group_ix].clone();
                                 group
-                                    .py_4()
+                                    .py(metrics.group_padding_y)
                                     .render(
                                         &query,
                                         &RenderOptions {
@@ -223,6 +230,7 @@ impl SettingPage {
                                             group_ix,
                                             ..options
                                         },
+                                        metrics,
                                         window,
                                         cx,
                                     )

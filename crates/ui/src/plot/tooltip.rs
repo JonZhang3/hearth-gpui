@@ -251,7 +251,21 @@ impl TooltipState {
     }
 }
 
-/// A single labelled row in a [`Tooltip`]: a colored swatch, a muted label, and a value.
+/// Visual marker rendered before a chart tooltip row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TooltipIndicator {
+    /// A compact square marker matching the shadcn chart default.
+    #[default]
+    Dot,
+    /// A short solid line marker.
+    Line,
+    /// A short dashed line marker.
+    Dashed,
+    /// Omits the marker while preserving the row layout.
+    None,
+}
+
+/// A single labelled row in a [`Tooltip`]: a colored indicator, a muted label, and a value.
 struct TooltipRow {
     color: Hsla,
     label: SharedString,
@@ -267,6 +281,9 @@ pub struct Tooltip {
     appearance: bool,
     title: Option<SharedString>,
     rows: Vec<TooltipRow>,
+    indicator: TooltipIndicator,
+    hide_label: bool,
+    hide_indicator: bool,
     /// Cursor position the box hugs (relative to the plot origin).
     cursor: Point<Pixels>,
     /// Plot size, used to flip the box toward the center near each edge so it never
@@ -285,6 +302,9 @@ impl Tooltip {
             appearance: true,
             title: None,
             rows: Vec::new(),
+            indicator: TooltipIndicator::Dot,
+            hide_label: false,
+            hide_indicator: false,
             cursor,
             within,
         }
@@ -308,6 +328,24 @@ impl Tooltip {
             label: label.into(),
             value: value.into(),
         });
+        self
+    }
+
+    /// Sets the visual marker used by every structured tooltip row.
+    pub fn indicator(mut self, indicator: TooltipIndicator) -> Self {
+        self.indicator = indicator;
+        self
+    }
+
+    /// Hides the tooltip title while retaining the series rows.
+    pub fn hide_label(mut self, hide: bool) -> Self {
+        self.hide_label = hide;
+        self
+    }
+
+    /// Hides row indicators while retaining labels and values.
+    pub fn hide_indicator(mut self, hide: bool) -> Self {
+        self.hide_indicator = hide;
         self
     }
 
@@ -358,6 +396,9 @@ impl RenderOnce for Tooltip {
             appearance,
             title,
             rows,
+            indicator,
+            hide_label,
+            hide_indicator,
             cursor,
             within,
         } = self;
@@ -365,12 +406,25 @@ impl RenderOnce for Tooltip {
         // Structured content (title + rows) takes precedence over freeform `base` children.
         let content = if title.is_some() || !rows.is_empty() {
             v_flex()
-                .text_sm()
-                .gap_1()
-                .when_some(title, |this, title| {
+                .text_xs()
+                .gap_1p5()
+                .when_some((!hide_label).then_some(title).flatten(), |this, title| {
                     this.child(div().font_semibold().child(title))
                 })
                 .children(rows.into_iter().map(|row| {
+                    let marker = match indicator {
+                        TooltipIndicator::Dot => div().size_2().rounded(px(2.)).bg(row.color),
+                        TooltipIndicator::Line => {
+                            div().w_2p5().h(px(2.)).rounded(px(1.)).bg(row.color)
+                        }
+                        TooltipIndicator::Dashed => div()
+                            .w_2p5()
+                            .h_0()
+                            .border_t_1()
+                            .border_dashed()
+                            .border_color(row.color),
+                        TooltipIndicator::None => div().size_0(),
+                    };
                     h_flex()
                         .items_center()
                         .justify_between()
@@ -379,14 +433,22 @@ impl RenderOnce for Tooltip {
                             h_flex()
                                 .items_center()
                                 .gap_1p5()
-                                .child(div().size_2().rounded_sm().bg(row.color))
+                                .when(
+                                    !hide_indicator && indicator != TooltipIndicator::None,
+                                    |this| this.child(marker),
+                                )
                                 .child(
                                     div()
                                         .text_color(cx.theme().muted_foreground)
                                         .child(row.label),
                                 ),
                         )
-                        .child(div().child(row.value))
+                        .child(
+                            div()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .font_medium()
+                                .child(row.value),
+                        )
                 }))
         } else {
             base
@@ -414,9 +476,15 @@ impl RenderOnce for Tooltip {
                 // The box hugs the cursor, flipping toward the center near each edge so it
                 // never overflows the near side.
                 this.absolute()
-                    .when(min_w_unset, |c| c.min_w(px(150.)))
-                    .popover_style(cx)
-                    .p_2()
+                    .when(min_w_unset, |c| c.min_w(px(128.)))
+                    .bg(cx.theme().background)
+                    .text_color(cx.theme().foreground)
+                    .border_1()
+                    .border_color(cx.theme().border.opacity(0.5))
+                    .rounded(cx.theme().style.radii.lg)
+                    .when(cx.theme().style.elevation.enabled, |c| c.shadow_xl())
+                    .px(px(10.))
+                    .py(px(6.))
                     .map(|c| {
                         if cursor.x < within.width * 0.5 {
                             c.left(cursor.x + gap)

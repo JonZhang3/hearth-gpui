@@ -1,297 +1,125 @@
 ---
 title: Spinner
-description: Displays an animated loading showing the completion progress of a task.
+description: Displays an indeterminate loading status.
 ---
 
 # Spinner
 
-Spinner element displays an animated loading. Perfect for showing loading states, progress spinners, and other visual feedback during asynchronous operations. Features customizable icons, colors, sizes, and rotation animations.
+`Spinner` communicates that work is in progress when no completion percentage is available. Its default appearance follows the pinned shadcn Spinner: a 16px circular loader that inherits the surrounding text color and rotates continuously.
 
 ## Import
 
 ```rust
-use gpui_component::spinner::Spinner;
+use gpui_component::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
 ```
 
 ## Usage
 
-### Basic
-
 ```rust
-// Default loader icon
 Spinner::new()
 ```
 
-### Spinner with Custom Color
+The default accessible name is `Loading`. Provide a task-specific name when it adds useful context:
 
 ```rust
-use gpui_component::ActiveTheme;
-
-// Blue spinner
 Spinner::new()
-    .color(cx.theme().blue)
-
-// Green spinner for success states
-Spinner::new()
-    .color(cx.theme().green)
-
-// Custom color
-Spinner::new()
-    .color(cx.theme().cyan)
+    .aria_label("Loading projects")
 ```
 
-### Spinner Sizes
+## Sizes
+
+The default size is 16px. `Spinner` implements `Sizable`, including exact custom sizes:
 
 ```rust
-// Extra small spinner
-Spinner::new().xsmall()
-
-// Small spinner
-Spinner::new().small()
-
-// Medium spinner (default)
-Spinner::new()
-
-// Large spinner
-Spinner::new().large()
-
-// Custom size
-Spinner::new().with_size(px(64.))
+Spinner::new().with_size(px(12.))
+Spinner::new()                    // 16px
+Spinner::new().with_size(px(24.))
+Spinner::new().with_size(px(32.))
 ```
 
-### Spinner with Custom Icon
+The GPUI-specific `.xsmall()`, `.small()`, and `.large()` helpers remain available for composition with existing controls.
+
+## Variants and animation
+
+Two built-in variants provide coordinated icon and motion defaults:
 
 ```rust
-use gpui_component::IconName;
+// LoaderCircle + continuous linear rotation (default, shadcn-aligned)
+Spinner::new().variant(SpinnerVariant::Circular)
 
-// Loading circle icon
+// Original segmented Loader + semantic eased rotation (GPUI classic)
+Spinner::new().variant(SpinnerVariant::Classic)
+```
+
+The icon and animation can be overridden independently. Explicit overrides remain authoritative regardless of builder call order:
+
+```rust
 Spinner::new()
     .icon(IconName::LoaderCircle)
+    .animation(SpinnerAnimation::SemanticSpin)
+    .variant(SpinnerVariant::Circular)
+```
 
-// Large loading circle with custom color
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .large()
-    .color(cx.theme().cyan)
+## Color and icon
 
-// Different loading icons
+The Spinner inherits the current text color by default. Override it only when the surrounding semantic color is unsuitable:
+
+```rust
+Spinner::new().color(cx.theme().muted_foreground)
+
 Spinner::new()
     .icon(IconName::Loader)
-    .color(cx.theme().primary)
-```
-
-## Available Icons
-
-The Spinner component supports various loading and progress icons:
-
-### Loading Icons
-
-- `Loader` (default) - Rotating line spinner
-- `LoaderCircle` - Circular loading spinner
-
-### Other Compatible Icons
-
-- Any icon from the `IconName` enum can be used, though loading-specific icons work best with the rotation animation
-
-## Animation
-
-The Spinner component features a built-in rotation animation:
-
-- **Duration**: 0.8 seconds (configurable via speed parameter)
-- **Easing**: Ease-in-out transition
-- **Repeat**: Infinite loop
-- **Transform**: 360-degree rotation
-
-## Size Reference
-
-| Size        | Method              | Approximate Pixels |
-| ----------- | ------------------- | ------------------ |
-| Extra Small | `.xsmall()`         | ~12px              |
-| Small       | `.small()`          | ~14px              |
-| Medium      | (default)           | ~16px              |
-| Large       | `.large()`          | ~24px              |
-| Custom      | `.with_size(px(n))` | n px               |
-
-## Examples
-
-### Loading States
-
-```rust
-// Simple loading spinner
-Spinner::new()
-
-// Loading with custom color
-Spinner::new()
     .color(cx.theme().blue)
-
-// Large loading spinner
-Spinner::new()
-    .large()
-    .color(cx.theme().primary)
 ```
 
-### Different Loading Icons
+The default icon is `IconName::LoaderCircle`, matching shadcn's circular Loader2 appearance. Any compatible `Icon` can be supplied through `.icon(...)`.
+
+## Composition
 
 ```rust
-// Default loader (line spinner)
-Spinner::new()
-    .color(cx.theme().muted_foreground)
+Button::new("submit")
+    .icon(Spinner::new())
+    .label("Submitting")
+    .disabled(true)
 
-// Circle loader
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().blue)
-
-// Large circle loader with custom color
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .large()
-    .color(cx.theme().green)
+Badge::new()
+    .outline()
+    .leading(Spinner::new().xsmall())
+    .child("Generating")
 ```
 
-### Status Spinners
+Spinner also composes with `InputGroupAddon`, Empty states, and other element slots.
+
+## Motion
+
+- Rotation: one complete turn.
+- Duration: the active Style Preset's semantic `motion.loading()` duration; built-in presets use 1 second.
+- Easing: Circular uses linear; Classic uses the active Style Preset's move easing.
+- Lifecycle: infinite while mounted, with no enter, exit, opacity, or scale transition.
+- Reduced Motion: renders the loader statically.
+
+`SpinnerAnimation::SemanticSpin` restores the original Spinner behavior by applying the active Style Preset's move easing to a complete rotation. `.ease(...)` can override either animation's default easing, while `LinearSpin` remains the shadcn-aligned default.
+
+## Stable IDs
+
+`Spinner::new()` derives a stable ID from its call site. When an iterator creates multiple Spinners from the same source location, provide structural IDs explicitly:
 
 ```rust
-// Loading state
-Spinner::new()
-    .small()
-    .color(cx.theme().muted_foreground)
-
-// Processing state
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().blue)
-
-// Success processing (still animating)
-Spinner::new()
-    .icon(IconName::LoaderCircle)
-    .color(cx.theme().green)
-```
-
-### Size Variations
-
-```rust
-// Extra small for inline text
-Spinner::new()
-    .xsmall()
-    .color(cx.theme().muted_foreground)
-
-// Small for buttons
-Spinner::new()
-    .small()
-    .color(cx.theme().primary_foreground)
-
-// Medium for general use (default)
-Spinner::new()
-    .color(cx.theme().primary)
-
-// Large for prominent loading states
-Spinner::new()
-    .large()
-    .color(cx.theme().blue)
-
-// Custom size for specific requirements
-Spinner::new()
-    .with_size(px(32.))
-    .color(cx.theme().orange)
-```
-
-### In UI Components
-
-```rust
-// In a button
-Button::new("submit-btn")
-    .loading(true)
-    .icon(
-        Spinner::new()
-            .small()
-            .color(cx.theme().primary_foreground)
-    )
-    .label("Loading...")
-
-// In a card header
-div()
-    .flex()
-    .items_center()
-    .gap_2()
-    .child("Processing...")
-    .child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().muted_foreground)
-    )
-
-// Full-screen loading
-div()
-    .flex()
-    .items_center()
-    .justify_center()
-    .h_full()
-    .w_full()
-    .child(
-        Spinner::new()
-            .large()
-            .color(cx.theme().primary)
-    )
-```
-
-## Performance Considerations
-
-- The animation uses CSS transforms for optimal performance
-- Multiple spinners on the same page share the same animation timing
-- The component is lightweight and suitable for frequent updates
-- Consider using smaller sizes for better performance with many spinners
-
-## Common Patterns
-
-### Conditional Loading
-
-```rust
-// Show spinner only when loading
-.when(is_loading, |this| {
-    this.child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().muted_foreground)
-    )
+items.into_iter().enumerate().map(|(index, _)| {
+    Spinner::new().id(ElementId::named_usize("row-spinner", index))
 })
 ```
 
-### Loading with Text
+## API
 
-```rust
-// Loading text with spinner
-h_flex()
-    .items_center()
-    .gap_2()
-    .child(
-        Spinner::new()
-            .small()
-            .color(cx.theme().primary)
-    )
-    .child("Loading data...")
-```
-
-### Overlay Loading
-
-```rust
-// Full overlay with spinner
-div()
-    .absolute()
-    .inset_0()
-    .flex()
-    .items_center()
-    .justify_center()
-    .bg(cx.theme().background.alpha(0.8))
-    .child(
-        v_flex()
-            .items_center()
-            .gap_3()
-            .child(
-                Spinner::new()
-                    .large()
-                    .color(cx.theme().primary)
-            )
-            .child("Loading...")
-    )
-```
+| Method | Purpose |
+| --- | --- |
+| `new()` | Create a 16px circular loading Spinner |
+| `id(id)` | Override the stable element ID |
+| `aria_label(text)` | Set the accessible loading status name |
+| `variant(variant)` | Select a coordinated icon and motion preset |
+| `icon(icon)` | Replace the circular loader icon |
+| `animation(animation)` | Independently select LinearSpin or SemanticSpin rotation |
+| `color(color)` | Override the inherited text color |
+| `with_size(size)` | Set a named or exact size |
+| `ease(easing)` | Override the default linear easing |

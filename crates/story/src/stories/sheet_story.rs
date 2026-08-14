@@ -12,6 +12,7 @@ use gpui_component::{
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,
     date_picker::{DatePicker, DatePickerState},
+    dialog::{AlertDialogAction, AlertDialogCancel},
     h_flex,
     input::{Input, InputState},
     list::{List, ListDelegate, ListItem, ListState},
@@ -36,6 +37,13 @@ impl ListDelegate for ListItemDeletegate {
         self.matches.len()
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> SharedString {
+        self.matches
+            .get(ix.row)
+            .map(|item| item.as_str().into())
+            .unwrap_or_default()
+    }
+
     fn perform_search(
         &mut self,
         query: &str,
@@ -46,7 +54,9 @@ impl ListDelegate for ListItemDeletegate {
         cx.spawn(async move |this, cx| {
             // Simulate a slow search.
             let sleep = (0.05..0.1).fake();
-            cx.background_executor().timer(Duration::from_secs_f64(sleep)).await;
+            cx.background_executor()
+                .timer(Duration::from_secs_f64(sleep))
+                .await;
 
             this.update(cx, |this, cx| {
                 this.delegate_mut().matches = this
@@ -67,31 +77,31 @@ impl ListDelegate for ListItemDeletegate {
         ix: IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
+    ) -> Self::Item {
         let confirmed = Some(ix.row) == self.confirmed_index;
+        let item = &self.matches[ix.row];
+        ListItem::new(("item", ix.row))
+            .check_icon(IconName::Check)
+            .confirmed(confirmed)
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(item.to_string()),
+            )
+            .suffix(|_, _| {
+                Button::new("like")
+                    .tab_stop(false)
+                    .icon(IconName::Heart)
+                    .with_variant(ButtonVariant::Ghost)
+                    .size(px(18.))
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        window.prevent_default();
 
-        if let Some(item) = self.matches.get(ix.row) {
-            let list_item = ListItem::new(("item", ix.row))
-                .check_icon(IconName::Check)
-                .confirmed(confirmed)
-                .child(h_flex().items_center().justify_between().child(item.to_string()))
-                .suffix(|_, _| {
-                    Button::new("like")
-                        .tab_stop(false)
-                        .icon(IconName::Heart)
-                        .with_variant(ButtonVariant::Ghost)
-                        .size(px(18.))
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            window.prevent_default();
-
-                            println!("You have clicked like.");
-                        })
-                });
-            Some(list_item)
-        } else {
-            None
-        }
+                        println!("You have clicked like.");
+                    })
+            })
     }
 
     fn render_empty(
@@ -101,7 +111,11 @@ impl ListDelegate for ListItemDeletegate {
     ) -> impl IntoElement {
         v_flex()
             .size_full()
-            .child(Icon::new(IconName::Inbox).size(px(50.)).text_color(cx.theme().muted_foreground))
+            .child(
+                Icon::new(IconName::Inbox)
+                    .size(px(50.))
+                    .text_color(cx.theme().muted_foreground),
+            )
             .child("No matches found")
             .items_center()
             .justify_center()
@@ -259,9 +273,9 @@ impl SheetStory {
     fn open_sheet_at(&mut self, placement: Placement, window: &mut Window, cx: &mut Context<Self>) {
         let list = self.list.clone();
 
-        let drawer_h = match placement {
-            Placement::Left | Placement::Right => px(400.),
-            Placement::Top | Placement::Bottom => px(540.),
+        let drawer_size = match placement {
+            Placement::Left | Placement::Right => None,
+            Placement::Top | Placement::Bottom => Some(px(540.)),
         };
 
         let overlay = self.overlay;
@@ -271,8 +285,10 @@ impl SheetStory {
         window.open_sheet_at(placement, cx, move |this, _, cx| {
             this.overlay(overlay)
                 .overlay_closable(overlay_closable)
-                .size(drawer_h)
                 .title("Sheet Title")
+                .description("Edit the form and review the scrollable content.")
+                .initial_focus(input1.read(cx).focus_handle(cx))
+                .when_some(drawer_size, |this, size| this.size(size))
                 .child(
                     v_flex()
                         .size_full()
@@ -280,12 +296,12 @@ impl SheetStory {
                         .child(Input::new(&input1))
                         .child(DatePicker::new(&date).placeholder("Date of Birth"))
                         .child(
-                            Button::new("send-notification").child("Test Notification").on_click(
-                                |_, window, cx| {
+                            Button::new("send-notification")
+                                .child("Test Notification")
+                                .on_click(|_, window, cx| {
                                     window
                                         .push_notification("Hello this is message from Sheet.", cx)
-                                },
-                            ),
+                                }),
                         )
                         .child(
                             Button::new("confirm-dialog-from-sheet")
@@ -293,8 +309,22 @@ impl SheetStory {
                                 .on_click(|_, window, cx| {
                                     window.open_alert_dialog(cx, move |dialog, _, _| {
                                         dialog
-                                            .child("Confirm dialog opened from sheet.")
-                                            .on_ok(|_, window, cx| {
+                                            .content(|content, _, _| {
+                                                content
+                                                    .title("Confirm action")
+                                                    .description(
+                                                        "Confirm dialog opened from sheet.",
+                                                    )
+                                                    .cancel(AlertDialogCancel::new(
+                                                        "sheet-alert-cancel",
+                                                        "Cancel",
+                                                    ))
+                                                    .action(AlertDialogAction::new(
+                                                        "sheet-alert-confirm",
+                                                        "Continue",
+                                                    ))
+                                            })
+                                            .on_action(|_, window, cx| {
                                                 window
                                                     .push_notification("You have pressed ok.", cx);
                                                 true
@@ -313,21 +343,26 @@ impl SheetStory {
                             List::new(&list)
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(cx.theme().radius),
+                                .rounded(cx.theme().style.radii.md),
                         ),
                 )
                 .footer(
-                    h_flex()
-                        .gap_6()
-                        .items_center()
-                        .child(Button::new("confirm").primary().label("Confirm").on_click(
+                    v_flex()
+                        .gap_2()
+                        .child(Button::new("confirm").label("Confirm").w_full().on_click(
                             |_, window, cx| {
                                 window.close_sheet(cx);
                             },
                         ))
-                        .child(Button::new("cancel").label("Cancel").on_click(|_, window, cx| {
-                            window.close_sheet(cx);
-                        })),
+                        .child(
+                            Button::new("cancel")
+                                .label("Cancel")
+                                .outline()
+                                .w_full()
+                                .on_click(|_, window, cx| {
+                                    window.close_sheet(cx);
+                                }),
+                        ),
                 )
         });
     }
@@ -440,6 +475,26 @@ impl Render for SheetStory {
                         ),
                     )
                     .child(
+                        section("Without Close Button").max_w_md().child(
+                            Button::new("show-sheet-without-close")
+                                .outline()
+                                .label("Open without close button...")
+                                .on_click(|_, window, cx| {
+                                    window.open_sheet(cx, |sheet, _, _| {
+                                        sheet
+                                            .title("No Close Button")
+                                            .description(
+                                                "Use Escape or click the backdrop to dismiss.",
+                                            )
+                                            .show_close_button(false)
+                                            .child(
+                                                "The header no longer reserves an empty close row.",
+                                            )
+                                    });
+                                }),
+                        ),
+                    )
+                    .child(
                         section("Focus back test")
                             .max_w_md()
                             .child(Input::new(&self.input2))
@@ -461,7 +516,9 @@ impl Render for SheetStory {
                     .when_some(self.selected_value.clone(), |this, selected_value| {
                         this.child(
                             h_flex().gap_1().child("You have selected:").child(
-                                div().child(selected_value.to_string()).text_color(gpui::red()),
+                                div()
+                                    .child(selected_value.to_string())
+                                    .text_color(gpui::red()),
                             ),
                         )
                     }),

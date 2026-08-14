@@ -369,6 +369,7 @@ pub struct InputState {
     pub(super) selecting: bool,
     pub(super) size: Size,
     pub(super) disabled: bool,
+    pub(super) read_only: bool,
     pub(super) masked: bool,
     pub(super) clean_on_escape: bool,
     pub(super) submit_on_enter: bool,
@@ -417,6 +418,10 @@ pub struct InputState {
     /// If set, this overrides the built-in context menu (and ignores [`Self::enable_context_menu`]).
     pub(super) context_menu_builder:
         Option<Rc<dyn Fn(NativeMenu, &mut Window, &mut App) -> NativeMenu>>,
+    /// Optional clipboard preprocessing used by typed input-family composites.
+    pub(crate) paste_transformer: Option<Rc<dyn Fn(&str) -> String>>,
+    /// Optional character limit applied to clipboard insertion.
+    pub(crate) max_paste_characters: Option<usize>,
     pending_context_menu: Option<(Point<Pixels>, usize)>,
 
     /// Whether the context menu that shows on right-click is enabled.
@@ -501,6 +506,7 @@ impl InputState {
             input_bounds: Bounds::default(),
             selecting: false,
             disabled: false,
+            read_only: false,
             masked: false,
             clean_on_escape: false,
             submit_on_enter: false,
@@ -539,6 +545,8 @@ impl InputState {
             diagnostic_popover: None,
             context_menu_content: None,
             context_menu_builder: None,
+            paste_transformer: None,
+            max_paste_characters: None,
             pending_context_menu: None,
             enable_context_menu: true,
             completion_inserting: false,
@@ -562,6 +570,11 @@ impl InputState {
     pub fn multi_line(mut self, multi_line: bool) -> Self {
         self.mode = self.mode.multi_line(multi_line);
         self
+    }
+
+    /// Returns whether this state renders through the multi-line editor path.
+    pub(crate) fn is_multi_line(&self) -> bool {
+        self.mode.is_multi_line()
     }
 
     /// Set Input to use [`InputMode::AutoGrow`] mode with min, max rows limit.
@@ -839,12 +852,15 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         let range_utf16 = self.range_to_utf16(&(self.cursor()..self.cursor()));
         self.replace_text_in_range_silent(Some(range_utf16), &text, window, cx);
         self.selected_range = (self.selected_range.end..self.selected_range.end).into();
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     /// Replace text at the current cursor position.
@@ -857,11 +873,14 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         self.replace_text_in_range_silent(None, &text, window, cx);
         self.selected_range = (self.selected_range.end..self.selected_range.end).into();
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     fn replace_text(
@@ -871,12 +890,15 @@ impl InputState {
         cx: &mut Context<Self>,
     ) {
         let was_disabled = self.disabled;
+        let was_read_only = self.read_only;
         self.disabled = false;
+        self.read_only = false;
         let text: SharedString = text.into();
         let range = 0..self.text.chars().map(|c| c.len_utf16()).sum();
         self.replace_text_in_range_silent(Some(range), &text, window, cx);
         self.reset_highlighter(cx);
         self.disabled = was_disabled;
+        self.read_only = was_read_only;
     }
 
     fn reset_selection(&mut self) {
@@ -2059,10 +2081,40 @@ impl InputState {
 
     pub(super) fn paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(clipboard) = cx.read_from_clipboard() {
-            let new_text = clipboard.text().unwrap_or_default();
+            let clipboard_text = clipboard.text().unwrap_or_default();
+            let new_text = self
+                .paste_transformer
+                .as_ref()
+                .map(|transformer| transformer(&clipboard_text))
+                .unwrap_or(clipboard_text);
+            let new_text = if let Some(max_characters) = self.max_paste_characters {
+                let selected_characters = self.text.slice(self.selected_range).chars().count();
+                let available = max_characters.saturating_sub(
+                    self.text
+                        .chars()
+                        .count()
+                        .saturating_sub(selected_characters),
+                );
+                new_text.chars().take(available).collect::<String>()
+            } else {
+                new_text
+            };
             self.replace_text_in_range_silent(None, &new_text, window, cx);
             self.scroll_to(self.cursor(), None, cx);
         }
+    }
+
+    /// Applies composite-specific normalization to text supplied through an
+    /// external editing channel such as AccessKit.
+    pub(crate) fn transform_external_text(&self, text: &str) -> String {
+        let text = self
+            .paste_transformer
+            .as_ref()
+            .map(|transformer| transformer(text))
+            .unwrap_or_else(|| text.to_string());
+        self.max_paste_characters
+            .map(|limit| text.chars().take(limit).collect())
+            .unwrap_or(text)
     }
 
     fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {
@@ -2877,7 +2929,7 @@ impl EntityInputHandler for InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.read_only {
             return;
         }
 
@@ -2988,7 +3040,7 @@ impl EntityInputHandler for InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.read_only {
             return;
         }
 
@@ -3778,6 +3830,25 @@ ORDER BY id
         });
 
         cx.run_until_parked();
+    }
+
+    #[gpui::test]
+    fn test_read_only_blocks_user_edits_but_allows_programmatic_updates(cx: &mut TestAppContext) {
+        let input_view = InputView::build(cx, |state| state.default_value("initial"));
+        let mut cx = VisualTestContext::from_window(input_view.window_handle.into(), cx);
+        let input = input_view.input;
+
+        cx.update(|window, cx| {
+            input.update(cx, |state, cx| {
+                state.read_only = true;
+                state.replace_text_in_range(None, "blocked", window, cx);
+                assert_eq!(state.value(), "initial");
+
+                state.replace_all("programmatic", window, cx);
+                assert_eq!(state.value(), "programmatic");
+                assert!(state.read_only);
+            });
+        });
     }
 
     /// `replace_all` on a multi-line (non-code-editor) input clears the

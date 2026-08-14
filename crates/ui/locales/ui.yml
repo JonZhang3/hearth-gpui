@@ -1,5 +1,50 @@
 _version: 2
+Common:
+  Close:
+    en: Close
+    zh-CN: 关闭
+    zh-HK: 關閉
+    zh-TW: 關閉
+    it: Chiudi
+  Clear:
+    en: Clear
+    zh-CN: 清除
+    zh-HK: 清除
+    zh-TW: 清除
+    it: Cancella
+  Notification:
+    en: Notification
+    zh-CN: 通知
+    zh-HK: 通知
+    zh-TW: 通知
+    it: Notifica
+DropdownButton:
+  more_options:
+    en: More options
+    zh-CN: 更多选项
+    zh-HK: 更多選項
+    zh-TW: 更多選項
+    it: Altre opzioni
+Tree:
+  label:
+    en: Tree
+    zh-CN: 树
+    zh-HK: 樹
+    zh-TW: 樹
+    it: Albero
 Calendar:
+  previous:
+    en: Previous month
+    zh-CN: 上个月
+    zh-HK: 上個月
+    zh-TW: 上個月
+    it: Mese precedente
+  next:
+    en: Next month
+    zh-CN: 下个月
+    zh-HK: 下個月
+    zh-TW: 下個月
+    it: Mese successivo
   week.0:
     en: Su
     zh-CN: 日
@@ -114,6 +159,78 @@ Calendar:
     zh-HK: 十二月
     zh-TW: 十二月
     it: Dicembre
+  month_short.January:
+    en: Jan
+    zh-CN: 一月
+    zh-HK: 一月
+    zh-TW: 一月
+    it: Gen
+  month_short.February:
+    en: Feb
+    zh-CN: 二月
+    zh-HK: 二月
+    zh-TW: 二月
+    it: Feb
+  month_short.March:
+    en: Mar
+    zh-CN: 三月
+    zh-HK: 三月
+    zh-TW: 三月
+    it: Mar
+  month_short.April:
+    en: Apr
+    zh-CN: 四月
+    zh-HK: 四月
+    zh-TW: 四月
+    it: Apr
+  month_short.May:
+    en: May
+    zh-CN: 五月
+    zh-HK: 五月
+    zh-TW: 五月
+    it: Mag
+  month_short.June:
+    en: Jun
+    zh-CN: 六月
+    zh-HK: 六月
+    zh-TW: 六月
+    it: Giu
+  month_short.July:
+    en: Jul
+    zh-CN: 七月
+    zh-HK: 七月
+    zh-TW: 七月
+    it: Lug
+  month_short.August:
+    en: Aug
+    zh-CN: 八月
+    zh-HK: 八月
+    zh-TW: 八月
+    it: Ago
+  month_short.September:
+    en: Sep
+    zh-CN: 九月
+    zh-HK: 九月
+    zh-TW: 九月
+    it: Set
+  month_short.October:
+    en: Oct
+    zh-CN: 十月
+    zh-HK: 十月
+    zh-TW: 十月
+    it: Ott
+  month_short.November:
+    en: Nov
+    zh-CN: 十一月
+    zh-HK: 十一月
+    zh-TW: 十一月
+    it: Nov
+  month_short.December:
+    en: Dec
+    zh-CN: 十二月
+    zh-HK: 十二月
+    zh-TW: 十二月
+    it: Dic
 DatePicker:
   placeholder:
     en: "Select date"
@@ -128,6 +245,12 @@ Select:
     zh-HK: "請選擇"
     zh-TW: "請選擇"
     it: Seleziona
+  empty:
+    en: "No options found."
+    zh-CN: "未找到选项。"
+    zh-HK: "找不到選項。"
+    zh-TW: "找不到選項。"
+    it: "Nessuna opzione trovata."
 ComboBox:
   placeholder:
     en: "Please select"
@@ -235,6 +358,18 @@ Dialog:
     zh-TW: 取消
     it: Annulla
 List:
+  label:
+    en: List
+    zh-CN: 列表
+    zh-HK: 列表
+    zh-TW: 列表
+    it: Elenco
+  empty:
+    en: No items
+    zh-CN: 暂无内容
+    zh-HK: 暫無內容
+    zh-TW: 暫無內容
+    it: Nessun elemento
   search_placeholder:
     en: Search...
     zh-CN: 搜索...
@@ -242,6 +377,30 @@ List:
     zh-TW: 搜尋...
     it: Ricerca...
 Input:
+  Decrease Value:
+    en: Decrease value
+    zh-CN: 减小数值
+    zh-HK: 減小數值
+    zh-TW: 減小數值
+    it: Diminuisci valore
+  Increase Value:
+    en: Increase value
+    zh-CN: 增大数值
+    zh-HK: 增大數值
+    zh-TW: 增大數值
+    it: Aumenta valore
+  Show Password:
+    en: Show password
+    zh-CN: 显示密码
+    zh-HK: 顯示密碼
+    zh-TW: 顯示密碼
+    it: Mostra password
+  Hide Password:
+    en: Hide password
+    zh-CN: 隐藏密码
+    zh-HK: 隱藏密碼
+    zh-TW: 隱藏密碼
+    it: Nascondi password
   Replace:
     en: Replace
     zh-CN: 替换
@@ -289,20 +448,70 @@ Settings:
     zh-HK: 搜索...
     zh-TW: 搜尋...
     it: Ricerca...
+  no_results:
+    en: No settings found
+    zh-CN: 未找到相关设置
+    zh-HK: 未找到相關設定
+    zh-TW: 找不到相關設定
+    it: Nessuna impostazione trovata
   Reset All:
     en: Reset All
     zh-CN: 重置全部
     zh-HK: 重置全部
     zh-TW: 全部重設
     it: Resetta Tutto
+Slider:
+  label:
+    en: Slider
+    zh-CN: 滑块
+    zh-HK: 滑桿
+  start:
+    en: Start value
+    zh-CN: 起始值
+    zh-HK: 起始值
+  end:
+    en: End value
+    zh-CN: 结束值
+    zh-HK: 結束值
 Pagination:
+  label:
+    en: Pagination
+    zh-CN: 分页导航
+    zh-HK: 分頁導覽
+    zh-TW: 分頁導覽
   previous:
     en: Previous
     zh-CN: 上一页
     zh-HK: 上一頁
     zh-TW: 上一頁
+  previous_aria:
+    en: Go to previous page
+    zh-CN: 前往上一页
+    zh-HK: 前往上一頁
+    zh-TW: 前往上一頁
   next:
     en: Next
     zh-CN: 下一页
     zh-HK: 下一頁
     zh-TW: 下一頁
+  next_aria:
+    en: Go to next page
+    zh-CN: 前往下一页
+    zh-HK: 前往下一頁
+    zh-TW: 前往下一頁
+  more_pages:
+    en: More pages
+    zh-CN: 更多页码
+    zh-HK: 更多頁碼
+    zh-TW: 更多頁碼
+Stepper:
+  label:
+    en: Progress steps
+    zh-CN: 流程步骤
+    zh-HK: 流程步驟
+    zh-TW: 流程步驟
+  step:
+    en: Step %{step}
+    zh-CN: 第 %{step} 步
+    zh-HK: 第 %{step} 步
+    zh-TW: 第 %{step} 步

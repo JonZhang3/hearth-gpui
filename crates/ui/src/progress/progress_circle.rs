@@ -1,12 +1,11 @@
-use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use crate::{ActiveTheme, Sizable, Size, StyledExt, animation::effective_motion_duration};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, ElementId, Hsla, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, canvas,
-    ease_in_out, px, relative,
+    IntoElement, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, canvas, px,
+    relative,
 };
 use gpui::{Bounds, div};
-use instant::Duration;
 use std::f32::consts::TAU;
 
 use super::ProgressState;
@@ -155,6 +154,7 @@ impl RenderOnce for ProgressCircle {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let value = self.value;
         let loading = self.loading;
+        let motion = cx.theme().style.motion;
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| ProgressState::new(value));
         let prev_target = state.read(cx).target();
         let has_changed = prev_target != value;
@@ -181,11 +181,13 @@ impl RenderOnce for ProgressCircle {
                     let from = prev_target;
                     state.read(cx).set_target(value);
 
-                    let duration = Duration::from_secs_f64(0.15);
+                    let duration = motion.normal();
+                    let timer_duration = effective_motion_duration(duration, cx);
+                    let easing = motion.move_easing;
                     cx.spawn({
                         let state = state.clone();
                         async move |cx| {
-                            cx.background_executor().timer(duration).await;
+                            cx.background_executor().timer(timer_duration).await;
                             _ = state.update(cx, |this, _| {
                                 this.value = this.target();
                             });
@@ -195,7 +197,7 @@ impl RenderOnce for ProgressCircle {
 
                     this.with_animation(
                         format!("progress-circle-{}", from),
-                        Animation::new(duration),
+                        Animation::new(duration).with_easing(move |delta| easing.sample(delta)),
                         move |this, delta| {
                             let v = from + (value - from) * delta;
                             this.child(Self::render_circle(0., v, color))
@@ -203,12 +205,13 @@ impl RenderOnce for ProgressCircle {
                     )
                     .into_any_element()
                 } else if loading {
+                    let easing = motion.move_easing;
                     this.with_animation(
                         "progress-circle-loading",
-                        Animation::new(Duration::from_secs(1)).repeat(),
+                        Animation::new(motion.loading()).repeat(),
                         move |this, delta| {
-                            let end = ease_in_out(delta) * 100.;
-                            let start = ease_in_out(((delta - 0.5) / 0.5).clamp(0., 1.)) * 100.;
+                            let end = easing.sample(delta) * 100.;
+                            let start = easing.sample(((delta - 0.5) / 0.5).clamp(0., 1.)) * 100.;
                             this.child(Self::render_circle(start, end, color))
                         },
                     )

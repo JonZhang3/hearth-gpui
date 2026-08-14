@@ -14,7 +14,7 @@ use crate::{
     ActiveTheme,
     plot::{
         Plot,
-        label::{PlotLabel, TEXT_SIZE, Text},
+        label::{PlotLabel, Text, plot_text_size},
         polygon,
         scale::{Scale, ScaleLinear, Sealed},
         shape::RadialLine,
@@ -29,6 +29,14 @@ const DEFAULT_LABEL_GAP: f32 = 10.;
 
 /// The default number of concentric grid rings.
 const DEFAULT_GRID_LEVELS: usize = 4;
+
+/// Shape used by RadarChart grid rings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RadarGridShape {
+    #[default]
+    Polygon,
+    Circle,
+}
 
 /// The label of one radar dimension, returned by [`RadarChart::label`].
 pub enum RadarLabel {
@@ -92,6 +100,8 @@ where
     outer_radius: f32,
     grid: bool,
     grid_levels: usize,
+    grid_shape: RadarGridShape,
+    spokes: bool,
     dot: bool,
     id: Option<ElementId>,
 }
@@ -118,6 +128,8 @@ where
             outer_radius: 0.,
             grid: true,
             grid_levels: DEFAULT_GRID_LEVELS,
+            grid_shape: RadarGridShape::Polygon,
+            spokes: true,
             dot: false,
             id: None,
         }
@@ -233,6 +245,18 @@ where
     /// Set the number of concentric grid rings (defaults to 4).
     pub fn grid_levels(mut self, grid_levels: usize) -> Self {
         self.grid_levels = grid_levels.max(1);
+        self
+    }
+
+    /// Selects polygon or circular grid rings.
+    pub fn grid_shape(mut self, shape: RadarGridShape) -> Self {
+        self.grid_shape = shape;
+        self
+    }
+
+    /// Shows or hides radial spokes independently from grid rings.
+    pub fn spokes(mut self, spokes: bool) -> Self {
+        self.spokes = spokes;
         self
     }
 
@@ -405,13 +429,19 @@ where
 
         // Draw grid rings and spokes
         if self.grid {
-            let stroke = cx.theme().border;
+            let stroke = cx.theme().border.opacity(0.5);
 
             for level in 1..=self.grid_levels {
                 let radius = outer_radius * level as f32 / self.grid_levels as f32;
+                let point_count = if self.grid_shape == RadarGridShape::Circle {
+                    64
+                } else {
+                    n
+                };
+                let ring_step = TAU / point_count as f32;
                 RadialLine::new()
-                    .data(0..n)
-                    .angle(move |_, i| Some(i as f32 * angle_step))
+                    .data(0..point_count)
+                    .angle(move |_, i| Some(i as f32 * ring_step))
                     .radius(move |_, _| Some(radius))
                     .closed()
                     .stroke(stroke)
@@ -419,6 +449,9 @@ where
             }
 
             for i in 0..n {
+                if !self.spokes {
+                    break;
+                }
                 let angle = i as f32 * angle_step - HALF_PI;
                 let points = [
                     point(center_x, center_y),
@@ -461,6 +494,7 @@ where
         // Draw the text labels outside the outer ring; `prepaint` resolved them and
         // already placed the element ones.
         let label_color = self.label_color.unwrap_or(cx.theme().muted_foreground);
+        let text_size = plot_text_size(cx);
         let labels = self
             .label_texts
             .iter()
@@ -483,9 +517,10 @@ where
                 Some(
                     Text::new(
                         text,
-                        point(px(anchor.x), px(anchor.y - TEXT_SIZE / 2.)),
+                        point(px(anchor.x), px(anchor.y - text_size.as_f32() / 2.)),
                         label_color,
                     )
+                    .font_size(text_size)
                     .align(align),
                 )
             });
@@ -648,6 +683,16 @@ mod tests {
     fn test_radar_chart_grid_levels_min() {
         let chart: RadarChart<Item, f64> = RadarChart::new(vec![]).grid_levels(0);
         assert_eq!(chart.grid_levels, 1);
+    }
+
+    #[test]
+    fn test_radar_chart_grid_shape_and_spokes() {
+        let chart: RadarChart<Item, f64> = RadarChart::new(vec![])
+            .grid_shape(RadarGridShape::Circle)
+            .spokes(false);
+
+        assert_eq!(chart.grid_shape, RadarGridShape::Circle);
+        assert!(!chart.spokes);
     }
 
     #[test]

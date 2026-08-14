@@ -31,6 +31,15 @@ pub struct Arc {
     outer_radius: f32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ArcGeometry {
+    start_angle: f32,
+    end_angle: f32,
+    pad_angle: f32,
+    inner_radius: f32,
+    outer_radius: f32,
+}
+
 impl Default for Arc {
     fn default() -> Self {
         Self {
@@ -67,6 +76,72 @@ impl Arc {
         point(r * a.cos(), r * a.sin())
     }
 
+    fn geometry<T>(
+        &self,
+        arc: &ArcData<T>,
+        inner_radius: Option<f32>,
+        outer_radius: Option<f32>,
+    ) -> Option<ArcGeometry> {
+        let start_angle = arc.start_angle - HALF_PI;
+        let end_angle = arc.end_angle - HALF_PI;
+        let sweep = end_angle - start_angle;
+        let pad_angle = if sweep >= PI { 0.0001 } else { arc.pad_angle };
+        let inner_radius = inner_radius.unwrap_or(self.inner_radius).max(0.);
+        let outer_radius = outer_radius.unwrap_or(self.outer_radius).max(0.);
+        if outer_radius < EPSILON || sweep.abs() < EPSILON {
+            return None;
+        }
+        Some(ArcGeometry {
+            start_angle,
+            end_angle,
+            pad_angle,
+            inner_radius,
+            outer_radius,
+        })
+    }
+
+    /// Returns whether a point lies inside the same padded annular segment painted by this Arc.
+    pub fn contains<T>(
+        &self,
+        arc: &ArcData<T>,
+        position: Point<Pixels>,
+        bounds: &Bounds<Pixels>,
+        inner_radius: Option<f32>,
+        outer_radius: Option<f32>,
+    ) -> bool {
+        let Some(geometry) = self.geometry(arc, inner_radius, outer_radius) else {
+            return false;
+        };
+        let center = point(
+            bounds.size.width.as_f32() / 2.,
+            bounds.size.height.as_f32() / 2.,
+        );
+        let dx = position.x.as_f32() - center.x;
+        let dy = position.y.as_f32() - center.y;
+        let radius = dx.hypot(dy);
+        if radius < geometry.inner_radius || radius > geometry.outer_radius {
+            return false;
+        }
+
+        let sweep = geometry.end_angle - geometry.start_angle;
+        if sweep <= 0. {
+            return false;
+        }
+        let angle = dy.atan2(dx);
+        let relative_angle = (angle - geometry.start_angle).rem_euclid(2. * PI);
+        if relative_angle > sweep {
+            return false;
+        }
+
+        let effective_pad = if geometry.inner_radius > EPSILON && geometry.pad_angle > 0. {
+            let pad_width = geometry.outer_radius * geometry.pad_angle;
+            (pad_width / radius.max(EPSILON)).min(sweep * 0.8)
+        } else {
+            geometry.pad_angle
+        };
+        relative_angle >= effective_pad * 0.5 && relative_angle <= sweep - effective_pad * 0.5
+    }
+
     fn path<T>(
         &self,
         arc: &ArcData<T>,
@@ -74,28 +149,19 @@ impl Arc {
         outer_radius: Option<f32>,
         bounds: &Bounds<Pixels>,
     ) -> Option<Path<Pixels>> {
-        let start_angle = arc.start_angle - HALF_PI;
-        let end_angle = arc.end_angle - HALF_PI;
+        let geometry = self.geometry(arc, inner_radius, outer_radius)?;
+        let start_angle = geometry.start_angle;
+        let end_angle = geometry.end_angle;
         let da = end_angle - start_angle;
-        let pad_angle = if da >= PI {
-            // Leave some pad angle for full circle.
-            // If not, the path start and end will be the same point.
-            0.0001
-        } else {
-            arc.pad_angle
-        };
-        let r0 = inner_radius.unwrap_or(self.inner_radius).max(0.);
-        let r1 = outer_radius.unwrap_or(self.outer_radius).max(0.);
+        let pad_angle = geometry.pad_angle;
+        let r0 = geometry.inner_radius;
+        let r1 = geometry.outer_radius;
 
         // Calculate the center point.
         let center_x = bounds.origin.x.as_f32() + bounds.size.width.as_f32() / 2.;
         let center_y = bounds.origin.y.as_f32() + bounds.size.height.as_f32() / 2.;
 
         // Angle difference.
-        if r1 < EPSILON || da.abs() < EPSILON {
-            return None;
-        }
-
         // Handle pad angle.
         let (a0_outer, a1_outer, a0_inner, a1_inner) = if r0 > EPSILON && pad_angle > 0.0 {
             let pad_width = r1 * pad_angle;
@@ -227,5 +293,23 @@ mod tests {
 
         assert_eq!(centroid.x, expected_radius * expected_angle.cos());
         assert_eq!(centroid.y, expected_radius * expected_angle.sin());
+    }
+
+    #[test]
+    fn arc_contains_respects_annular_bounds_and_padding() {
+        let shape = Arc::new().inner_radius(40.).outer_radius(80.);
+        let segment = ArcData {
+            data: &(),
+            index: 0,
+            value: 1.,
+            start_angle: 0.,
+            end_angle: PI,
+            pad_angle: 0.2,
+        };
+        let bounds = Bounds::from_corners(point(px(0.), px(0.)), point(px(200.), px(200.)));
+
+        assert!(shape.contains(&segment, point(px(160.), px(100.)), &bounds, None, None));
+        assert!(!shape.contains(&segment, point(px(100.), px(100.)), &bounds, None, None));
+        assert!(!shape.contains(&segment, point(px(100.), px(30.)), &bounds, None, None));
     }
 }

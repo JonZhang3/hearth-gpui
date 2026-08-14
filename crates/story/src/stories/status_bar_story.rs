@@ -1,16 +1,11 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
-    Styled, Window,
+    Styled, Window, px,
 };
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    dock::PanelControl,
-    h_flex,
-    progress::ProgressCircle,
-    separator::Separator,
-    status_bar::StatusBar,
-    v_flex,
+    ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _, button::Button,
+    dock::PanelControl, h_flex, progress::ProgressCircle, separator::Separator,
+    status_bar::StatusBar, v_flex,
 };
 
 use crate::section;
@@ -65,7 +60,9 @@ impl Render for StatusBarStory {
                     v_flex().w_full().child(
                         StatusBar::new()
                             .left(
-                                Button::new("branch").ghost().xsmall()
+                                Button::new("branch")
+                                    .ghost()
+                                    .xsmall()
                                     .icon(IconName::Github)
                                     .label("main")
                                     .tooltip("Git branch")
@@ -73,7 +70,7 @@ impl Render for StatusBarStory {
                                         window.push_notification("Switch branch", cx);
                                     }),
                             )
-                            .left(Separator::vertical().h_3())
+                            .left(Separator::vertical())
                             .left(
                                 h_flex()
                                     .items_center()
@@ -102,24 +99,34 @@ impl Render for StatusBarStory {
                                     ),
                             )
                             .right(
-                                Button::new("position").ghost().xsmall()
+                                Button::new("position")
+                                    .ghost()
+                                    .xsmall()
                                     .label("Ln 12, Col 34")
                                     .tooltip("Go to Line/Column")
                                     .on_click(|_, window, cx| {
                                         window.push_notification("Go to Line/Column", cx);
                                     }),
                             )
-                            .right(Separator::vertical().h_3())
-                            .right(Button::new("encoding").ghost().xsmall().label("UTF-8").on_click(
-                                |_, window, cx| {
-                                    window.push_notification("Select encoding", cx);
-                                },
-                            ))
-                            .right(Button::new("language").ghost().xsmall().label("Rust").on_click(
-                                |_, window, cx| {
-                                    window.push_notification("Select language", cx);
-                                },
-                            )),
+                            .right(Separator::vertical())
+                            .right(
+                                Button::new("encoding")
+                                    .ghost()
+                                    .xsmall()
+                                    .label("UTF-8")
+                                    .on_click(|_, window, cx| {
+                                        window.push_notification("Select encoding", cx);
+                                    }),
+                            )
+                            .right(
+                                Button::new("language")
+                                    .ghost()
+                                    .xsmall()
+                                    .label("Rust")
+                                    .on_click(|_, window, cx| {
+                                        window.push_notification("Select language", cx);
+                                    }),
+                            ),
                     ),
                 ),
             )
@@ -143,7 +150,9 @@ impl Render for StatusBarStory {
                             )
                             .right("All changes saved")
                             .right(
-                                Button::new("notifications").ghost().xsmall()
+                                Button::new("notifications")
+                                    .ghost()
+                                    .xsmall()
                                     .icon(IconName::Bell)
                                     .label("3")
                                     .tooltip("3 notifications")
@@ -178,6 +187,17 @@ impl Render for StatusBarStory {
                                 .right("Right"),
                         )
                         .child(StatusBar::new().left("Left").right("Right")),
+                ),
+            )
+            .child(
+                section("Narrow layout").child(
+                    v_flex().w_full().max_w(px(420.)).child(
+                        StatusBar::new()
+                            .left("main")
+                            .child("A deliberately long center status that yields to pinned items")
+                            .right("UTF-8")
+                            .right("Ln 12, Col 34"),
+                    ),
                 ),
             )
     }

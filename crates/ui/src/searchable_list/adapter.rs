@@ -1,11 +1,18 @@
-use gpui::{AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Window, div};
+use gpui::{
+    AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
+    prelude::FluentBuilder as _, px,
+};
 
 use crate::{
-    ActiveTheme, Disableable as _, Icon, IconName, IndexPath, Sizable as _, Size, StyleSized as _,
+    ActiveTheme, Density, Disableable as _, Icon, IconName, IndexPath, Sizable as _, Size,
+    StyleSized as _,
     list::{ListDelegate, ListState},
 };
 
-use super::{delegate::{SearchableListDelegate, SearchableListItem as _}, item::SearchableListItemElement};
+use super::{
+    delegate::{SearchableListDelegate, SearchableListItem as _},
+    item::SearchableListItemElement,
+};
 
 /// Bridges a [`SearchableListDelegate`] into the [`ListDelegate`] protocol.
 ///
@@ -30,6 +37,10 @@ pub(crate) struct SearchableListAdapter<D: SearchableListDelegate + 'static> {
     pub(crate) size: Size,
     /// Override the trailing check icon; defaults to `IconName::Check`.
     pub(crate) check_icon: Option<Icon>,
+    /// Apply the Select-specific menu geometry instead of the generic searchable-list style.
+    pub(crate) select_style: bool,
+    /// Draw separators between section groups when Select requests them.
+    pub(crate) section_separators: bool,
 }
 
 impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
@@ -49,6 +60,8 @@ impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
             on_render_empty: Box::new(on_render_empty),
             size: Size::default(),
             check_icon: None,
+            select_style: false,
+            section_separators: false,
         }
     }
 
@@ -57,6 +70,15 @@ impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
     pub(crate) fn update_selection_snapshot(&mut self, snapshot: Vec<(IndexPath, D::Item)>) {
         self.selection_snapshot = snapshot;
     }
+}
+
+/// Returns whether another visible section follows the current section.
+fn has_visible_section_after(
+    section: usize,
+    sections_count: usize,
+    mut is_visible: impl FnMut(usize) -> bool,
+) -> bool {
+    ((section + 1)..sections_count).any(&mut is_visible)
 }
 
 impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter<D> {
@@ -70,27 +92,96 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         self.delegate.items_count(section)
     }
 
+    fn item_label(&self, ix: IndexPath, _: &App) -> gpui::SharedString {
+        self.delegate
+            .item(ix)
+            .map(|item| item.title())
+            .unwrap_or_default()
+    }
+
+    fn is_item_enabled(&self, ix: IndexPath, cx: &App) -> bool {
+        self.delegate
+            .item(ix)
+            .map(|item| self.delegate.is_item_enabled(ix, item, cx))
+            .unwrap_or(false)
+    }
+
     fn render_section_header(
         &mut self,
         section: usize,
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
     ) -> Option<impl IntoElement> {
-        if let Some(el) = self.delegate.render_section_header(section, window, cx) {
-            return Some(el.into_any_element());
+        let custom_header = self.delegate.render_section_header(section, window, cx);
+        if !self.select_style {
+            if let Some(header) = custom_header {
+                return Some(header.into_any_element());
+            }
+
+            #[allow(deprecated)]
+            let item = self.delegate.section(section)?;
+            return Some(
+                div()
+                    .py_0p5()
+                    .px_2()
+                    .list_size(self.size, cx)
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(item)
+                    .into_any_element(),
+            );
         }
 
-        #[allow(deprecated)]
-        let item = self.delegate.section(section)?;
+        let metrics = crate::select::SelectMetrics::resolve(Size::Medium, cx);
+        let default_header = if custom_header.is_none() {
+            #[allow(deprecated)]
+            self.delegate.section(section).map(|item| {
+                div()
+                    .px(metrics.label_padding_x)
+                    .py(metrics.label_padding_y)
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(item)
+                    .into_any_element()
+            })
+        } else {
+            None
+        };
+        custom_header.or(default_header)
+    }
 
+    fn render_section_footer(
+        &mut self,
+        section: usize,
+        _: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<impl IntoElement> {
+        let has_separator = self.select_style
+            && self.section_separators
+            && has_visible_section_after(section, self.delegate.sections_count(cx), |candidate| {
+                self.delegate.items_count(candidate) > 0
+            });
+        if !has_separator {
+            return None;
+        }
+
+        let separator_opacity = match cx.theme().style.density {
+            Density::Comfortable => 0.5,
+            Density::Standard | Density::Compact => 1.0,
+        };
         Some(
             div()
-                .py_0p5()
-                .px_2()
-                .list_size(self.size)
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(item)
+                .relative()
+                .h(px(9.))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(4.))
+                        .left_0()
+                        .right_0()
+                        .h(px(1.))
+                        .bg(cx.theme().border.opacity(separator_opacity)),
+                )
                 .into_any_element(),
         )
     }
@@ -100,10 +191,13 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         ix: IndexPath,
         window: &mut Window,
         cx: &mut Context<ListState<Self>>,
-    ) -> Option<Self::Item> {
+    ) -> Self::Item {
         use gpui::IntoElement as _;
 
-        let item = self.delegate.item(ix)?;
+        let item = self
+            .delegate
+            .item(ix)
+            .expect("items_count must only include renderable searchable-list items");
         // Read check state from the snapshot — never from an external entity, which would panic
         // because the ListState entity is already locked for this render pass.
         let is_checked = self
@@ -113,12 +207,11 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         let size = self.size;
 
         if let Some(el) = self.delegate.render_item(ix, item, is_checked, window, cx) {
-            return Some(
-                SearchableListItemElement::new(ix.row)
-                    .disabled(disabled)
-                    .with_size(size)
-                    .child(el),
-            );
+            return SearchableListItemElement::new(ix.row)
+                .disabled(disabled)
+                .with_size(size)
+                .select_style(self.select_style)
+                .child(el);
         }
 
         let check_icon = self
@@ -127,17 +220,20 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
             .unwrap_or_else(|| Icon::new(IconName::Check));
 
         let content = div()
+            .w_full()
+            .min_w_0()
+            .overflow_hidden()
             .whitespace_nowrap()
+            .when(self.select_style, |this| this.truncate())
             .child(item.render(window, cx).into_any_element());
 
-        Some(
-            SearchableListItemElement::new(ix.row)
-                .checked(is_checked)
-                .check_icon(check_icon)
-                .disabled(disabled)
-                .with_size(size)
-                .child(content.into_any_element()),
-        )
+        SearchableListItemElement::new(ix.row)
+            .checked(is_checked)
+            .check_icon(check_icon)
+            .disabled(disabled)
+            .with_size(size)
+            .select_style(self.select_style)
+            .child(content.into_any_element())
     }
 
     fn cancel(&mut self, window: &mut Window, cx: &mut Context<ListState<Self>>) {
@@ -173,5 +269,19 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         cx: &mut Context<ListState<Self>>,
     ) -> impl IntoElement {
         (self.on_render_empty)(window, cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::has_visible_section_after;
+
+    #[test]
+    fn separator_successor_ignores_empty_sections() {
+        let counts = [0, 2, 0, 3, 0];
+        let is_visible = |section| counts[section] > 0;
+
+        assert!(has_visible_section_after(1, counts.len(), is_visible));
+        assert!(!has_visible_section_after(3, counts.len(), is_visible));
     }
 }

@@ -59,10 +59,10 @@ impl MyTableDelegate {
                 MyData { id: 2, name: "Jane".to_string(), age: 25, email: "jane@example.com".to_string() },
             ],
             columns: vec![
-                Column::new("id", "ID").width(60.),
-                Column::new("name", "Name").width(150.).sortable(),
-                Column::new("age", "Age").width(80.).sortable(),
-                Column::new("email", "Email").width(200.),
+                Column::new("id", "ID").w(60.),
+                Column::new("name", "Name").w(150.).sortable(),
+                Column::new("age", "Age").w(80.).sortable(),
+                Column::new("email", "Email").w(200.),
             ],
         }
     }
@@ -108,7 +108,7 @@ Column::new("id", "ID")
 
 Column::new("name", "Name")
     .sortable()
-    .width(150.)
+    .w(150.)
 
 Column::new("price", "Price")
     .text_right()
@@ -321,18 +321,25 @@ impl TableDelegate for MyTableDelegate {
 
 ## 表格样式
 
-`DataTable` 实现了 `Sizable`：可以用 `.small()`、`.large()` 等预设尺寸调整表格密度，也可以传入自定义像素值来设置统一的表头和表体行高。
+`DataTable` 消费 Table 共用的 `DataMetrics`，因此 Vega、Nova 和 Maia 可以独立控制行高与单元格内边距，而不会改变数据行为。组件同时实现了 `Sizable` 与 `Styled`：预设尺寸用于标准密度，自定义像素尺寸用于统一行高，GPUI 样式 refinement 用于覆盖容器样式。
+
+默认表面遵循 shadcn Data Table 的组合方式：透明表头、语义行分割线、`muted/50` hover、`muted` 行选中状态，以及可选的圆角外边框。斑马纹、虚拟滚动、固定列、列宽调整和单元格选择继续作为 GPUI 原生扩展保留。
 
 ```rust
 use gpui::px;
 use gpui_component::Sizable as _;
+use gpui::Styled as _;
 
 DataTable::new(&state)
+    .aria_label("Stocks")
     .with_size(px(48.))
     .stripe(true)
     .bordered(true)
     .scrollbar_visible(true, true)
+    .max_h(px(640.))
 ```
+
+获得焦点的 DataTable 会以可访问 Grid 暴露。可见行、列头和单元格提供稳定的行列索引，根节点同时声明完整虚拟数据集的总行数与总列数。
 
 ## 键盘快捷键
 

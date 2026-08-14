@@ -1,14 +1,20 @@
 use std::rc::Rc;
 
-use gpui::{App, Bounds, Hsla, PathBuilder, Pixels, SharedString, Window, fill, px};
+use gpui::{
+    AnyElement, App, Bounds, ElementId, Hsla, IntoElement, PathBuilder, Pixels, Point,
+    SharedString, Window, fill, point, px,
+};
 use gpui_component_macros::IntoPlot;
 use num_traits::{Num, ToPrimitive};
 
 use crate::{
     ActiveTheme,
     plot::{
-        AXIS_GAP, Grid, Plot, PlotAxis, origin_point,
+        AXIS_GAP, Grid, Plot, PlotAxis,
+        label::plot_text_size,
+        origin_point,
         scale::{Scale, ScaleBand, ScaleLinear, Sealed},
+        tooltip::{CrossLine, Tooltip, TooltipState},
     },
 };
 
@@ -31,6 +37,7 @@ where
     body_width_ratio: f32,
     x_axis: bool,
     grid: bool,
+    id: Option<ElementId>,
 }
 
 impl<T, X, Y> CandlestickChart<T, X, Y>
@@ -53,11 +60,18 @@ where
             body_width_ratio: 0.8,
             x_axis: true,
             grid: true,
+            id: None,
         }
     }
 
     pub fn x(mut self, x: impl Fn(&T) -> X + 'static) -> Self {
         self.x = Some(Rc::new(x));
+        self
+    }
+
+    /// Enables an OHLC hover tooltip using a stable sibling-unique identifier.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
         self
     }
 
@@ -102,6 +116,29 @@ where
     pub fn grid(mut self, grid: bool) -> Self {
         self.grid = grid;
         self
+    }
+
+    fn scales(&self, bounds: Bounds<Pixels>) -> Option<(ScaleBand<X>, ScaleLinear<Y>)> {
+        let (x_fn, open, high, low, close) = (
+            self.x.as_ref()?,
+            self.open.as_ref()?,
+            self.high.as_ref()?,
+            self.low.as_ref()?,
+            self.close.as_ref()?,
+        );
+        let height = bounds.size.height.as_f32() - if self.x_axis { AXIS_GAP } else { 0. };
+        let x = ScaleBand::new(
+            self.data.iter().map(|datum| x_fn(datum)).collect(),
+            vec![0., bounds.size.width.as_f32()],
+        )
+        .padding_inner(0.4)
+        .padding_outer(0.2);
+        let values = self
+            .data
+            .iter()
+            .flat_map(|datum| [high(datum), low(datum), open(datum), close(datum)])
+            .collect();
+        Some((x, ScaleLinear::new(values, vec![height, 10.])))
     }
 }
 
@@ -149,6 +186,7 @@ where
                 band_width,
                 self.tick_margin,
                 cx.theme().muted_foreground,
+                plot_text_size(cx),
             );
             axis = axis.x(height).x_label(labels);
         }
@@ -158,8 +196,7 @@ where
         if self.grid {
             Grid::new()
                 .y((0..=3).map(|i| height * i as f32 / 4.0).collect())
-                .stroke(cx.theme().border)
-                .dash_array(&[px(4.), px(2.)])
+                .stroke(cx.theme().border.opacity(0.5))
                 .paint(&bounds, window);
         }
 
@@ -234,5 +271,67 @@ where
 
             window.paint_quad(fill(body_bounds, color));
         }
+    }
+
+    fn id(&self) -> Option<ElementId> {
+        self.id.clone()
+    }
+
+    fn tooltip_state(
+        &self,
+        position: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _cx: &App,
+    ) -> Option<TooltipState> {
+        let x_fn = self.x.as_ref()?;
+        let (x, _) = self.scales(bounds)?;
+        let height = bounds.size.height.as_f32() - if self.x_axis { AXIS_GAP } else { 0. };
+        if position.y.as_f32() > height {
+            return None;
+        }
+        let index = x.least_index(position.x.as_f32());
+        let datum = self.data.get(index)?;
+        let center = x.tick(&x_fn(datum))? + x.band_width() / 2.;
+        Some(TooltipState::new(
+            index,
+            point(px(center), position.y),
+            Vec::new(),
+        ))
+    }
+
+    fn tooltip(
+        &self,
+        state: &TooltipState,
+        cursor: Point<Pixels>,
+        bounds: Bounds<Pixels>,
+        _window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        let datum = self.data.get(state.index)?;
+        let title: SharedString = self.x.as_ref()?(datum).into();
+        let open = self.open.as_ref()?(datum).to_f64()?;
+        let high = self.high.as_ref()?(datum).to_f64()?;
+        let low = self.low.as_ref()?(datum).to_f64()?;
+        let close = self.close.as_ref()?(datum).to_f64()?;
+        let color = if close >= open {
+            cx.theme().chart_bullish
+        } else {
+            cx.theme().chart_bearish
+        };
+        Some(
+            Tooltip::new(cursor, bounds.size)
+                .gap(px(8.))
+                .cross_line(
+                    CrossLine::new(state.cross_line).height(
+                        bounds.size.height.as_f32() - if self.x_axis { AXIS_GAP } else { 0. },
+                    ),
+                )
+                .title(title)
+                .row(color, "Open", format!("{open}"))
+                .row(color, "High", format!("{high}"))
+                .row(color, "Low", format!("{low}"))
+                .row(color, "Close", format!("{close}"))
+                .into_any_element(),
+        )
     }
 }

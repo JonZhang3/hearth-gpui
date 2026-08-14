@@ -16,6 +16,8 @@ pub struct SwitchStory {
     switch3: bool,
     switch4: bool,
     switch5: bool,
+    invalid1: bool,
+    invalid2: bool,
 }
 
 impl super::Story for SwitchStory {
@@ -45,6 +47,8 @@ impl SwitchStory {
             switch3: true,
             switch4: true,
             switch5: false,
+            invalid1: false,
+            invalid2: true,
         }
     }
 }
@@ -69,7 +73,7 @@ impl Render for SwitchStory {
                 .gap_4()
                 .p_4()
                 .w_full()
-                .rounded(cx.theme().radius)
+                .rounded(cx.theme().style.radii.md)
                 .border_1()
                 .border_color(cx.theme().border)
         }
@@ -88,6 +92,7 @@ impl Render for SwitchStory {
                     .child(
                         h_flex().gap_2().child("Subscribe").child(
                             Switch::new("switch1")
+                                .aria_label("Subscribe to marketing emails")
                                 .checked(self.switch1)
                                 .on_click(cx.listener(move |view, checked, _, cx| {
                                     view.switch1 = *checked;
@@ -109,6 +114,7 @@ impl Render for SwitchStory {
                     )
                     .child(
                         Switch::new("switch2")
+                            .aria_label("Receive security emails")
                             .checked(self.switch2)
                             .on_click(cx.listener(move |view, checked, _, cx| {
                                 view.switch2 = *checked;
@@ -118,19 +124,80 @@ impl Render for SwitchStory {
             )
             .child(
                 section("Disabled")
-                    .child(Switch::new("switch3").disabled(true).on_click(|v, _, _| {
-                        println!("Switch value changed: {:?}", v);
-                    }))
                     .child(
-                        Switch::new("switch3_1")
+                        h_flex()
+                            .gap_4()
+                            .child(
+                                Switch::new("disabled-unchecked")
+                                    .label("Disabled (unchecked)")
+                                    .disabled(true),
+                            )
+                            .child(
+                                Switch::new("disabled-checked")
+                                    .label("Disabled (checked)")
+                                    .checked(true)
+                                    .disabled(true),
+                            ),
+                    )
+                    .child(
+                        Switch::new("disabled-left-label")
                             .w(px(200.))
                             .label("Airplane Mode")
+                            .label_side(gpui_component::Side::Left)
                             .checked(true)
-                            .disabled(true)
-                            .on_click(|ev, _, _| {
-                                println!("Switch value changed: {:?}", ev);
-                            }),
+                            .disabled(true),
                     ),
+            )
+            .child(
+                section("Invalid").child(
+                    h_flex()
+                        .gap_4()
+                        .child(
+                            Switch::new("invalid-unchecked")
+                                .checked(self.invalid1)
+                                .invalid(true)
+                                .label("Required")
+                                .on_click(cx.listener(|view, checked, _, cx| {
+                                    view.invalid1 = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Switch::new("invalid-checked")
+                                .checked(self.invalid2)
+                                .invalid(true)
+                                .label("Invalid checked")
+                                .on_click(cx.listener(|view, checked, _, cx| {
+                                    view.invalid2 = *checked;
+                                    cx.notify();
+                                })),
+                        ),
+                ),
+            )
+            .child(
+                section("Sizes").child(
+                    h_flex()
+                        .gap_4()
+                        .child(
+                            Switch::new("size-default")
+                                .checked(self.switch3)
+                                .label("Default")
+                                .on_click(cx.listener(|view, checked, _, cx| {
+                                    view.switch3 = *checked;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Switch::new("size-small")
+                                .checked(self.switch3)
+                                .label("Small")
+                                .small()
+                                .on_click(cx.listener(|view, checked, _, cx| {
+                                    view.switch3 = *checked;
+                                    cx.notify();
+                                })),
+                        ),
+                ),
             )
             .child(
                 section("Custom Color").child(
@@ -163,18 +230,6 @@ impl Render for SwitchStory {
                                 .color(theme.success)
                                 .disabled(true),
                         ),
-                ),
-            )
-            .child(
-                section("Small Size").child(
-                    Switch::new("switch3")
-                        .checked(self.switch3)
-                        .label("Small Size")
-                        .small()
-                        .on_click(cx.listener(move |view, checked, _, cx| {
-                            view.switch3 = *checked;
-                            cx.notify();
-                        })),
                 ),
             )
     }

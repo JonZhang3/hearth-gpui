@@ -7,6 +7,18 @@ description: 支持单日期和日期范围选择的日历选择器组件。
 
 DatePicker 是一个灵活的日期选择组件，内置日历界面，支持单日期选择、日期范围选择、自定义格式、禁用日期和预设范围。
 
+DatePicker 按照 shadcn 的组合方式实现：使用 Outline Button 作为 Trigger、使用与 Trigger 起始边对齐且间距为 4px 的 Popover，并复用共享 Calendar。GPUI 版本额外保留了清空操作与预设快捷项。
+
+## 交互
+
+- Trigger 获得焦点后，点击或按 Enter/Space 可打开日历。
+- 再次点击 Trigger、按 Escape 或点击外部可关闭；退出动效完成后，焦点返回 Trigger。
+- 选择日期、完成范围或点击预设只更新值，不会自动关闭 Popover。
+- 使用方向键移动当前日期，Page Up/Page Down 切换页面，Home/End 移动到边界，Enter/Space 完成选择。
+- Popover 复用共享的方向进入/退出动效，不包含透明度变化，并遵循 reduced-motion 设置。
+- 单日期选择器默认显示一个月；标准范围选择应显式设置 `.number_of_months(2)`。
+- 已选值默认跟随当前应用语言；范围只选择起点时，在终点待选择期间显示起始日期。
+
 ## 导入
 
 ```rust
@@ -66,6 +78,10 @@ DatePicker::new(&range_picker)
 ```
 
 ### 自定义日期格式
+
+未设置 `.date_format(...)` 时，Trigger 会按当前应用语言显示日期。英文单日期使用完整月份和序数日（`September 16th, 2026`），英文范围使用紧凑的两端格式（`Sep 28, 2025 - Oct 15, 2025`）；中文语言使用本地年月日顺序（`2025年9月28日 - 2025年10月15日`）。运行时切换语言后，下次渲染会同步更新。
+
+应用需要固定 Chrono 格式时可设置 `.date_format(...)`；显式格式的优先级高于本地化格式。
 
 ```rust
 let date_picker = cx.new(|cx| {
@@ -204,7 +220,7 @@ let birthday_picker = cx.new(|cx| {
     let current_year = chrono::Local::now().year();
     let mut picker = DatePickerState::new(window, cx)
         .date_format("%Y-%m-%d");
-    picker.set_year_range((1900, current_year + 1), window, cx);
+    picker.set_year_range((1900, current_year + 1), cx);
     picker
 });
 
