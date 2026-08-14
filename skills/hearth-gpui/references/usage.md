@@ -48,7 +48,7 @@ use hearth_gpui::button::Button;
 
 impl Render for MyView {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        Button::new("btn").primary().label("Submit")
+        Button::new("btn").label("Submit")
             .on_click(|_, _, _| println!("clicked"))
     }
 }
@@ -87,21 +87,25 @@ impl Render for MyView {
 ### Button
 
 ```rust
-use hearth_gpui::button::{Button, ButtonGroup};
+use hearth_gpui::{button::{Button, ButtonGroup}, spinner::Spinner, IconName};
 
-// Variants
+// shadcn variants. Default is the primary action style.
 Button::new("btn").label("Default")
-Button::new("btn").primary().label("Primary")
-Button::new("btn").danger().label("Delete")
-Button::new("btn").warning().label("Warning")
-Button::new("btn").success().label("Success")
+Button::new("btn").outline().label("Outline")
+Button::new("btn").secondary().label("Secondary")
+Button::new("btn").destructive().label("Delete")
 Button::new("btn").ghost().label("Ghost")
 Button::new("btn").link().label("Link")
 
 // States
 Button::new("btn").label("Text").disabled(true)
-Button::new("btn").label("Text").loading(true)
-Button::new("btn").label("Text").selected(true)
+Button::new("btn").label("Text").pressed(true)
+
+// Loading is explicit composition.
+Button::new("btn")
+    .icon(Spinner::new())
+    .label("Saving")
+    .disabled(true)
 
 // With icon
 Button::new("btn").icon(IconName::Plus).label("Add")
@@ -113,9 +117,9 @@ Button::new("btn").large().label("L")
 
 // Group
 ButtonGroup::new("group")
-    .child(Button::new("a").label("A"))
-    .child(Button::new("b").label("B"))
-    .on_click(|indices, _, _| { /* selected indices */ })
+    .aria_label("Document actions")
+    .child(Button::new("save").outline().label("Save"))
+    .child(Button::new("share").outline().label("Share"))
 ```
 
 ### Input
@@ -133,6 +137,9 @@ let input = cx.new(|cx| InputState::new(window, cx)
 Input::new(&input)
 Input::new(&input).cleanable(true)           // clear button
 Input::new(&input).disabled(true)
+Input::new(&input).read_only(true)           // focus, selection, and copy still work
+Input::new(&input).invalid(true)
+Input::new(&input).aria_label("Account name")
 Input::new(&input).prefix(Icon::new(IconName::Search).small())
 Input::new(&input).suffix(Button::new("b").ghost().icon(IconName::X).xsmall())
 Input::new(&input).content_type(InputContentType::Password)
@@ -165,15 +172,16 @@ let state = cx.new(|cx| {
 // Render
 Select::new(&state)
 Select::new(&state).placeholder("Pick one")
+Select::new(&state).invalid(true).aria_label("Fruit")
 
 // Reading selection
-let selected = state.read(cx).selected_item();
+let selected = state.read(cx).selected_value();
 ```
 
 ### Checkbox / Switch / Radio
 
 ```rust
-use hearth_gpui::{Checkbox, Switch};
+use hearth_gpui::{checkbox::Checkbox, switch::Switch};
 
 // Stateless (controlled)
 Checkbox::new("cb").checked(self.checked)
@@ -196,17 +204,24 @@ Icon::new(IconName::Plus).large().text_color(cx.theme().primary)
 ### Dialog
 
 ```rust
-use hearth_gpui::dialog::Dialog;
+use hearth_gpui::{
+    WindowExt as _,
+    button::Button,
+    dialog::{DialogAction, DialogClose, DialogFooter},
+};
 
 // Open from window context
-window.open_modal(cx, |modal, _, cx| {
-    modal
+window.open_dialog(cx, |dialog, _, _| {
+    dialog
         .title("Confirm")
+        .description("Review the action before continuing.")
         .child(div().child("Are you sure?"))
-        .footer(|this, _, cx| {
-            this.child(Button::new("cancel").label("Cancel"))
-                .child(Button::new("ok").primary().label("OK")
-                    .on_click(|_, window, cx| { window.close_modal(cx); }))
+        .footer(|_, _| {
+            DialogFooter::new()
+                .child(DialogClose::new(
+                    Button::new("cancel").outline().label("Cancel"),
+                ))
+                .child(DialogAction::new(Button::new("ok").label("OK")))
         })
 });
 ```
@@ -218,10 +233,7 @@ window.open_modal(cx, |modal, _, cx| {
 window.push_notification("Saved successfully!", cx);
 
 // With type variant
-window.push_notification(
-    Notification::new("Upload complete").info().message("File uploaded"),
-    cx,
-);
+window.push_notification(Notification::success("Upload complete"), cx);
 ```
 
 ### Tabs
@@ -230,9 +242,9 @@ window.push_notification(
 use hearth_gpui::tab::{Tab, TabBar};
 
 TabBar::new("tabs")
-    .child(Tab::new("tab1").child("Overview"))
-    .child(Tab::new("tab2").child("Settings"))
-    .child(Tab::new("tab3").child("Logs"))
+    .child(Tab::new().label("Overview"))
+    .child(Tab::new().label("Settings"))
+    .child(Tab::new().label("Logs"))
 ```
 
 ### Tooltip
@@ -303,6 +315,10 @@ cx.subscribe(&list_state, |this, _, event, cx| {
 
 ## Theming
 
+Color Themes own colors, typography, and syntax highlighting. Style Presets own density,
+geometry, radii, focus treatment, elevation, overlay spacing, and motion. Vega is the default;
+Nova is compact and Maia is comfortable.
+
 ```rust
 use hearth_gpui::ActiveTheme as _;
 
@@ -315,6 +331,11 @@ cx.theme().surface
 cx.theme().muted
 cx.theme().destructive
 
+// Access semantic Style Preset metrics
+cx.theme().style.controls.md.height
+cx.theme().style.radii.md
+cx.theme().style.motion.normal()
+
 // Use in styles
 div()
     .bg(cx.theme().surface)
@@ -322,19 +343,21 @@ div()
     .border_color(cx.theme().border)
 ```
 
-### Switch Theme
+### Switch Color Theme and Style Preset Independently
 
 ```rust
 use hearth_gpui::Theme;
 
-// Toggle light/dark
-cx.update_global::<Theme, _>(|theme, cx| {
-    theme.toggle_mode(cx);
-});
+// Changes geometry and motion without changing colors or syntax highlighting.
+Theme::set_style("nova", cx)?;
 
-// Load a named theme
-Theme::global_mut(cx).apply_config(&theme_config);
+// Changes colors and typography without changing the active Style Preset.
+Theme::set_color_theme(theme_config, cx);
 ```
+
+Component code must consume semantic fields from `cx.theme().style`; it must never branch on the
+`vega`, `nova`, or `maia` preset id. Reduced Motion is an application accessibility preference and
+must render the final state without delayed unmount.
 
 ---
 
@@ -354,7 +377,7 @@ h_flex().gap_2().items_center()
 v_flex().gap_4().p_4()
     .child(Input::new(&self.name))
     .child(Input::new(&self.email))
-    .child(Button::new("submit").primary().label("Submit"))
+    .child(Button::new("submit").label("Submit"))
 ```
 
 ---
@@ -369,9 +392,9 @@ impl Render for MyApp {
         div()
             .size_full()
             .child(self.main_content(window, cx))
-            .children(Root::render_dialog_layer(cx))
-            .children(Root::render_sheet_layer(cx))
-            .children(Root::render_notification_layer(cx))
+            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_sheet_layer(window, cx))
+            .children(Root::render_notification_layer(window, cx))
     }
 }
 ```

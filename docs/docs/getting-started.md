@@ -53,7 +53,6 @@ impl Render for HelloWorld {
             .child("Hello, World!")
             .child(
                 Button::new("ok")
-                    .primary()
                     .label("Let's Go!")
                     .on_click(|_, _, _| println!("Clicked!")),
             )
@@ -135,7 +134,9 @@ impl Render for MyView {
 
 ### Theming
 
-All components support theming through the built-in `Theme` system:
+All components support the built-in `Theme` system. Color Themes own colors and typography;
+Style Presets own component geometry, density, radii, elevation, focus treatment, and motion.
+Vega is the default Style Preset, while Nova and Maia are optional alternatives.
 
 ```rust
 use hearth_gpui::{ActiveTheme, Theme};
@@ -144,6 +145,11 @@ use hearth_gpui::{ActiveTheme, Theme};
 cx.theme().primary
 cx.theme().background
 cx.theme().foreground
+cx.theme().style.controls.md.height
+cx.theme().style.radii.md
+
+// Style selection preserves the active Color Theme.
+Theme::set_style("nova", cx)?;
 ```
 
 ### Sizing
@@ -162,13 +168,16 @@ Button::new("btn").xsmall()
 Components offer different visual variants:
 
 ```rust
-Button::new("btn").primary()
-Button::new("btn").danger()
-Button::new("btn").warning()
-Button::new("btn").success()
-Button::new("btn").ghost()
+Button::new("btn") // Default is the primary action style.
 Button::new("btn").outline()
+Button::new("btn").secondary()
+Button::new("btn").destructive()
+Button::new("btn").ghost()
+Button::new("btn").link()
 ```
+
+Loading is explicit composition: place a `Spinner` in the Button and disable the action while work
+is pending.
 
 ## Icons
 

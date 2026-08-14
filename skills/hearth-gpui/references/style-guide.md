@@ -2,7 +2,7 @@
 
 Based on analysis of `Button`, `Checkbox`, `Input`, `Select`, and other components in `crates/ui/src`.
 
-**Contents:** [Component Structure](#component-structure) · [Required Traits](#required-trait-implementations) · [Optional Traits](#optional-traits) · [Variants Pattern](#variants-pattern) · [Callback Signatures](#callback-signatures) · [Import Organization](#import-organization) · [Doc Comments](#doc-comments) · [Applying User Style Overrides](#applying-user-style-overrides) · [FluentBuilder Conditionals](#fluentbuilder-for-conditionals) · [Theme Colors](#theme-colors) · [Size Handling](#size-handling) · [Checklist](#checklist-for-new-components)
+**Contents:** [Component Structure](#component-structure) · [Required Traits](#required-trait-implementations) · [Optional Traits](#optional-traits) · [Variants Pattern](#variants-pattern) · [Callback Signatures](#callback-signatures) · [Import Organization](#import-organization) · [Doc Comments](#doc-comments) · [Applying User Style Overrides](#applying-user-style-overrides) · [FluentBuilder Conditionals](#fluentbuilder-for-conditionals) · [Theme and Style Presets](#theme-and-style-presets) · [Size Handling](#size-handling) · [Checklist](#checklist-for-new-components)
 
 ## Component Structure
 
@@ -311,7 +311,11 @@ Always `use gpui::prelude::FluentBuilder as _;` for `.when()` / `.when_some()`.
 
 ---
 
-## Theme Colors
+## Theme and Style Presets
+
+Color Themes and Style Presets are independent. Components read both through the resolved global
+`Theme`: semantic colors remain top-level fields, while geometry and motion live under
+`Theme.style`.
 
 ```rust
 // In render, access via cx.theme() (requires ActiveTheme import)
@@ -321,16 +325,42 @@ div()
     .bg(cx.theme().surface)
     .text_color(cx.theme().foreground)
     .border_color(cx.theme().border)
+    .rounded(cx.theme().style.radii.md)
     .when(is_active, |el| el.bg(cx.theme().primary))
 ```
+
+Use semantic metrics by role:
+
+```rust
+let metrics = cx.theme().style.controls.for_size(self.size);
+
+div()
+    .h(metrics.height)
+    .px(metrics.padding_x)
+    .gap(metrics.gap)
+```
+
+- Vega is the default visual baseline; Nova and Maia are optional Style Presets.
+- Never branch on the `vega`, `nova`, or `maia` preset id.
+- Do not copy shared radius, control, overlay, focus, elevation, or motion values into local
+  constants.
+- Add a shared metric only after at least three components need the same semantic value.
+- Loading states use explicit composition, such as `Spinner` inside a disabled `Button`.
+- Motion uses `theme.style.motion` and must honor the application Reduced Motion preference.
 
 ---
 
 ## Size Handling
 
 ```rust
-// Get pixel values based on Size
-let (width, height) = self.size.input_size();
+use crate::StyleSized as _;
+
+// Apply the shared input geometry to a styleable element.
+let element = div().input_size(self.size, cx);
+
+// Or read the semantic metrics when the component needs individual values.
+let metrics = cx.theme().style.controls.for_size(self.size);
+let height = metrics.height;
 
 // Or use match
 let font_size = match self.size {
@@ -354,6 +384,8 @@ let font_size = match self.size {
 - [ ] `impl Sizable` if has size variants
 - [ ] `impl Disableable` if can be disabled
 - [ ] `impl Selectable` if can be selected
+- [ ] Consume semantic `Theme.style` metrics; never branch on a preset id
+- [ ] Use shared motion tokens and honor Reduced Motion when animated
 - [ ] Callbacks as `Option<Rc<dyn Fn(...)>>`
 - [ ] Doc comment on struct and public methods
 - [ ] Import `prelude::FluentBuilder as _`
