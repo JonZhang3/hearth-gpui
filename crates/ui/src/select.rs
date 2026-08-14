@@ -1,11 +1,12 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, Edges,
-    ElementId, Entity, EventEmitter, FocusHandle, Focusable, Hsla, InteractiveElement, IntoElement,
-    KeyBinding, KeyDownEvent, Length, ParentElement, Pixels, Render, RenderOnce, Role,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Task, Window, anchored,
-    deferred, div, prelude::FluentBuilder, px, rems,
+    AbsoluteLength, AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, App,
+    ClickEvent, Context, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle,
+    Focusable, Hsla, InteractiveElement, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, Length,
+    ParentElement, Pixels, Render, RenderOnce, Role, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Task, Window, anchored, deferred, div, point, prelude::FluentBuilder,
+    px, rems,
 };
 use rust_i18n::t;
 
@@ -14,6 +15,7 @@ use crate::{
     StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
     animation::{Lerp, OverlayLifecycle, OverlayPhase, OverlayTransition, Transition},
+    geometry::LengthExt as _,
     global_state::GlobalState,
     h_flex,
     input::{
@@ -39,6 +41,17 @@ pub use crate::searchable_list::SearchableListItem as SelectItem;
 pub use crate::searchable_list::SearchableListItemElement as SelectListItem;
 /// Re-exported for backward compatibility.
 pub use crate::searchable_list::SearchableVec;
+
+/// Controls how Select content is positioned relative to its trigger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SelectPosition {
+    /// Aligns the selected option vertically with the trigger, matching the
+    /// canonical shadcn/Radix Select behavior.
+    #[default]
+    ItemAligned,
+    /// Positions the content below the trigger with a 4 px side offset.
+    Popper,
+}
 
 /// Select-only presentation derived from semantic Style Preset values.
 ///
@@ -227,6 +240,7 @@ struct SelectOptions {
     search_placeholder: Option<SharedString>,
     menu_width: Length,
     menu_max_h: Length,
+    position: Option<SelectPosition>,
     disabled: bool,
     invalid: bool,
     group_separators: bool,
@@ -246,6 +260,7 @@ impl Default for SelectOptions {
             title_prefix: None,
             menu_width: Length::Auto,
             menu_max_h: rems(20.).into(),
+            position: None,
             disabled: false,
             invalid: false,
             group_separators: false,
@@ -270,11 +285,14 @@ where
     title_prefix: Option<SharedString>,
     invalid: bool,
     group_separators: bool,
+    position: Option<SelectPosition>,
+    item_aligned_selected_center: Option<Pixels>,
     lifecycle: OverlayLifecycle,
     restore_focus_after_close: bool,
     typeahead_query: String,
     typeahead_revision: u64,
     typeahead_task: Task<()>,
+    keyboard_open_guard: bool,
 }
 
 /// A Select element.
@@ -316,6 +334,13 @@ where
                 cx.defer_in(window, {
                     let weak_confirm = weak_confirm.clone();
                     move |list_state, window, cx| {
+                        if weak_confirm
+                            .upgrade()
+                            .is_some_and(|state| state.read(cx).keyboard_open_guard)
+                        {
+                            return;
+                        }
+
                         let mut selection = weak_confirm
                             .upgrade()
                             .map(|e| e.read(cx).state.selection.clone())
@@ -414,11 +439,14 @@ where
             title_prefix: None,
             invalid: false,
             group_separators: false,
+            position: None,
+            item_aligned_selected_center: None,
             lifecycle: OverlayLifecycle::default(),
             restore_focus_after_close: false,
             typeahead_query: String::new(),
             typeahead_revision: 0,
             typeahead_task: Task::ready(()),
+            keyboard_open_guard: false,
         }
     }
 
@@ -493,6 +521,15 @@ where
         self.state.selection.first().map(|(_, i)| i.value())
     }
 
+    /// Resolves the explicit positioning mode or the mode implied by search.
+    fn effective_position(&self) -> SelectPosition {
+        if self.searchable {
+            SelectPosition::Popper
+        } else {
+            self.position.unwrap_or(SelectPosition::ItemAligned)
+        }
+    }
+
     /// Focus the select trigger input.
     pub fn focus(&self, window: &mut Window, cx: &mut App) {
         self.state.focus_handle.focus(window, cx);
@@ -545,21 +582,34 @@ where
     }
 
     fn enter(&mut self, _: &Confirm, window: &mut Window, cx: &mut Context<Self>) {
-        cx.propagate();
-
-        if !self.state.open {
-            self.set_open(true, window, cx);
-            cx.notify();
+        if self.state.open {
+            cx.propagate();
+            return;
         }
 
+        // The opening key press must not reach the newly focused list and
+        // immediately confirm its temporary first-item cursor.
+        cx.stop_propagation();
+        self.keyboard_open_guard = true;
+        self.set_open(true, window, cx);
         self.state
             .active_list_focus_handle(self.searchable)
             .focus(window, cx);
+        cx.notify();
+    }
+
+    /// Releases the guard that keeps the opening key press and its repeats
+    /// from confirming the temporary first-item cursor.
+    fn release_open_key(&mut self, event: &KeyUpEvent, _: &mut Window, _: &mut Context<Self>) {
+        if matches!(event.keystroke.key.as_str(), "space" | "enter") {
+            self.keyboard_open_guard = false;
+        }
     }
 
     fn toggle_menu(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
 
+        self.keyboard_open_guard = false;
         self.set_open(!self.state.open, window, cx);
 
         if self.state.open {
@@ -589,6 +639,12 @@ where
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if event.is_held && matches!(event.keystroke.key.as_str(), "space" | "enter") {
+            window.prevent_default();
+            cx.stop_propagation();
+            return;
+        }
+
         if self.searchable
             || self.state.disabled
             || event.is_held
@@ -687,8 +743,10 @@ where
 
         self.state.open = open;
         if open {
+            self.item_aligned_selected_center = None;
             GlobalState::global_mut(cx).register_deferred_popover(&self.state.focus_handle);
         } else {
+            self.keyboard_open_guard = false;
             self.restore_focus_after_close = self.state.list_is_focused(window);
         }
         cx.notify();
@@ -785,6 +843,7 @@ where
         let allow_open = !(self.state.open || self.state.disabled);
         let opening = phase == OverlayPhase::Opening;
         let metrics = SelectMetrics::resolve(self.state.size, cx);
+        let position = self.effective_position();
         let input_metrics = input_metrics(&cx.theme().style);
         let control_metrics = cx.theme().style.controls.for_size(self.state.size);
         let invalid_border =
@@ -830,6 +889,32 @@ where
             delegate.select_style = true;
             delegate.section_separators = self.group_separators;
         });
+
+        if self.item_aligned_selected_center.is_none()
+            && position == SelectPosition::ItemAligned
+            && mounted
+        {
+            let max_height = self
+                .state
+                .menu_max_h
+                .to_pixels(
+                    AbsoluteLength::Pixels(window.viewport_size().height),
+                    window.rem_size(),
+                )
+                .unwrap_or(window.viewport_size().height);
+            let selected_index = self.selected_index(cx);
+            self.item_aligned_selected_center = self.state.list.update(cx, |list, cx| {
+                list.prepare_item_alignment(selected_index, max_height, px(4.), px(4.), window, cx)
+            });
+        }
+        let popup_position = if position == SelectPosition::ItemAligned {
+            self.item_aligned_selected_center.map(|selected_center| {
+                point(px(0.), -bounds.size.height / 2. - selected_center - px(1.))
+            })
+        } else {
+            None
+        }
+        .unwrap_or_else(|| point(px(0.), px(4.)));
 
         let mut trigger = div()
             .id("input")
@@ -998,86 +1083,102 @@ where
             .when(mounted, |this| {
                 this.child(
                     deferred(
-                        anchored().snap_to_window_with_margin(px(8.)).child(
-                            div()
-                                .occlude()
-                                .map(|this| match self.state.menu_width {
-                                    Length::Auto => this.w(bounds.size.width.max(px(144.))),
-                                    Length::Definite(w) => this.w(w),
-                                })
-                                .child({
-                                    let motion = cx.theme().style.motion;
-                                    let popup = v_flex()
-                                        .relative()
-                                        .occlude()
-                                        .mt_1()
-                                        .bg(cx.theme().tokens.popover)
-                                        .border_1()
-                                        .border_color(
-                                            cx.theme()
-                                                .foreground
-                                                .opacity(metrics.content_ring_opacity),
-                                        )
-                                        .rounded(metrics.content_radius)
-                                        .when(cx.theme().style.elevation.enabled, |this| {
-                                            match metrics.content_shadow {
-                                                SelectShadow::Medium => this.shadow_md(),
-                                                SelectShadow::ExtraLarge => this.shadow_2xl(),
-                                            }
-                                        })
-                                        .when(!closing, |this| {
-                                            this.on_key_down(cx.listener(Self::typeahead_key_down))
-                                        })
-                                        .child(
-                                            List::new(&self.state.list)
-                                                .when_some(
-                                                    self.state.search_placeholder.clone(),
-                                                    |this, placeholder| {
-                                                        this.search_placeholder(placeholder)
-                                                    },
-                                                )
-                                                .with_size(Size::Medium)
-                                                .max_h(self.state.menu_max_h)
-                                                .paddings(Edges::all(px(4.))),
-                                        )
-                                        .when(closing, |this| {
-                                            this.child(
-                                                div()
-                                                    .absolute()
-                                                    .top_0()
-                                                    .left_0()
-                                                    .size_full()
-                                                    .occlude(),
+                        anchored()
+                            .position_mode(AnchoredPositionMode::Local)
+                            .position(popup_position)
+                            .when(position == SelectPosition::ItemAligned, |this| {
+                                // Item-aligned content must preserve the Trigger's horizontal
+                                // edge. A window margin would shift the content inward whenever
+                                // its width reaches the available window boundary.
+                                this.snap_to_window()
+                            })
+                            .when(position == SelectPosition::Popper, |this| {
+                                this.snap_to_window_with_margin(px(8.))
+                            })
+                            .child(
+                                div()
+                                    .occlude()
+                                    .map(|this| match self.state.menu_width {
+                                        Length::Auto => this.w(bounds.size.width).min_w(rems(9.)),
+                                        Length::Definite(w) => this.w(w),
+                                    })
+                                    .child({
+                                        let motion = cx.theme().style.motion;
+                                        let popup = v_flex()
+                                            .relative()
+                                            .occlude()
+                                            .bg(cx.theme().tokens.popover)
+                                            .text_color(cx.theme().tokens.popover_foreground)
+                                            .border_1()
+                                            .border_color(
+                                                cx.theme()
+                                                    .foreground
+                                                    .opacity(metrics.content_ring_opacity),
                                             )
-                                        });
-                                    let state = cx.entity();
-                                    Transition::new(motion.fast())
-                                        .ease_token(if closing {
-                                            motion.exit_easing
-                                        } else {
-                                            motion.enter_easing
-                                        })
-                                        .slide_y(
-                                            if closing { px(0.) } else { px(-8.) },
-                                            if closing { px(-8.) } else { px(0.) },
-                                        )
-                                        .when_some(active_transition, |this, transition| {
-                                            this.on_complete(move |window, cx| {
-                                                state.update(cx, |state, cx| {
-                                                    state.complete_motion(
-                                                        opening, transition, window, cx,
-                                                    );
-                                                });
+                                            .rounded(metrics.content_radius)
+                                            .when(cx.theme().style.elevation.enabled, |this| {
+                                                match metrics.content_shadow {
+                                                    SelectShadow::Medium => this.shadow_md(),
+                                                    SelectShadow::ExtraLarge => this.shadow_2xl(),
+                                                }
                                             })
-                                        })
-                                        .apply(popup, "select-motion")
-                                })
-                                .when(!closing, |this| {
-                                    this.on_mouse_down_out(cx.listener(|this, _, window, cx| {
-                                        this.escape(&Cancel, window, cx);
-                                    }))
-                                }),
-                        ),
+                                            .when(!closing, |this| {
+                                                this.on_key_down(
+                                                    cx.listener(Self::typeahead_key_down),
+                                                )
+                                            })
+                                            .child(
+                                                List::new(&self.state.list)
+                                                    .when_some(
+                                                        self.state.search_placeholder.clone(),
+                                                        |this, placeholder| {
+                                                            this.search_placeholder(placeholder)
+                                                        },
+                                                    )
+                                                    .with_size(Size::Medium)
+                                                    .max_h(self.state.menu_max_h)
+                                                    .paddings(Edges::all(px(4.))),
+                                            )
+                                            .when(closing, |this| {
+                                                this.child(
+                                                    div()
+                                                        .absolute()
+                                                        .top_0()
+                                                        .left_0()
+                                                        .size_full()
+                                                        .occlude(),
+                                                )
+                                            });
+                                        let state = cx.entity();
+                                        Transition::new(motion.fast())
+                                            .ease_token(if closing {
+                                                motion.exit_easing
+                                            } else {
+                                                motion.enter_easing
+                                            })
+                                            .slide_y(
+                                                if closing { px(0.) } else { px(-8.) },
+                                                if closing { px(-8.) } else { px(0.) },
+                                            )
+                                            .when_some(active_transition, |this, transition| {
+                                                this.on_complete(move |window, cx| {
+                                                    state.update(cx, |state, cx| {
+                                                        state.complete_motion(
+                                                            opening, transition, window, cx,
+                                                        );
+                                                    });
+                                                })
+                                            })
+                                            .apply(popup, "select-motion")
+                                    })
+                                    .when(!closing, |this| {
+                                        this.on_mouse_down_out(cx.listener(
+                                            |this, _, window, cx| {
+                                                this.escape(&Cancel, window, cx);
+                                            },
+                                        ))
+                                    }),
+                            ),
                     )
                     .with_priority(1),
                 )
@@ -1108,6 +1209,15 @@ where
     /// Set the max height of the dropdown menu, default: 20rem.
     pub fn menu_max_h(mut self, max_h: impl Into<Length>) -> Self {
         self.options.menu_max_h = max_h.into();
+        self
+    }
+
+    /// Set the content positioning mode.
+    ///
+    /// Non-searchable Selects default to [`SelectPosition::ItemAligned`]. Searchable Selects
+    /// always use [`SelectPosition::Popper`] because the search field is not an option row.
+    pub fn position(mut self, position: SelectPosition) -> Self {
+        self.options.position = Some(position);
         self
     }
 
@@ -1270,6 +1380,10 @@ where
             this.state.search_placeholder = opts.search_placeholder;
             this.state.menu_width = opts.menu_width;
             this.state.menu_max_h = opts.menu_max_h;
+            if this.position != opts.position {
+                this.item_aligned_selected_center = None;
+                this.position = opts.position;
+            }
             this.state.disabled = opts.disabled;
             this.state.appearance = opts.appearance;
             this.invalid = opts.invalid;
@@ -1300,6 +1414,7 @@ where
             .on_action(window.listener_for(&self.state, SelectState::enter))
             .on_action(window.listener_for(&self.state, SelectState::escape))
             .on_key_down(window.listener_for(&self.state, SelectState::typeahead_key_down))
+            .on_key_up(window.listener_for(&self.state, SelectState::release_open_key))
             .size_full()
             .child(self.state);
 
@@ -1320,12 +1435,44 @@ mod tests {
         IndexPath,
         animation::OverlayPhase,
         searchable_list::SearchableVec,
-        select::{Select, SelectGroup, SelectMetrics, SelectShadow, SelectState},
+        select::{Select, SelectGroup, SelectMetrics, SelectPosition, SelectShadow, SelectState},
         theme::StylePreset,
     };
 
     struct KeyboardFixture {
         state: Entity<SelectState<Vec<&'static str>>>,
+    }
+
+    #[derive(Clone, PartialEq)]
+    struct DisabledTestOption {
+        title: &'static str,
+        disabled: bool,
+    }
+
+    impl crate::searchable_list::SearchableListItem for DisabledTestOption {
+        type Value = &'static str;
+
+        fn title(&self) -> gpui::SharedString {
+            self.title.into()
+        }
+
+        fn value(&self) -> &Self::Value {
+            &self.title
+        }
+
+        fn disabled(&self) -> bool {
+            self.disabled
+        }
+    }
+
+    struct DisabledFixture {
+        state: Entity<SelectState<Vec<DisabledTestOption>>>,
+    }
+
+    impl Render for DisabledFixture {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            Select::new(&self.state).aria_label("Framework")
+        }
     }
 
     impl Render for KeyboardFixture {
@@ -1388,6 +1535,39 @@ mod tests {
         assert_eq!(vega.content_radius, StylePreset::vega().radii.md);
         assert_eq!(nova.content_radius, StylePreset::nova().radii.lg);
         assert_eq!(maia.content_radius, StylePreset::maia().radii.lg);
+    }
+
+    #[gpui::test]
+    fn select_position_follows_searchability_and_safe_overrides(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        cx.update(|window, cx| {
+            let plain = cx.new(|cx| SelectState::new(vec!["One"], None, window, cx));
+            let searchable =
+                cx.new(|cx| SelectState::new(vec!["One"], None, window, cx).searchable(true));
+
+            assert_eq!(
+                plain.read(cx).effective_position(),
+                SelectPosition::ItemAligned
+            );
+            assert_eq!(
+                searchable.read(cx).effective_position(),
+                SelectPosition::Popper
+            );
+
+            Select::new(&plain)
+                .position(SelectPosition::Popper)
+                .render(window, cx);
+            assert_eq!(plain.read(cx).effective_position(), SelectPosition::Popper);
+
+            Select::new(&searchable)
+                .position(SelectPosition::ItemAligned)
+                .render(window, cx);
+            assert_eq!(
+                searchable.read(cx).effective_position(),
+                SelectPosition::Popper
+            );
+        });
     }
 
     #[gpui::test]
@@ -1504,6 +1684,56 @@ mod tests {
         cx.run_until_parked();
 
         assert!(cx.update(|_, cx| state.read(cx).state.open));
+        assert_eq!(
+            cx.update(|_, cx| state.read(cx).selected_index(cx)),
+            Some(IndexPath::new(0))
+        );
+        assert!(cx.update(|_, cx| state.read(cx).state.selection.is_empty()));
+    }
+
+    #[gpui::test]
+    fn item_aligned_select_uses_first_enabled_item_as_temporary_cursor(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state_slot = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let captured_state = state_slot.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let state = cx.new(|cx| {
+                SelectState::new(
+                    vec![
+                        DisabledTestOption {
+                            title: "Disabled",
+                            disabled: true,
+                        },
+                        DisabledTestOption {
+                            title: "Enabled",
+                            disabled: false,
+                        },
+                    ],
+                    None,
+                    window,
+                    cx,
+                )
+            });
+            *captured_state.borrow_mut() = Some(state.clone());
+            let fixture = cx.new(|_| DisabledFixture { state });
+            crate::Root::new(fixture, window, cx)
+        });
+        let state = state_slot
+            .borrow_mut()
+            .take()
+            .expect("fixture must expose Select state");
+
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+            state.update(cx, |state, cx| state.set_open(true, window, cx));
+            _ = window.draw(cx);
+        });
+
+        assert_eq!(
+            cx.update(|_, cx| state.read(cx).selected_index(cx)),
+            Some(IndexPath::new(1))
+        );
+        assert!(cx.update(|_, cx| state.read(cx).state.selection.is_empty()));
     }
 
     #[gpui::test]

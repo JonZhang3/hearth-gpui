@@ -13,7 +13,7 @@ use crate::{Disableable, Icon, IndexPath, Selectable, Sizable, StyledExt};
 use crate::{VirtualListScrollHandle, list::ListDelegate, v_virtual_list};
 use gpui::{
     AnyElement, App, AvailableSpace, ClickEvent, Context, DefiniteLength, EdgesRefinement,
-    EventEmitter, ListSizingBehavior, RenderOnce, Role, ScrollStrategy, SharedString,
+    EventEmitter, ListSizingBehavior, Pixels, RenderOnce, Role, ScrollStrategy, SharedString,
     StatefulInteractiveElement, StyleRefinement, Subscription, px, size,
 };
 use gpui::{
@@ -290,6 +290,61 @@ where
             self.deferred_scroll_to_index = Some((ix, ScrollStrategy::Top));
             cx.notify();
         }
+    }
+
+    /// Prepares the virtual rows and returns the selected row center within a
+    /// clamped viewport. The scroll offset is applied before layout so an
+    /// item-aligned popup is stable on its first painted frame.
+    pub(crate) fn prepare_item_alignment(
+        &mut self,
+        ix: Option<IndexPath>,
+        max_height: Pixels,
+        padding_top: Pixels,
+        padding_bottom: Pixels,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Pixels> {
+        self.prepare_items_if_needed(window, cx);
+
+        let ix = ix
+            .filter(|ix| self.is_valid_enabled_index(*ix, cx))
+            .or_else(|| self.first_enabled_index(cx))?;
+        if self.selected_index != Some(ix) {
+            self.selected_index = Some(ix);
+            self.selection_needs_sync = false;
+            self.delegate.set_selected_index(Some(ix), window, cx);
+        }
+
+        let position = self.rows_cache.position_of(&ix)?;
+        let item_size = self.rows_cache.entries_sizes.get(position)?.height;
+        let item_top = padding_top
+            + self
+                .rows_cache
+                .entries_sizes
+                .iter()
+                .take(position)
+                .map(|size| size.height)
+                .sum::<Pixels>();
+        let item_center = item_top + item_size / 2.;
+        let content_height = padding_top
+            + self
+                .rows_cache
+                .entries_sizes
+                .iter()
+                .map(|size| size.height)
+                .sum::<Pixels>()
+            + padding_bottom;
+        let viewport_height = content_height.min(max_height);
+
+        let minimum_offset = (viewport_height - content_height).min(px(0.));
+        let desired_offset = viewport_height / 2. - item_center;
+        let offset = desired_offset.max(minimum_offset).min(px(0.));
+        let mut scroll_offset = self.scroll_handle.base_handle().offset();
+        scroll_offset.y = offset;
+        self.scroll_handle.base_handle().set_offset(scroll_offset);
+        self.deferred_scroll_to_index = None;
+
+        Some(item_center + offset)
     }
 
     fn on_query_input_event(
@@ -572,27 +627,38 @@ where
             .filter(|ix| self.is_valid_index(*ix, cx))
             .or(first_item);
 
-        // Measure the item_height and section header/footer height.
+        // Items share one height, while section chrome is measured independently so virtual
+        // offsets remain correct when only some groups render separators.
         let available_space = size(AvailableSpace::MinContent, AvailableSpace::MinContent);
         if let Some(ix) = measurement_item {
             measured_size.item_size = self
                 .render_list_item(ix, window, cx)
                 .into_any_element()
                 .layout_as_root(available_space, window, cx);
+        }
+
+        measured_size.section_header_sizes = vec![Default::default(); sections_count];
+        measured_size.section_footer_sizes = vec![Default::default(); sections_count];
+        for section in 0..sections_count {
+            if self.delegate.items_count(section, cx) == 0 {
+                continue;
+            }
 
             if let Some(mut el) = self
                 .delegate
-                .render_section_header(ix.section, window, cx)
+                .render_section_header(section, window, cx)
                 .map(|r| r.into_any_element())
             {
-                measured_size.section_header_size = el.layout_as_root(available_space, window, cx);
+                measured_size.section_header_sizes[section] =
+                    el.layout_as_root(available_space, window, cx);
             }
             if let Some(mut el) = self
                 .delegate
-                .render_section_footer(ix.section, window, cx)
+                .render_section_footer(section, window, cx)
                 .map(|r| r.into_any_element())
             {
-                measured_size.section_footer_size = el.layout_as_root(available_space, window, cx);
+                measured_size.section_footer_sizes[section] =
+                    el.layout_as_root(available_space, window, cx);
             }
         }
 

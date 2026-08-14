@@ -11,11 +11,29 @@ pub(crate) enum RowEntry {
     SectionFooter(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct MeasuredEntrySize {
     pub(crate) item_size: Size<Pixels>,
-    pub(crate) section_header_size: Size<Pixels>,
-    pub(crate) section_footer_size: Size<Pixels>,
+    pub(crate) section_header_sizes: Vec<Size<Pixels>>,
+    pub(crate) section_footer_sizes: Vec<Size<Pixels>>,
+}
+
+impl MeasuredEntrySize {
+    /// Returns the measured header size for a section, or zero when it has no header.
+    fn section_header_size(&self, section: usize) -> Size<Pixels> {
+        self.section_header_sizes
+            .get(section)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Returns the measured footer size for a section, or zero when it has no footer.
+    fn section_footer_size(&self, section: usize) -> Size<Pixels> {
+        self.section_footer_sizes
+            .get(section)
+            .copied()
+            .unwrap_or_default()
+    }
 }
 
 impl RowEntry {
@@ -208,7 +226,7 @@ impl RowsCache {
             }
         }
 
-        self.measured_size = measured_size;
+        self.measured_size = measured_size.clone();
         self.sections = Rc::new(new_sections);
         self.section_item_offsets = Rc::new(section_item_offsets);
         self.section_entity_offsets = Rc::new(section_entity_offsets);
@@ -223,7 +241,7 @@ impl RowsCache {
                     }
 
                     children.push(RowEntry::SectionHeader(section));
-                    entries_sizes.push(measured_size.section_header_size);
+                    entries_sizes.push(measured_size.section_header_size(section));
                     for row in 0..*items_count {
                         children.push(RowEntry::Entry(IndexPath {
                             section,
@@ -233,7 +251,7 @@ impl RowsCache {
                         entries_sizes.push(measured_size.item_size);
                     }
                     children.push(RowEntry::SectionFooter(section));
-                    entries_sizes.push(measured_size.section_footer_size);
+                    entries_sizes.push(measured_size.section_footer_size(section));
                     children
                 })
                 .collect(),
@@ -245,9 +263,11 @@ impl RowsCache {
 
 #[cfg(test)]
 mod tests {
+    use gpui::{TestAppContext, px, size};
+
     use crate::{
         IndexPath,
-        list::cache::{RowEntry, RowsCache},
+        list::cache::{MeasuredEntrySize, RowEntry, RowsCache},
     };
 
     fn build_entities(sections: &[usize]) -> Vec<RowEntry> {
@@ -330,6 +350,42 @@ mod tests {
             row_cache.item_ordinal(IndexPath::new(1).section(2)),
             Some(4)
         );
+    }
+
+    #[gpui::test]
+    fn uses_each_sections_measured_header_and_footer_size(cx: &mut TestAppContext) {
+        let mut cache = RowsCache::default();
+        let sections = [1, 0, 2];
+        let measured_size = MeasuredEntrySize {
+            item_size: size(px(100.), px(20.)),
+            section_header_sizes: vec![
+                size(px(100.), px(10.)),
+                size(px(0.), px(0.)),
+                size(px(100.), px(12.)),
+            ],
+            section_footer_sizes: vec![
+                size(px(100.), px(9.)),
+                size(px(0.), px(0.)),
+                size(px(0.), px(0.)),
+            ],
+        };
+
+        cx.update(|cx| {
+            cache.prepare_if_needed(sections.len(), measured_size, cx, |section, _| {
+                sections[section]
+            });
+        });
+
+        let heights = cache
+            .entries_sizes
+            .iter()
+            .map(|entry| entry.height)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            heights,
+            vec![px(10.), px(20.), px(9.), px(12.), px(20.), px(20.), px(0.)]
+        );
+        assert_eq!(cache.position_of(&IndexPath::new(0).section(2)), Some(4));
     }
 
     #[test]

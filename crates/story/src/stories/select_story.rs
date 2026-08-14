@@ -85,6 +85,9 @@ pub struct SelectStory {
     default_select: Entity<SelectState<Vec<&'static str>>>,
     small_select: Entity<SelectState<Vec<&'static str>>>,
     appearance_select: Entity<SelectState<Vec<SharedString>>>,
+    item_aligned_select: Entity<SelectState<Vec<&'static str>>>,
+    grouped_item_aligned_select: Entity<SelectState<SearchableVec<SelectGroup<&'static str>>>>,
+    popper_select: Entity<SelectState<Vec<&'static str>>>,
     input_state: Entity<InputState>,
 }
 
@@ -154,6 +157,9 @@ impl SelectStory {
             "Avocado",
         ]);
         let fruit_select = cx.new(|cx| SelectState::new(fruits, None, window, cx).searchable(true));
+        let mut grouped_items = SearchableVec::new(Vec::new());
+        grouped_items.push(SelectGroup::new("Fruits").items(["Apple", "Banana", "Blueberry"]));
+        grouped_items.push(SelectGroup::new("Vegetables").items(["Carrot", "Broccoli", "Spinach"]));
 
         cx.new(|cx| {
             cx.subscribe_in(&country_select, window, Self::on_select_event)
@@ -228,6 +234,24 @@ impl SelectStory {
                     SelectState::new(vec!["Default", "Compact", "Comfortable"], None, window, cx)
                 }),
                 appearance_select,
+                item_aligned_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Apple", "Orange", "Banana", "Grape", "Pineapple"],
+                        Some(IndexPath::new(2)),
+                        window,
+                        cx,
+                    )
+                }),
+                grouped_item_aligned_select: cx
+                    .new(|cx| SelectState::new(grouped_items, None, window, cx)),
+                popper_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Apple", "Orange", "Banana", "Grape", "Pineapple"],
+                        Some(IndexPath::new(2)),
+                        window,
+                        cx,
+                    )
+                }),
                 input_state,
             }
         })
@@ -296,6 +320,19 @@ impl Render for SelectStory {
                         .icon(IconName::Search)
                         .w(px(320.))
                         .menu_width(px(400.)),
+                ),
+            )
+            .child(
+                section("Content position").max_w_128().child(
+                    v_flex()
+                        .gap_3()
+                        .child(Select::new(&self.item_aligned_select))
+                        .child(
+                            Select::new(&self.grouped_item_aligned_select)
+                                .placeholder("Select a fruit")
+                                .group_separators(true),
+                        )
+                        .child(Select::new(&self.popper_select).position(SelectPosition::Popper)),
                 ),
             )
             .child(

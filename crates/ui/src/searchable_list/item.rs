@@ -109,7 +109,11 @@ impl RenderOnce for SearchableListItemElement {
             .relative()
             .w_full()
             .overflow_hidden()
-            .text_color(cx.theme().foreground)
+            .text_color(if self.select_style {
+                cx.theme().tokens.popover_foreground.color
+            } else {
+                cx.theme().foreground
+            })
             .items_center()
             .input_text_size(self.size)
             .when(self.select_style, |this| {
@@ -144,10 +148,7 @@ impl RenderOnce for SearchableListItemElement {
                         this.text_color(cx.theme().accent_foreground)
                     })
             })
-            .when(self.disabled, |this| {
-                this.cursor_not_allowed()
-                    .text_color(cx.theme().muted_foreground)
-            })
+            .when(self.disabled, |this| this.cursor_not_allowed().opacity(0.5))
             .child(
                 h_flex()
                     .flex_1()

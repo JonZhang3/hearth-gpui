@@ -24,7 +24,7 @@ For richer selection UIs with custom trigger rendering or multi-select, see [Com
 ```rust
 use gpui_component::select::{
     Select, SelectState, SelectItem, SelectDelegate,
-    SelectEvent, SearchableVec, SelectGroup
+    SelectEvent, SelectPosition, SearchableVec, SelectGroup
 };
 ```
 
@@ -82,6 +82,19 @@ let state = cx.new(|cx| {
 
 Select::new(&state)
     .icon(IconName::Search) // Shows search icon
+```
+
+### Content Position
+
+Non-searchable Selects use `SelectPosition::ItemAligned` by default. With automatic menu width, the content uses the trigger width but never becomes narrower than shadcn's 9rem minimum. It overlays the trigger and aligns the selected option, or the first enabled option when no value is selected. This temporary cursor does not commit a value. The popup is clamped to an 8 px window margin.
+
+Searchable Selects always use `SelectPosition::Popper`, which opens 4 px below the trigger. This keeps the search field outside selected-item alignment. An explicit `menu_width` continues to override automatic trigger-width matching in either mode.
+
+Use an explicit position when the default does not fit the surrounding composition:
+
+```rust
+Select::new(&state)
+    .position(SelectPosition::Popper)
 ```
 
 ### Impl SelectItem

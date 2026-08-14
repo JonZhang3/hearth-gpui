@@ -64,7 +64,7 @@ pub trait ListDelegate: Sized + 'static {
 
     /// Render the section header at the given index, default is None.
     ///
-    /// NOTE: Every header should have same height.
+    /// Headers may use different heights between sections.
     fn render_section_header(
         &mut self,
         section: usize,
@@ -76,7 +76,7 @@ pub trait ListDelegate: Sized + 'static {
 
     /// Render the section footer at the given index, default is None.
     ///
-    /// NOTE: Every footer should have same height.
+    /// Footers may use different heights between sections.
     fn render_section_footer(
         &mut self,
         section: usize,

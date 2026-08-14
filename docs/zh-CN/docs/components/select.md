@@ -24,7 +24,7 @@ Select 允许用户从一组选项中选择一个值。
 ```rust
 use gpui_component::select::{
     Select, SelectState, SelectItem, SelectDelegate,
-    SelectEvent, SearchableVec, SelectGroup
+    SelectEvent, SelectPosition, SearchableVec, SelectGroup
 };
 ```
 
@@ -80,6 +80,19 @@ let state = cx.new(|cx| {
 
 Select::new(&state)
     .icon(IconName::Search)
+```
+
+### Content 定位
+
+不可搜索的 Select 默认使用 `SelectPosition::ItemAligned`。菜单宽度为自动值时，Content 使用 Trigger 宽度，但不会小于 shadcn 的 9rem 最小宽度。Content 会覆盖 Trigger：存在已选值时对齐选中项，否则对齐第一个 enabled item。后者只作为临时键盘 cursor，不会提交选中值。弹层会限制在距离窗口边缘 8 px 的范围内。
+
+可搜索 Select 始终使用 `SelectPosition::Popper`，在 Trigger 下方保留 4 px 间距，避免让搜索栏参与选中项对齐。显式设置的 `menu_width` 在两种模式下都继续优先于自动等宽规则。
+
+当默认行为不适合当前布局时，可以显式指定定位模式：
+
+```rust
+Select::new(&state)
+    .position(SelectPosition::Popper)
 ```
 
 ### 自定义 SelectItem

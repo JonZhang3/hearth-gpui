@@ -72,9 +72,13 @@ impl<D: SearchableListDelegate + 'static> SearchableListAdapter<D> {
     }
 }
 
-/// Returns whether the current visible section has another visible section before it.
-fn has_visible_section_before(section: usize, mut is_visible: impl FnMut(usize) -> bool) -> bool {
-    (0..section).any(&mut is_visible)
+/// Returns whether another visible section follows the current section.
+fn has_visible_section_after(
+    section: usize,
+    sections_count: usize,
+    mut is_visible: impl FnMut(usize) -> bool,
+) -> bool {
+    ((section + 1)..sections_count).any(&mut is_visible)
 }
 
 impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter<D> {
@@ -129,14 +133,6 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         }
 
         let metrics = crate::select::SelectMetrics::resolve(Size::Medium, cx);
-        let has_separator = self.section_separators
-            && has_visible_section_before(section, |candidate| {
-                self.delegate.items_count(candidate) > 0
-            });
-        let separator_opacity = match cx.theme().style.density {
-            Density::Comfortable => 0.5,
-            Density::Standard | Density::Compact => 1.0,
-        };
         let default_header = if custom_header.is_none() {
             #[allow(deprecated)]
             self.delegate.section(section).map(|item| {
@@ -151,26 +147,41 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
         } else {
             None
         };
-        let header = custom_header.or(default_header);
-        if header.is_none() && !has_separator {
+        custom_header.or(default_header)
+    }
+
+    fn render_section_footer(
+        &mut self,
+        section: usize,
+        _: &mut Window,
+        cx: &mut Context<ListState<Self>>,
+    ) -> Option<impl IntoElement> {
+        let has_separator = self.select_style
+            && self.section_separators
+            && has_visible_section_after(section, self.delegate.sections_count(cx), |candidate| {
+                self.delegate.items_count(candidate) > 0
+            });
+        if !has_separator {
             return None;
         }
 
+        let separator_opacity = match cx.theme().style.density {
+            Density::Comfortable => 0.5,
+            Density::Standard | Density::Compact => 1.0,
+        };
         Some(
             div()
                 .relative()
-                .when(has_separator, |this| {
-                    this.child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left(px(4.))
-                            .right(px(4.))
-                            .h(px(1.))
-                            .bg(cx.theme().border.opacity(separator_opacity)),
-                    )
-                })
-                .children(header)
+                .h(px(9.))
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(4.))
+                        .left_0()
+                        .right_0()
+                        .h(px(1.))
+                        .bg(cx.theme().border.opacity(separator_opacity)),
+                )
                 .into_any_element(),
         )
     }
@@ -263,13 +274,14 @@ impl<D: SearchableListDelegate + 'static> ListDelegate for SearchableListAdapter
 
 #[cfg(test)]
 mod tests {
-    use super::has_visible_section_before;
+    use super::has_visible_section_after;
 
     #[test]
-    fn separator_predecessor_ignores_empty_sections() {
+    fn separator_successor_ignores_empty_sections() {
         let counts = [0, 2, 0, 3, 0];
+        let is_visible = |section| counts[section] > 0;
 
-        assert!(!has_visible_section_before(1, |section| counts[section] > 0));
-        assert!(has_visible_section_before(3, |section| counts[section] > 0));
+        assert!(has_visible_section_after(1, counts.len(), is_visible));
+        assert!(!has_visible_section_after(3, counts.len(), is_visible));
     }
 }

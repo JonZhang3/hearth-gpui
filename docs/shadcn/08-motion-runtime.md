@@ -34,8 +34,9 @@ Sheet uses the same sampled transition adapter to move the surface fully outside
 for enter and exit motion. Auto-sized vertical sheets complete an offscreen measurement frame before
 starting the visible transition. Its backdrop remains visually stable for the full lifecycle and is
 removed with the Sheet after the exit motion completes.
-Select also uses stable sampled motion state for its 100 ms enter/exit fade and translation while
-retaining content through exit. The next adoption group is Popover, Tooltip, Combobox, and
+Select also uses stable sampled motion state for its 100 ms enter/exit translation while retaining
+content through exit. Opacity is intentionally omitted until GPUI can composite the complete popup
+subtree as one layer. The next adoption group is Popover, Tooltip, Combobox, and
 ContextMenu, followed by modal surfaces and disclosure/layout motion.
 
 Spring, inertia, gestures, sequences, layout projection, scroll timelines, and a standalone frame

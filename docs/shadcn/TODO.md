@@ -70,18 +70,17 @@ Do not broaden the root to arbitrary `AnyElement` controls until GPUI components
 
 ## Select scale and isolated-opacity parity
 
-**Status:** Renderer support deferred; interruptible fade and directional translation implemented
+**Status:** Renderer support deferred; interruptible directional translation implemented
 
 The pinned React Aria and Popper Select content uses a 100 ms fade, `0.95 -> 1` enter scale,
-`1 -> 0.95` exit scale, and an 8 px placement-aware translation. Select implements the fade,
-bottom-placement translation, exit retention, rapid reversal, and reduced-motion final state through
-the shared motion runtime.
+`1 -> 0.95` exit scale, and an 8 px placement-aware translation. Select implements translation,
+exit retention, rapid reversal, and reduced-motion final state through the shared motion runtime.
 
 GPUI cannot yet apply a layout-independent scale to the complete Select subtree. Changing popup
 layout dimensions would reflow labels, alter virtual-list measurement, and move the resolved anchor,
 so it is not an acceptable substitute. GPUI opacity is also applied to individual primitives rather
-than one isolated composited popup layer; the current fade is the closest semantic equivalent but
-overlapping border, shadow, glyph, and background pixels can differ during intermediate frames.
+than one isolated composited popup layer, so Select deliberately omits the fade instead of producing
+different intermediate opacity for its background, border, shadow, glyphs, and custom children.
 
 Reuse the shared compositing work described for Tooltip and HoverCard. Acceptance requires stable
 virtual-list geometry, transformed hit testing and clipping, placement-aware transform origins,
