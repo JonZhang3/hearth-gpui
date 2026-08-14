@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`.
+// - Added or exposed behavior through `aria_label`, `normalize_current_page`, `pagination_gap`,
+//   `page_range_respects_visible_limit_and_normalizes_current_page`,
+//   `pagination_gap_matches_style_density`.
+// - Reworked Pagination around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
 use std::{ops::Range, rc::Rc};
 
 use gpui::{

@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `id`, `label`, `aria_label`, `metrics`, `interactive`.
+// - Removed or replaced `icon_size`.
+// - Reworked Trigger around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density, keyboard navigation and activation behavior, focus-visible and focus restoration
+//   behavior.
 use std::rc::Rc;
 
 use gpui::{

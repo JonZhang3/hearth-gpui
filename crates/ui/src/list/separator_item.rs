@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Aligned list separators with semantic list spacing and colors.
 use gpui::{AnyElement, ParentElement, RenderOnce, StyleRefinement};
 use smallvec::SmallVec;
 

@@ -1,3 +1,15 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `open_dialog_with_presentation`, `begin_close_dialog`,
+//   `dialog_close_keeps_content_mounted_and_rejects_duplicate_close`,
+//   `alert_dialog_close_uses_fast_modal_duration`,
+//   `reduced_motion_dialog_close_unmounts_without_delay`,
+//   `sheet_close_keeps_content_mounted_and_rejects_duplicate_close`,
+//   `reduced_motion_sheet_close_unmounts_without_delay`,
+//   `close_all_dialogs_uses_one_exit_lifecycle_for_nested_dialogs` and 2 more.
+// - Removed or replaced `close_dialog_internal`.
+// - Reworked Root around interruptible and reduced-motion-aware transitions, invalid and validation
+//   state handling.
 use crate::{
     ActiveTheme, Placement, StyledExt,
     animation::{OverlayLifecycle, effective_motion_duration},

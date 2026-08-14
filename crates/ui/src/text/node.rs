@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated text-node rendering to semantic typography metrics.
 use std::{
     cell::RefCell,
     collections::HashMap,

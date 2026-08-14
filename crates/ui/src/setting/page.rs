@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Preserved source group indices while filtering and translated deferred scroll targets to
+//   visible indices.
+// - Replaced fixed page, group, item, and text spacing with density-specific SettingsMetrics.
+// - Aligned reset-button sizing and page-title typography with the active Style Preset.
 use std::rc::Rc;
 
 use gpui::{

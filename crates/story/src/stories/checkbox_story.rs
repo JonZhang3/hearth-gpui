@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `indeterminate`, `invalid`, `aria_label`, `gap_6`.
+// - Reworked Checkbox story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, invalid and validation state handling.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, div, px,

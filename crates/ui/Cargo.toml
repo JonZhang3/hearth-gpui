@@ -1,3 +1,7 @@
+# Modified from the original gpui-component project in commit 4caf2023.
+# Changes:
+# - Added the gpui-component-motion runtime dependency.
+# - Added Criterion, GPUI bench support, gpui_platform test support, and the shadcn_alignment bench target.
 [package]
 description = "UI components for building fantastic desktop application by using GPUI."
 keywords = ["desktop", "gpui", "shadcn", "ui", "uikit"]

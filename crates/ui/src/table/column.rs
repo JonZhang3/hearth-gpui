@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `w`, `min_w`, `max_w`.
+// - Removed public methods: `width`, `min_width`, `max_width`.
+// - Added or exposed behavior through `w`, `min_w`, `max_w`,
+//   `width_builders_preserve_column_constraints`.
+// - Removed or replaced `width`, `min_width`, `max_width`.
+// - Replaced the legacy `width` builder with `w`.
 use std::f32;
 
 use gpui::{

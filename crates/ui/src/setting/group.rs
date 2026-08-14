@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added accessible group labels derived from setting-group titles.
+// - Replaced fixed section and text spacing with density-specific SettingsMetrics.
 use gpui::{
     App, IntoElement, ParentElement as _, SharedString, StyleRefinement, Styled, Window,
     prelude::FluentBuilder as _,

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated cursor timing to the shared motion and reduced-motion behavior.
 use gpui::{Context, Pixels, Task, px};
 use instant::Duration;
 

@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `trigger`, `side`, `aria_label`, `gap_1`, `show_delay`, `show_arrow` and 1
+//   more.
+// - Removed examples using `tooltip`, `danger`.
+// - Reworked Tooltip story around accessibility semantics and ARIA state.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, KeyBinding, ParentElement, Render, Styled, Window,
     actions, div, prelude::FluentBuilder as _,

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced legacy `Theme.radius` access with `Theme.style.radii.md` for brush rounding.
 use std::rc::Rc;
 
 use gpui::{StyleRefinement, prelude::FluentBuilder, *};

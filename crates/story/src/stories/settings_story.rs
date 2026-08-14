@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `refresh_windows`.
+// - Removed examples using `item`, `default_value`, `primary`.
 use gpui::{
     App, AppContext, Axis, Context, Element, Entity, FocusHandle, Focusable, Global, IntoElement,
     ParentElement as _, Render, SharedString, Styled, Window, prelude::FluentBuilder, px,

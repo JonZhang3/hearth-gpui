@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `aria_label`, `menu_aria_label`, `dropdown_menu`, `large`, `secondary`,
+//   `destructive`.
+// - Removed examples using `refresh`, `primary`, `compact`, `loading`, `danger`.
+// - Reworked Dropdown Button story around accessibility semantics and ARIA state.
 use gpui::{
     Action, Anchor, App, AppContext as _, Context, Entity, Focusable, IntoElement,
     ParentElement as _, Render, Styled as _, Window,

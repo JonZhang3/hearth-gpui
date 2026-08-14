@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `resolve`, `color_picker_child_id`, `popover_expanded`,
+//   `metrics_follow_semantic_style_presets`, `palette_positions_keep_unique_structural_ids`,
+//   `palettes_are_cached_between_renders`.
+// - Reworked Color Picker around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::sync::{Arc, LazyLock};
 
 use gpui::{

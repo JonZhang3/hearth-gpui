@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `id`.
+// - Added or exposed behavior through `line_height_with_default`, `block_height_with_default`,
+//   `id`, `resolve_layout`, `prepaint`, `tooltip_state`, `tooltip`.
 use std::rc::Rc;
 
 use gpui::{

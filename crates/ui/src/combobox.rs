@@ -1,3 +1,14 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `aria_description`, `invalid`, `group_separators`.
+// - Added or exposed behavior through `resolve`, `reconcile_blur`, `schedule_close_completion`,
+//   `complete_motion`, `aria_label`, `aria_description`, `invalid`, `group_separators` and 6 more.
+// - Removed or replaced `render_trigger_container`, `render_popup_shell`.
+// - Reworked Combobox around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::time::Instant;
 
 use gpui::{

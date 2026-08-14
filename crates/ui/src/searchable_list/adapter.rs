@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `has_visible_section_after`, `item_label`, `is_item_enabled`,
+//   `render_section_footer`, `separator_successor_ignores_empty_sections`.
+// - Reworked Adapter around semantic Style Preset geometry and density.
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,

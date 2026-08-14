@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `adjacent_enabled_index`, `owned_menu`,
+//   `keyboard_navigation_skips_disabled_menus`,
+//   `keyboard_navigation_stops_when_every_menu_is_disabled`,
+//   `rapid_trigger_click_does_not_reach_title_bar_double_click`.
+// - Reworked App Menu Bar around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, keyboard navigation and activation behavior, focus-visible and focus
+//   restoration behavior.
 use crate::{
     ActiveTheme, Disableable, Selectable, Sizable,
     actions::{Cancel, SelectLeft, SelectRight},

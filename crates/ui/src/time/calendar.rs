@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added range selection, configurable week starts, outside-day visibility, animation, and ARIA
+//   labeling APIs.
+// - Reworked month and year paging, active-date focus, and keyboard navigation around a
+//   visible-month state.
+// - Added semantic calendar metrics, reduced-motion transitions, and accessible grid metadata.
+// - Removed legacy single-mode and direct previous/next month rendering helpers.
 use std::{borrow::Cow, rc::Rc};
 
 use chrono::{Datelike, Duration, Local, NaiveDate, Weekday};

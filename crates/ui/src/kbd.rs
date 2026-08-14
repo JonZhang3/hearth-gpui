@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `KbdGroup`.
+// - Added public methods: `from_keystroke`.
+// - Added or exposed behavior through `from_keystroke`, `extend`, `style`,
+//   `creates_platform_keystroke_content`, `creates_empty_composable_elements`.
+// - Reworked Kbd around semantic Style Preset geometry and density, keyboard navigation and
+//   activation behavior.
 use gpui::{
     Action, AnyElement, AsKeystroke, FocusHandle, IntoElement, KeyContext, Keystroke,
     ParentElement, RenderOnce, StyleRefinement, Styled, Window, prelude::FluentBuilder as _,

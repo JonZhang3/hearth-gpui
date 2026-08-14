@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `id`.
+// - Added or exposed behavior through `update_open`, `measure`, `finish_close`,
+//   `render_animated_content`, `id`, `close_completion_ignores_an_interrupted_reopen`,
+//   `dynamic_open_content_retargets_from_the_previous_height`,
+//   `matching_close_completion_unmounts_hidden_content`.
+// - Reworked Collapsible around interruptible and reduced-motion-aware transitions.
 use gpui::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, Pixels,
     RenderOnce, StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,

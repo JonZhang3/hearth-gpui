@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `id`.
+// - Added or exposed behavior through `description_list_metrics`, `description_list_edge_styles`,
+//   `accessibility_label`, `id`, `style`, `description_semantic_container`,
+//   `description_semantic_element`, `item_span` and 3 more.
+// - Removed or replaced `_label`, `_span`.
+// - Reworked Description List around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
 use gpui::{
     AnyElement, App, Axis, DefiniteLength, ElementId, InteractiveElement as _, IntoElement,
     ParentElement, Pixels, RenderOnce, Role, SharedString, Stateful,

@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `disabled`, `title`, `value`.
+// - Added examples for `items`, `group_separators`, `max_w_128`, `gap_3`, `aria_label`,
+//   `aria_description` and 1 more.
+// - Reworked Select story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, invalid and validation state handling.
 use gpui::*;
 use gpui_component::{button::*, checkbox::*, input::*, select::*, separator::*, *};
 use itertools::Itertools as _;

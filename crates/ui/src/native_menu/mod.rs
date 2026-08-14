@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `menu_with_check_and_disabled`, `label`, `show_selected_at`.
+// - Added or exposed behavior through `menu_with_check_and_disabled`, `label`, `show_selected_at`,
+//   `show_with_selected_item`, `test_native_menu_builder_accepts_checked_disabled_items`,
+//   `test_native_menu_builder_accepts_non_interactive_labels`.
 //! A menu rendered natively by the operating system.
 //!
 //! Unlike [`crate::menu::PopupMenu`], which is drawn by GPUI and therefore

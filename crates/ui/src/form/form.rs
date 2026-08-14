@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed public methods: `label_width`, `label_text_size`.
+// - Added or exposed behavior through `disabled`, `columns_are_normalized`,
+//   `disabled_form_propagates_through_field_props`.
+// - Removed or replaced `label_width`, `label_text_size`.
+// - Reworked Form around semantic Style Preset geometry and density.
 use gpui::{App, Axis, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window};
 
 use crate::{

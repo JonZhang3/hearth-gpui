@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `aria_description`.
+// - Added or exposed behavior through `resolve`, `current`, `transition_to`, `slider_child_id`,
+//   `normalize_value`, `snap_value`, `set_thumb_value`, `handle_key` and 9 more.
+// - Reworked Slider around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::{
     ops::Range,
     sync::Arc,

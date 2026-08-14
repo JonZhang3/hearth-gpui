@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `gap_4`, `h_full`, `gap_2`, `p_3`, `overflow_x_scrollbar`, `min_w` and 4
+//   more.
+// - Reworked Scrollbar story around semantic Style Preset geometry and density.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Pixels, Render, Styled, UniformListScrollHandle, Window, div, px, uniform_list,

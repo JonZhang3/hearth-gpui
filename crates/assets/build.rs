@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Stopped excluding the `policies` asset directory so policy resources are bundled.
 use std::{env, path::Path};
 
 fn main() {

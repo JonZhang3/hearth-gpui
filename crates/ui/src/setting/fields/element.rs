@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated element setting fields to semantic form spacing and layout.
 use gpui::{AnyElement, App, IntoElement, StyleRefinement, Window};
 use std::rc::Rc;
 

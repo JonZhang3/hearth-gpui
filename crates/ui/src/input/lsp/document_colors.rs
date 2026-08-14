@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated LSP color decorations to semantic input and theme geometry.
 use anyhow::Result;
 use gpui::{App, Context, Hsla, Task, Window};
 use instant::Duration;

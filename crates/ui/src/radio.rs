@@ -1,3 +1,14 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `RadioGroupItem`.
+// - Added public methods: `aria_label`, `aria_description`, `invalid`, `new`, `label`, `tooltip`,
+//   `orientation`, `value` and 1 more.
+// - Removed public methods: `layout`, `selected_index`, `disabled`.
+// - Removed or replaced `handle_click`, `layout`, `selected_index`.
+// - Reworked Radio around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{rc::Rc, sync::Arc};
 
 use crate::{

@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `scrollable_child_id`, `scrollbar_layer_id`,
+//   `scrollable_preserves_explicit_source_id`,
+//   `structural_child_ids_do_not_flatten_parent_identity`, `fallback_ids_distinguish_call_sites`,
+//   `scrollbar_layer_ids_distinguish_axes`.
 use std::{panic::Location, rc::Rc, sync::Arc};
 
 use crate::StyledExt;

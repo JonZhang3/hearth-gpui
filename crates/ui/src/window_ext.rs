@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Changed `open_alert_dialog` to use `DialogPresentation::Alert` and the shared Root presentation
+//   pipeline.
+// - Updated the alert-dialog example to use semantic content, cancel, and action slots.
 use crate::{
     Placement, Root,
     dialog::{AlertDialog, Dialog, DialogPresentation},

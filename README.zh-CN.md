@@ -4,6 +4,10 @@
 
 [![Build Status](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
 
+> **Modification notice:** This fork contains substantial changes to the
+> original Longbridge project. See [`MODIFICATIONS.md`](./MODIFICATIONS.md) for
+> the scope and attribution details.
+
 基于 [GPUI](https://gpui.rs) 构建出色桌面应用程序的 UI 组件库。
 
 ## 特性

@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `FieldState`, `FieldBody`, `FieldOrientation`, `FieldSet`,
+//   `FieldLegendVariant`, `FieldLegend`, `FieldGroup`, `FieldLabel` and 4 more.
+// - Removed public types: `FieldBuilder`.
+// - Added public methods: `disabled`, `invalid`, `apply_disabled`, `orientation`, `aria_label`,
+//   `aria_description`, `content`, `variant` and 3 more.
+// - Removed public methods: `label_indent`, `label_fn`, `description`, `description_fn`.
+// - Reworked Field around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density, invalid and validation state handling.
 use std::collections::HashSet;
 
 use gpui::{

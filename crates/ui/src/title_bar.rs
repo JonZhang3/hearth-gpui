@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Adjusted title-bar integration for GPUI-owned drag regions and aligned window controls.
 use std::rc::Rc;
 
 use crate::{

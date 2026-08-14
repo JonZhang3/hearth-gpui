@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `resolve`, `cross_inset`, `visible_duration`,
+//   `scrollbar_axis_geometry`, `metrics_follow_semantic_style_presets`,
+//   `geometry_rejects_non_overflowing_content`, `geometry_stays_inside_tiny_containers`,
+//   `geometry_clamps_out_of_range_offsets` and 2 more.
+// - Reworked Scrollbar around interruptible and reduced-motion-aware transitions, semantic Style
+//   Preset geometry and density.
 use std::{cell::Cell, ops::Deref, panic::Location, rc::Rc};
 
 use instant::{Duration, Instant};

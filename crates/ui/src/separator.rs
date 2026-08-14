@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `new`, `orientation`.
+// - Added or exposed behavior through `orientation`,
+//   `separator_builder_preserves_orientation_and_extensions`.
 use crate::{ActiveTheme, StyledExt};
 use gpui::{
     App, Axis, Div, Hsla, IntoElement, ParentElement, PathBuilder, RenderOnce, SharedString,

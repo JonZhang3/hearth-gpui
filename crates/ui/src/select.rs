@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added `SelectPosition` with ItemAligned and Popper positioning modes.
+// - Added `position`, `aria_label`, `aria_description`, `invalid`, and `group_separators` builder
+//   APIs.
+// - Added printable-key typeahead, keyboard-open guarding, blur reconciliation, and focus
+//   restoration.
+// - Added interruptible overlay lifecycle transitions and density-specific Select metrics.
 use std::time::{Duration, Instant};
 
 use gpui::{

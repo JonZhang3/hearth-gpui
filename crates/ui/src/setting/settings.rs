@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `for_density`, `visible_pages`, `active_page_ix`, `style`,
+//   `density_metrics_expand_monotonically`, `active_page_preserves_source_indices`,
+//   `filtering_preserves_source_page_and_group_indices`.
+// - Removed or replaced `filtered_pages`.
+// - Reworked Settings around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density.
 use std::ops::Range;
 
 use crate::{

@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `avatar`.
+// - Added examples for `gap_2`, `flex_wrap`, `secondary`, `destructive`, `outline`, `ghost` and 6
+//   more.
+// - Removed examples using `max_w_md`, `src`.
+// - Reworked Badge story around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,

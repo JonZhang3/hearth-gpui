@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `empty`, `for_focus`.
+// - Added or exposed behavior through `empty`, `for_focus`, `case_insensitive_ranges`, `extend`,
+//   `disabled`, `unicode_case_folding_keeps_original_byte_boundaries`,
+//   `masked_labels_do_not_apply_ranges_from_unmasked_text`, `supports_composed_and_disabled_labels`
+//   and 1 more.
+// - Reworked Label around focus-visible and focus restoration behavior.
 use std::ops::Range;
 
 use gpui::{

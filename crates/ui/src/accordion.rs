@@ -1,3 +1,16 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `single`, `collapsible`, `framed`, `default_open_values`, `open_values`,
+//   `on_open_change`, `aria_label`.
+// - Removed public methods: `new`, `bordered`, `on_toggle_click`, `open`.
+// - Added or exposed behavior through `normalize`, `is_toggle_key`, `is_toggle_key_name`,
+//   `toggled_values`, `ordered_values`, `validate_configuration`, `single`, `collapsible` and 13
+//   more.
+// - Removed or replaced `bordered`, `on_toggle_click`, `with_size`, `open`, `index`.
+// - Reworked Accordion around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{collections::HashSet, rc::Rc};
 
 use gpui::{

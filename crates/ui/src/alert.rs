@@ -1,3 +1,15 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `destructive`, `title_element`, `description`, `description_element`,
+//   `action`, `aria_label`.
+// - Removed public methods: `info`, `success`, `warning`, `error`.
+// - Added or exposed behavior through `foreground`, `description_foreground`, `for_density`,
+//   `accessibility_text`, `into_element`, `destructive`, `title_element`, `description` and 10
+//   more.
+// - Removed or replaced `fg`, `bg`, `border_color`, `info`, `success`, `warning`, `error`,
+//   `with_size`.
+// - Reworked Alert around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density.
 use std::rc::Rc;
 
 use gpui::{

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Integrated input element rendering with the new semantic metrics and state pipeline.
 use gpui::Corners;
 use gpui::Half;
 use gpui::{

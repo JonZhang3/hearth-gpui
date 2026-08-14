@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `placement`.
+// - Added or exposed behavior through `for_density`, `placement`, `resolved_placement`,
+//   `metrics_follow_semantic_style_density`, `settings_preserve_notification_defaults`,
+//   `notification_placement_override_falls_back_to_global_default`,
+//   `duplicate_dismiss_emits_one_callback_and_reduced_motion_has_no_delay`.
+// - Reworked Notification around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density.
 use std::{
     any::TypeId,
     borrow::Cow,

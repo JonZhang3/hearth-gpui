@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated diagnostic popovers to the aligned popover spacing and presentation APIs.
 use std::rc::Rc;
 
 use gpui::{

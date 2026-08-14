@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`.
+// - Added or exposed behavior through `resolve`, `aria_label`,
+//   `test_group_box_metrics_follow_style_density`, `test_group_box_builder`.
+// - Reworked Group Box around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{
     AnyElement, App, Background, ElementId, InteractiveElement as _, IntoElement, ParentElement,
     Pixels, RenderOnce, Role, SharedString, StatefulInteractiveElement as _, StyleRefinement,

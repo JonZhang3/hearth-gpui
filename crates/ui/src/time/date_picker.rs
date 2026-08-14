@@ -1,3 +1,14 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `week_starts_on`, `calendar_animated`.
+// - Added or exposed behavior through `translation_locale`, `locale_kind`, `month_translation_key`,
+//   `localized_month`, `english_ordinal`, `format_localized_endpoint`, `format_custom_date`,
+//   `format_date_display` and 19 more.
+// - Removed or replaced `on_enter`, `focus_back_if_need`, `toggle_calendar`.
+// - Reworked Date Picker around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::rc::Rc;
 
 use chrono::{Datelike, NaiveDate, Weekday};

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed the legacy `primary` button variant and used the aligned default variant.
 use gpui::*;
 use gpui_component::{button::*, *};
 

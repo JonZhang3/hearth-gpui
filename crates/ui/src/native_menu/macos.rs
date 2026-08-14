@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added selected-item lookup and state synchronization for macOS native menus.
 //! macOS native menu implementation (AppKit `NSMenu` via objc2).
 
 use std::{cell::Cell, sync::Arc};

@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `aria_label`, `gap_3`, `read_only`.
+// - Removed examples using `color`.
+// - Reworked Rating story around accessibility semantics and ARIA state.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window,
 };

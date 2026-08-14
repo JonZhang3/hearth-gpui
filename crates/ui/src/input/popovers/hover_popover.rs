@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed a legacy hover-popover styling override superseded by semantic overlay metrics.
 use std::{ops::Range, rc::Rc};
 
 use gpui::{

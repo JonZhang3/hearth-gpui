@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `start`, `sub_title`, `aria_label`, `h_56`.
+// - Removed examples using `h_32`.
+// - Reworked Slider story around accessibility semantics and ARIA state.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, Hsla, IntoElement, ParentElement, Render,
     SharedString, Styled, Subscription, Window, hsla, px,

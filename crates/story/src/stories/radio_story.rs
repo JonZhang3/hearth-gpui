@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `invalid`, `aria_label`, `max_w_md`, `aria_description`.
+// - Removed examples using `selected_index`.
+// - Reworked Radio story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, invalid and validation state handling.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, SharedString,
     Styled, Window, div, px,

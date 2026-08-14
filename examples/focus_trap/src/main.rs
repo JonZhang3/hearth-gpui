@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced legacy theme radius access with `Theme.style.radii.md`.
 use gpui::*;
 use gpui_component::{button::*, h_flex, v_flex, *};
 

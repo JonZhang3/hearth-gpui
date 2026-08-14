@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `set_style`, `set_color_theme`.
+// - Added or exposed behavior through `set_style`, `set_color_theme`, `default_style`.
+// - Separated color-theme application from Style Preset selection and registered built-in styles.
+// - Added the active StylePreset to Theme while removing legacy flat radius and shadow fields.
 use crate::{
     highlighter::HighlightTheme, list::ListSettings, notification::NotificationSettings,
     scroll::ScrollbarShow, sheet::SheetSettings,

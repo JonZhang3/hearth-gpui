@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `set_date`, `date_naive`, `checked_sub_months`, `max_w_128`,
+//   `number_of_months`, `cleanable`.
+// - Removed examples using `naive_local`, `date`.
 use chrono::{Datelike, Days, Duration, Local, Months, NaiveDate, Utc};
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement as _, Render,

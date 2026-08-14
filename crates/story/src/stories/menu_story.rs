@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `menu_with_icon`, `menu_with_disabled`.
+// - Reworked Menu story around semantic Style Preset geometry and density.
 use gpui::{
     Action, Anchor, App, AppContext, Context, Entity, InteractiveElement, IntoElement, KeyBinding,
     ParentElement as _, Render, SharedString, Styled as _, Window, actions, div, px,

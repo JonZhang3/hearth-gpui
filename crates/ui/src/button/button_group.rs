@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `ButtonGroupText`, `ButtonGroupSeparator`.
+// - Added public methods: `new`, `group`, `text`, `separator`, `orientation`, `aria_label`.
+// - Added or exposed behavior through `extend`, `render_for`, `group`, `text`, `separator`,
+//   `orientation`, `aria_label`, `group_corners` and 3 more.
+// - Removed or replaced `with_variant`, `test_button_group_builder`.
+// - Reworked Button Group around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
 use gpui::{
     AnyElement, App, Axis, Corners, Edges, ElementId, InteractiveElement as _, IntoElement,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,

@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Changed month-grid generation to accept arbitrary month offsets and configurable week starts.
+// - Normalized month arithmetic and always generated six rows for stable Calendar geometry.
+// - Added coverage for Monday-first calendars and cross-year month offsets.
 use chrono::{Datelike, Duration, NaiveDate, Weekday};
 
 #[cfg(test)]

@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced legacy `primary`, status-color, text, and custom variants with Default, Outline,
+//   Secondary, Destructive, Ghost, and Link variants.
+// - Added `rounded_full`, `trailing_icon`, `pressed`, `aria_label`, and `aria_expanded` builder
+//   APIs.
+// - Removed `ButtonRounded`, `ButtonCustomVariant`, loading, compact, dropdown-caret, and toggled
+//   APIs.
+// - Moved button geometry, colors, focus-visible rings, and pressed feedback to semantic Style
+//   Preset metrics.
 use std::rc::Rc;
 
 use crate::{

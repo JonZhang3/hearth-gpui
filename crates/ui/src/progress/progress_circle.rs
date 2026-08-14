@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced fixed progress and loading durations with semantic motion tokens.
+// - Added reduced-motion-aware timers and Style Preset easing for circular progress animation.
 use crate::{ActiveTheme, Sizable, Size, StyledExt, animation::effective_motion_duration};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed the legacy `primary` button variant from the tooltip edge-case example.
 use gpui::*;
 use gpui_component::{ActiveTheme as _, Root, button::*};
 

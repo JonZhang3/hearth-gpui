@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Adjusted semantic-token rendering for the revised input display pipeline.
 use std::ops::Range;
 
 use anyhow::Result;

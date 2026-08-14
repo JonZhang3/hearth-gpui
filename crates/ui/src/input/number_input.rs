@@ -1,3 +1,15 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `invalid`, `read_only`, `aria_label`, `aria_description`, `increment`,
+//   `decrement`.
+// - Removed public methods: `placeholder`.
+// - Added or exposed behavior through `invalid`, `read_only`, `aria_label`, `aria_description`,
+//   `increment`, `decrement`, `number_input_builder_preserves_composite_states`.
+// - Removed or replaced `placeholder`, `on_increment`, `on_decrement`.
+// - Reworked Number Input around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{rc::Rc, time::Instant};
 
 use gpui::{Animation, AnimationExt as _, Corners, Edges, ElementId, Window, div, px};

@@ -1,3 +1,14 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `TooltipSide`, `TooltipAlign`, `TooltipTrigger`.
+// - Added public methods: `new`, `trigger`, `text`, `content`, `side`, `align`, `side_offset`,
+//   `align_offset` and 4 more.
+// - Added or exposed behavior through `motion_offset`, `opposite`, `resolve`, `begin_open`,
+//   `request_hide_after`, `tooltip_arrow`, `show`, `hide_if_inactive` and 24 more.
+// - Removed or replaced `managed_tooltip`.
+// - Reworked Tooltip around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
 use std::{cell::Cell, rc::Rc, time::Duration};
 
 use gpui::{

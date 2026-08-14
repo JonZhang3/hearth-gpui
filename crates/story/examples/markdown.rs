@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `fallback`.
+// - Removed examples using `src`.
+// - Reworked Markdown around semantic Style Preset geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::{
     collections::HashMap,
     ops::Range,

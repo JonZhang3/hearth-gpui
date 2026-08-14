@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `set_open_values`.
+// - Removed or replaced story helpers: `toggle_accordion`, `set_size`.
+// - Added examples for `framed`, `open_values`, `on_open_change`, `set_open_values`, `max_w_md`,
+//   `default_open_values`.
+// - Removed examples using `outline`, `compact`, `set_size`, `bordered`, `multiple`, `open` and 2
+//   more.
+// - Reworked Accordion story around accessibility semantics and ARIA state.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, SharedString, Styled as _, Window,

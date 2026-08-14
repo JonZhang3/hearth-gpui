@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed the unused `ButtonVariants` import after the aligned button API migration.
+// - Reformatted the example without changing its editor or go-to-line behavior.
 use gpui::*;
 use gpui_component::{
     ActiveTheme, Selectable, Sizable, WindowExt,

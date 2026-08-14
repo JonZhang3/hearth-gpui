@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added Card background/foreground and GroupBox title semantic color tokens.
+// - Added coverage pinning light and dark focus-ring colors to shadcn neutral values.
 use std::{ops::Deref, sync::Arc};
 
 use crate::{ThemeMode, theme::DEFAULT_THEME_COLORS};

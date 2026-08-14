@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `default_value`, `set_loading`, `aria_label`, `read_only`,
+//   `aria_description`, `invalid` and 1 more.
+// - Reworked Input story around accessibility semantics and ARIA state, invalid and validation
+//   state handling.
 use gpui::{
     App, AppContext as _, ClickEvent, Context, Entity, HighlightStyle, InteractiveElement,
     IntoElement, ParentElement as _, Render, Role, Styled, Subscription, Window, div,

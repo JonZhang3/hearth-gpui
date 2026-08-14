@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `on_open_change`.
+// - Added or exposed behavior through `on_open_change`, `set_open`, `complete_measurement`, `id`,
+//   `source_location`, `request_layout`, `prepaint`, `paint` and 6 more.
+// - Reworked Context Menu around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{

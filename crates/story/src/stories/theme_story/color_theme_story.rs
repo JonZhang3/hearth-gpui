@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed examples using `primary`.
+// - Reworked Color Theme story around semantic Style Preset geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme as _, Icon, IconName, IndexPath, StyledExt as _, ThemeColor,

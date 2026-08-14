@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added `aria_label`, semantic sizing, and per-entry content inset and gap APIs.
+// - Added hierarchy metadata, active-descendant semantics, and disabled-item-aware keyboard
+//   navigation.
+// - Changed selection rebuilding so collapsing a selected descendant falls back to its parent.
+// - Migrated row geometry to semantic Style Preset metrics.
 use std::{cell::RefCell, ops::Range, rc::Rc, sync::Arc};
 
 use gpui::{

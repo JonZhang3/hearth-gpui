@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `series`.
+// - Added or exposed behavior through `series`, `line_chart_builder_supports_multiple_series`,
+//   `series_color`.
 use std::rc::Rc;
 
 use gpui::{

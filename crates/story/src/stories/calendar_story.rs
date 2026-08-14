@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `set_date`, `shadow_xs`, `max_w_2xl`, `number_of_months`, `animated`.
+// - Reworked Calendar story around semantic Style Preset geometry and density.
 use chrono::NaiveDate;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,

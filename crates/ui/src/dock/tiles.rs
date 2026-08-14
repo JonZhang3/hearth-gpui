@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reformatted tile resize geometry and tests only; snapping behavior is unchanged.
 use std::{
     any::Any,
     fmt::{Debug, Formatter},

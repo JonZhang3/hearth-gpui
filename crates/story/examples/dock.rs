@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Enabled application-owned title-bar dragging.
 use anyhow::{Context as _, Result};
 use gpui::*;
 use gpui_component::{

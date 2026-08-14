@@ -1,3 +1,15 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed public types: `ANIMATION_DURATION`, `DialogButtonProps`.
+// - Added public methods: `title_element`, `description`, `description_element`, `aria_label`,
+//   `aria_description`, `initial_focus`, `show_close_button`, `show_overlay` and 3 more.
+// - Removed public methods: `ok_text`, `ok_variant`, `cancel_text`, `cancel_variant`,
+//   `show_cancel`, `button_props`, `close_button`, `width` and 3 more.
+// - Removed or replaced `ok_text`, `ok_variant`, `cancel_text`, `cancel_variant`, `show_cancel`,
+//   `render_ok`, `render_cancel`, `overlay_color` and 6 more.
+// - Reworked Dialog around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
 use std::rc::Rc;
 
 use gpui::{

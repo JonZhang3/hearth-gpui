@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `image_avatar`.
+// - Added examples for `fallback`, `badge`, `avatar`.
+// - Removed examples using `src`, `limit`, `ellipsis`, `border_3`, `shadow_sm`.
+// - Reworked Avatar story around invalid and validation state handling.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,

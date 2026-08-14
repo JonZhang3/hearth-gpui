@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Enabled application-owned title-bar dragging for the custom dialog-overlay window.
 use gpui::*;
 use gpui_component::{button::*, menu::ContextMenuExt, text::TextView, *};
 use gpui_component_assets::Assets;

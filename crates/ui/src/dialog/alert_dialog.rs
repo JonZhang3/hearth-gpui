@@ -1,3 +1,16 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `AlertDialogSize`, `AlertDialogAction`, `AlertDialogCancel`,
+//   `AlertDialogContent`.
+// - Added public methods: `variant`, `disabled`, `size`, `media`, `media_element`, `title_element`,
+//   `description_element`, `aria_label` and 5 more.
+// - Removed public methods: `confirm`, `footer`, `icon`, `button_props`, `width`, `show_cancel`,
+//   `overlay_closable`, `close_button` and 2 more.
+// - Removed or replaced `confirm`, `footer`, `debug_assert_no_trigger`, `icon`, `button_props`,
+//   `width`, `show_cancel`, `overlay_closable` and 3 more.
+// - Reworked Alert Dialog around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, keyboard navigation and activation behavior, focus-visible and focus
+//   restoration behavior.
 use std::rc::Rc;
 
 use gpui::{

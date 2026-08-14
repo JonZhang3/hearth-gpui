@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed or replaced story helpers: `on_click`, `on_hover`.
+// - Added examples for `flex_wrap`, `destructive`, `aria_label`, `trailing_icon`, `rounded_full`,
+//   `group` and 1 more.
+// - Removed examples using `color`, `foreground`, `hover`, `refresh`, `max_w_lg`, `loading` and 15
+//   more.
+// - Reworked Button story around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior.
 use gpui::{
     App, AppContext as _, Entity, Focusable, IntoElement, ParentElement as _, Render, Styled as _,
     Window,

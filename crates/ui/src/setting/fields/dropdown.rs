@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced the removed `dropdown_caret` button API with a trailing ChevronDown icon.
 use std::rc::Rc;
 
 use gpui::{

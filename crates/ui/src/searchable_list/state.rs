@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `active_list_focus_handle`, `list_is_focused`.
+// - Split searchable and non-searchable list focus targets and added containment checks.
 use gpui::{
     AnyElement, App, AppContext as _, Bounds, Context, Entity, FocusHandle, Focusable as _, Length,
     Pixels, StyleRefinement, Subscription, Window,

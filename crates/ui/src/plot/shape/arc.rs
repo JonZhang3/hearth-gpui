@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `contains`.
+// - Added or exposed behavior through `geometry`, `contains`,
+//   `arc_contains_respects_annular_bounds_and_padding`.
 // @reference: https://d3js.org/d3-shape/arc
 
 use std::{f32::consts::PI, fmt::Debug};

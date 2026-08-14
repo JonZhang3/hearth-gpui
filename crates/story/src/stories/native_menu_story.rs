@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reformatted native-menu story composition only; menu behavior and examples are unchanged.
 use std::cell::Cell;
 use std::rc::Rc;
 

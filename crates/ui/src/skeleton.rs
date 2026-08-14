@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `skeleton_metrics`, `skeleton_opacity`,
+//   `resolves_preset_radius_from_semantic_density`, `pulse_is_symmetric_and_reaches_half_opacity`.
+// - Reworked Skeleton around interruptible and reduced-motion-aware transitions, semantic Style
+//   Preset geometry and density.
 use crate::{ActiveTheme, Density, MotionEasing, StylePreset, StyledExt};
 use gpui::{
     Animation, AnimationExt, IntoElement, Pixels, RenderOnce, StyleRefinement, Styled, div,

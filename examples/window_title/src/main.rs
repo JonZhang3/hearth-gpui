@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed the legacy `primary` button variant and unused variant import.
+// - Enabled application-owned title-bar dragging for the custom window.
 use gpui::*;
 use gpui_component::{Root, TitleBar, button::Button, h_flex, v_flex};
 

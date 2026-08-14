@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `gap_1`, `h_5`, `items_center`, `gap_4`.
+// - Removed examples using `gap_y_4`, `gap_y_2`, `gap_x_4`, `dashed`.
 use crate::section;
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window,

@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reformatted dock state construction and assertions only; serialized state and behavior are
+//   unchanged.
 use gpui::{App, AppContext, Axis, Bounds, Entity, Pixels, WeakEntity, Window, point, px, size};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};

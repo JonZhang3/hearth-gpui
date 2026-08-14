@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through
+//   `test_card_colors_support_fallbacks_and_explicit_configuration`,
+//   `test_group_box_title_color_supports_fallback_and_configuration`.
 use std::{rc::Rc, sync::Arc};
 
 use gpui::{Background, Hsla, SharedString, px};

@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `AvatarGroupCount`.
+// - Added public methods: `text`, `icon`, `avatar`, `avatars`, `count`.
+// - Removed public methods: `child`, `children`, `limit`, `ellipsis`.
+// - Removed or replaced `child`, `children`, `limit`, `ellipsis`, `test_avatar_group_builder`.
+// - Reworked Avatar Group around semantic Style Preset geometry and density.
 use gpui::{
     AnyElement, BoxShadow, Div, InteractiveElement, Interactivity, IntoElement, ParentElement as _,
     Pixels, RenderOnce, SharedString, StyleRefinement, Styled, div, point,

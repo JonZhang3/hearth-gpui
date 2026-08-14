@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reordered imports only; diagnostic highlighting behavior is unchanged.
 use std::{
     cmp::Ordering,
     ops::{Deref, Range},

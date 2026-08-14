@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced `Column::width` with the aligned `Column::w` builder for every table column.
 //! A `DataTable` (which has its own vertical scrollbar) nested inside a
 //! scrollable page.
 //!

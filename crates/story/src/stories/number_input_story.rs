@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `default_value`, `step`, `aria_label`, `aria_description`, `read_only`,
+//   `invalid` and 3 more.
+// - Reworked Number Input story around accessibility semantics and ARIA state, invalid and
+//   validation state handling.
 use gpui::{
     App, AppContext as _, Context, Entity, Focusable, InteractiveElement, IntoElement,
     ParentElement as _, Render, Styled, Subscription, Window, px,

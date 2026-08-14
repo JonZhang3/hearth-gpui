@@ -1,3 +1,16 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `PopoverSide`, `PopoverAlign`, `PopoverTrigger`, `PopoverHeader`,
+//   `PopoverTitle`, `PopoverDescription`.
+// - Added public methods: `side`, `align`, `side_offset`, `align_offset`, `aria_label`,
+//   `aria_description`, `new`.
+// - Added or exposed behavior through `popover_expanded`, `resolve`, `side`, `align`,
+//   `side_offset`, `align_offset`, `aria_label`, `aria_description` and 18 more.
+// - Removed or replaced `resolved_corner`, `test_resolved_corner_top_positions`.
+// - Reworked Popover around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use gpui::{
     Anchor, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,

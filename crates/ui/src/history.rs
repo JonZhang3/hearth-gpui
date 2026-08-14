@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Adjusted history state integration for the updated GPUI component contracts.
 use instant::{Duration, Instant};
 use std::fmt::Debug;
 

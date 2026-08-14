@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Updated fallback native-menu labels for the revised menu item contract.
 //! Fallback popup menu for platforms without an OS-native popup (e.g. Linux).
 //!
 //! It renders gpui-component's drawn [`PopupMenu`] through an overlay held by

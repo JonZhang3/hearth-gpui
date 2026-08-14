@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added aligned menu-item accessibility metadata and semantic spacing.
 use crate::{ActiveTheme, Disableable, StyledExt, accessibility::accessibility_state, h_flex};
 use gpui::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,

@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `gap_2`, `appearance`.
+// - Reworked Kbd story around keyboard navigation and activation behavior.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, Keystroke, ParentElement, Render,
     Styled, Window,

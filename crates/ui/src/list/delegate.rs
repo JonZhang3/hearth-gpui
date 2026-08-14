@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `item_label`, `is_item_enabled`, `item_toggled`.
 use gpui::{
     AnyElement, App, Context, IntoElement, ParentElement as _, SharedString, Styled as _, Task,
     Window,

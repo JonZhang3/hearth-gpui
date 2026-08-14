@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `aria_value`.
+// - Added or exposed behavior through `progress_child_id`, `resolve`, `aria_label`, `aria_value`,
+//   `preset_density_resolves_pinned_default_height`, `value_clamps_invalid_and_out_of_range_input`,
+//   `builder_preserves_accessibility_metadata`, `internal_ids_preserve_structural_identity`.
+// - Reworked Progress around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, invalid and
+//   validation state handling.
 use std::sync::Arc;
 
 use crate::{ActiveTheme, Sizable, Size, StyledExt, animation::Transition, theme::Density};

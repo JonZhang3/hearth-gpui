@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `section_header_size`, `section_footer_size`, `first_entry`,
+//   `last_entry`, `item_ordinal`, `build_cache`, `offsets_skip_empty_leading_sections`,
+//   `item_ordinal_is_global_across_sections` and 1 more.
+// - Removed or replaced `eq_index_path`.
 use std::rc::Rc;
 
 use gpui::{App, Pixels, Size};

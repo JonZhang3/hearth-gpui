@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `indeterminate`, `invalid`.
+// - Added or exposed behavior through `checkbox_metrics`, `transition_to`, `checkbox_child_id`,
+//   `aria_label`, `indeterminate`, `invalid`, `checkbox_toggled`, `checkbox_indicator` and 7 more.
+// - Removed or replaced `checkbox_check_icon`.
+// - Reworked Checkbox around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{rc::Rc, sync::Arc};
 
 use crate::{

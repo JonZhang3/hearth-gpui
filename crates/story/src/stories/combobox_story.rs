@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `cleanable`, `w_full`, `max_w_md`, `aria_label`, `aria_description`,
+//   `search_placeholder` and 2 more.
+// - Reworked Combobox story around accessibility semantics and ARIA state, invalid and validation
+//   state handling.
 use gpui::{prelude::FluentBuilder as _, *};
 use gpui_component::{
     ActiveTheme, Icon, IconName, IndexPath, Sizable as _,

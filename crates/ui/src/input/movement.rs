@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Adjusted cursor movement integration for the revised input state behavior.
 use gpui::{Context, Point, Window};
 
 use crate::input::{

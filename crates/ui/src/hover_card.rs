@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `HoverCardSide`, `HoverCardAlign`.
+// - Added public methods: `side`, `align`, `side_offset`, `align_offset`, `default_open`, `open`.
+// - Added or exposed behavior through `resolve`, `side`, `align`, `side_offset`, `align_offset`,
+//   `default_open`, `open`, `placement_from_anchor` and 18 more.
+// - Reworked Hover Card around interruptible and reduced-motion-aware transitions, semantic Style
+//   Preset geometry and density, keyboard navigation and activation behavior, focus-visible and
+//   focus restoration behavior, invalid and validation state handling.
 use gpui::{
     Anchor, AnyElement, App, Bounds, Context, DispatchPhase, ElementId, FocusHandle,
     InteractiveElement as _, IntoElement, MouseMoveEvent, ParentElement, Pixels, Point, Render,

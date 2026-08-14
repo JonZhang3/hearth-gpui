@@ -1,3 +1,7 @@
+# Modified from the original gpui-component project in commit 4caf2023.
+# Changes:
+# - Added the `visual-test` feature backed by GPUI and gpui_platform test support.
+# - Registered four shadcn capture examples that require the visual-test feature.
 [package]
 name = "gpui-component-story"
 version = "0.5.1"

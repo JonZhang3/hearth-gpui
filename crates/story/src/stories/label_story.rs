@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed or replaced story helpers: `on_click`.
+// - Added examples for `focus_handle`, `gap_2`, `for_focus`, `aria_label`, `gap_3`, `w_1_2` and 1
+//   more.
+// - Removed examples using `gap_x_3`, `w_1_3`, `gap_y_4`, `text_center`, `text_right`, `text_size`
+//   and 3 more.
+// - Reworked Label story around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, SharedString,
     Styled, Subscription, Window, div,

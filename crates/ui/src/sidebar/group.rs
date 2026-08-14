@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated sidebar group spacing and labels to semantic sidebar metrics.
 use crate::{ActiveTheme, Collapsible, h_flex, sidebar::SidebarItem, v_flex};
 use gpui::{
     App, ElementId, IntoElement, ParentElement, SharedString, Styled as _, Window, div,

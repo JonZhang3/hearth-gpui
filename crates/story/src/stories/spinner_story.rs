@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed story APIs and helpers: `set_value`.
+// - Removed or replaced story helpers: `set_value`.
+// - Added examples for `gap_x_6`, `variant`, `animation`, `gap_3`, `outline`, `leading`.
+// - Removed examples using `gap_x_2`, `ease`.
+// - Reworked Spinner story around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, px,

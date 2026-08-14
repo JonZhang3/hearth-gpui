@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `selected`, `is_selected`,
+//   `table_row_selected_builder_tracks_state`, `table_cell_spans_are_never_zero`,
+//   `table_size_builder_is_retained`.
+// - Reworked Table around accessibility semantics and ARIA state.
 use gpui::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement, Pixels, RenderOnce, Role,
     StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window, div,

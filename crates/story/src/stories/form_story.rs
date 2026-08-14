@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `aria_label`, `flex_shrink_0`, `invalid`, `addon`, `p_0`, `w_full` and 11
+//   more.
+// - Removed examples using `is_horizontal`, `label_width`, `label_fn`, `gap_2`, `input_background`,
+//   `pr_0` and 3 more.
+// - Reworked Form story around accessibility semantics and ARIA state, invalid and validation state
+//   handling.
 use gpui::{
     App, AppContext, Axis, Context, Entity, FocusHandle, Focusable, InteractiveElement,
     IntoElement, ParentElement as _, Render, Styled, Window, div, prelude::FluentBuilder as _, px,

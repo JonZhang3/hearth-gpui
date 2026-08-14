@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Exported the new InputGroup APIs alongside the aligned input controls.
 /// The character used to mask password input fields.
 pub(super) const MASK_CHAR: char = '•';
 

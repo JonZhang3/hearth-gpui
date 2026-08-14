@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated list-item geometry and state presentation to semantic list metrics.
 use crate::{
     ActiveTheme, Disableable, Icon, Selectable, Sizable, Size, StyleSized as _, StyledExt, h_flex,
 };

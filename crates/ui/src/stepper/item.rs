@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `label`, `aria_label`.
+// - Added or exposed behavior through `resolve`, `stepper_child_id`, `label`, `aria_label`,
+//   `owner_id`, `size_of_set`, `interactive`, `metrics` and 2 more.
+// - Removed or replaced `with_size`, `icon_size`.
+// - Added stable child IDs, set-position metadata, and density-specific Stepper item metrics.
 use std::sync::Arc;
 
 use gpui::{

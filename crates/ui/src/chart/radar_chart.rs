@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `RadarGridShape`.
+// - Added public methods: `grid_shape`, `spokes`.
+// - Added or exposed behavior through `grid_shape`, `spokes`,
+//   `test_radar_chart_grid_shape_and_spokes`.
 use std::{
     f32::consts::{PI, TAU},
     rc::Rc,

@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `read_only`, `aria_label`.
+// - Added or exposed behavior through `rating_metrics`, `rating_after_click`, `rating_after_key`,
+//   `read_only`, `aria_label`, `builder_retains_requested_value_and_accessibility_options`,
+//   `click_selects_lower_star_and_toggles_current_star_down`, `keyboard_navigation_is_bounded` and
+//   1 more.
+// - Reworked Rating around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density, keyboard navigation and activation behavior, focus-visible and focus restoration
+//   behavior.
 use std::rc::Rc;
 
 use crate::{

@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `tab_bar_focus_target`,
+//   `horizontal_navigation_wraps_and_supports_boundaries`, `empty_navigation_has_no_target`.
+// - Reworked Tab Bar around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{

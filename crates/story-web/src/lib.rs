@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added browser style-preset selection through the `style` query parameter.
+// - Applied the selected Style Preset independently from the color theme.
 use std::borrow::Cow;
 
 use gpui::{prelude::*, *};

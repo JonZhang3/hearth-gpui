@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Updated searchable-list exports for the aligned adapter and item behavior.
 pub(crate) mod adapter;
 pub mod change;
 mod delegate;

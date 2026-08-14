@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added `aria_label`, `aria_description`, `read_only`, and `invalid` builder APIs.
+// - Removed the generic `Selectable` selected-state API from Input.
+// - Added stable structural IDs and accessibility metadata for text and numeric input surfaces.
+// - Added interruptible focus, hover, invalid-state, and reduced-motion transitions driven by Style
+//   Preset metrics.
 use std::{
     rc::Rc,
     sync::Arc,

@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `TooltipIndicator`.
+// - Added public methods: `indicator`, `hide_label`, `hide_indicator`.
+// - Added or exposed behavior through `indicator`, `hide_label`, `hide_indicator`.
+// - Reworked Tooltip around semantic Style Preset geometry and density.
 use gpui::{
     AnyElement, App, Div, Hsla, IntoElement, ParentElement, Pixels, Point, RenderOnce,
     SharedString, Size, StyleRefinement, Styled, Window, deferred, div, prelude::FluentBuilder, px,

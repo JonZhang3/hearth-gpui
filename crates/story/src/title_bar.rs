@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `on_select_style`.
+// - Removed or replaced `on_select_radius`.
+// - Reworked Title Bar around accessibility semantics and ARIA state.
 use std::rc::Rc;
 
 use gpui::{

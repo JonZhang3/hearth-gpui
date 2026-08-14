@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `toggle_bordered`.
+// - Added examples for `min_w`, `max_w`, `aria_label`, `bordered`.
+// - Removed examples using `width`, `min_width`, `max_width`.
+// - Reworked Data Table story around accessibility semantics and ARIA state.
+// - Replaced the legacy `width` builder with `w`.
 use std::{
     ops::Range,
     sync::LazyLock,

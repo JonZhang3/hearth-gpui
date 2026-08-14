@@ -1,3 +1,14 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `ToggleGroupMode`, `ToggleGroupSelection`, `ToggleGroupItem`.
+// - Added public methods: `aria_label`, `trailing_icon`, `invalid`, `tab_stop`, `tab_index`, `new`,
+//   `label`, `icon` and 7 more.
+// - Removed public methods: `segmented`.
+// - Removed or replaced `segmented`, `test_toggle_builder`, `test_toggle_group_builder`.
+// - Reworked Toggle around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{
     rc::Rc,
     sync::Arc,

@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `is_multi_line`, `transform_external_text`,
+//   `test_read_only_blocks_user_edits_but_allows_programmatic_updates`.
 //! A text input field that allows the user to enter text.
 //!
 //! Based on the `Input` example from the `gpui` crate.

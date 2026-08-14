@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `content_inset`, `content_gap`, `aria_label`.
+// - Removed examples using `px_3`, `depth`, `gap_2`.
+// - Reworked Tree story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::path::PathBuf;
 
 use gpui::{

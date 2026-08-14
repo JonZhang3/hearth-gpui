@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `informative`.
+// - Added or exposed behavior through `informative_container`, `informative`, `edge`,
+//   `resolve_edge`, `render_element`, `named_sizes_and_inherited_size_resolve_consistently`,
+//   `clone_preserves_transformation_style_and_accessibility`,
+//   `informative_icon_exposes_image_semantics`.
+// - Removed or replaced `text_color`.
+// - Reworked Icon around accessibility semantics and ARIA state.
 use crate::{Sizable, Size, StyledExt};
 use gpui::{
     AnyElement, App, AppContext, Context, Div, ElementId, Entity, InteractiveElement, IntoElement,

@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `menu_aria_label`.
+// - Removed public methods: `compact`, `outline`, `loading`.
+// - Added or exposed behavior through `menu_trigger_id`, `aria_label`, `menu_aria_label`,
+//   `menu_trigger_ids_preserve_parent_identity`.
+// - Removed or replaced `compact`, `outline`, `loading`.
+// - Reworked Dropdown Button around accessibility semantics and ARIA state.
 use std::sync::Arc;
 
 use gpui::{

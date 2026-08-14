@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`.
+// - Added or exposed behavior through `aria_label`, `normalize_selected_step`,
+//   `selected_step_is_normalized_to_available_items`, `stepper_builder_preserves_configuration`,
+//   `keyboard_activation_skips_read_only_and_disabled_steps`.
+// - Reworked Stepper around accessibility semantics and ARIA state, keyboard navigation and
+//   activation behavior.
 use std::rc::Rc;
 
 use gpui::{

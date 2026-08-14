@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `aria_label`, `max_w_md`, `gap_3`, `large`, `gap_2`, `w_full` and 4 more.
+// - Reworked Progress story around accessibility semantics and ARIA state.
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Task,
     Window, div, prelude::FluentBuilder as _, px,

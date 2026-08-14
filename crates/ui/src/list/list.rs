@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `initial_selected_index`, `aria_label`.
+// - Added or exposed behavior through `initial_selected_index`, `query_input`,
+//   `prepare_item_alignment`, `is_valid_index`, `is_valid_enabled_index`, `first_enabled_index`,
+//   `last_enabled_index`, `next_enabled_index` and 14 more.
+// - Removed or replaced `is_focused`.
+// - Reworked List around accessibility semantics and ARIA state, keyboard navigation and activation
+//   behavior.
 use std::ops::Range;
 
 use crate::actions::{Cancel, Confirm, SelectDown, SelectFirst, SelectLast, SelectUp};

@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`.
+// - Added or exposed behavior through `aria_label`, `style`.
+// - Reworked Data Table around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use crate::{
     ActiveTheme, Sizable, Size, StyledExt as _,
     actions::{

@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `metric_index`, `focus_ring_color`.
+// - Removed or replaced `list_px`, `list_py`, `test_table_row_height`.
+// - Reworked Styled around semantic Style Preset geometry and density.
 use crate::ActiveTheme;
 use gpui::{
     App, BoxShadow, Corners, DefiniteLength, Div, Edges, FocusHandle, Hsla, ParentElement, Pixels,

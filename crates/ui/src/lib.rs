@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public modules for AspectRatio, Card, Command, Empty, and NativeSelect.
+// - Removed the legacy Tag module and export.
+// - Registered Calendar and NativeSelect initialization and shared accessibility infrastructure.
 use gpui::{App, SharedString};
 use std::ops::Deref;
 

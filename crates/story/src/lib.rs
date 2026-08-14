@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `SelectStyle`.
+// - Removed public types: `SelectRadius`.
+// - Added public methods: `w`.
+// - Removed public methods: `width`.
+// - Added Style Preset selection, aligned AlertDialog composition, new story registration, and
+//   application-owned title-bar dragging.
 use gpui::{
     Action, AnyElement, AnyView, App, AppContext, Bounds, Context, Div, Entity, EventEmitter,
     FocusHandle, Focusable, Global, Hsla, InteractiveElement, IntoElement, KeyBinding,

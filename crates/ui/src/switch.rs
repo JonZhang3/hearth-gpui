@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `aria_label`, `label_side`, `invalid`, `tab_stop`, `tab_index`.
+// - Added or exposed behavior through `switch_metrics`, `current`, `transition_to`,
+//   `interpolate_switch_paint`, `paint_switch_track`, `switch_child_id`, `switch_focus_visible`,
+//   `aria_label` and 12 more.
+// - Reworked Switch around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior, invalid and
+//   validation state handling.
 use std::{
     rc::Rc,
     sync::Arc,

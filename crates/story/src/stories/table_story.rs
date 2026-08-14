@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `status_badge`.
+// - Removed or replaced story helpers: `status_tag`.
+// - Added examples for `destructive`, `secondary`.
+// - Reworked Table story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, Styled, Window, prelude::FluentBuilder as _, px,

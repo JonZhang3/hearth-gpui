@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced legacy `Theme.radius_lg` access with `Theme.style.radii.lg`.
 use gpui::*;
 use gpui_component::ActiveTheme as _;
 

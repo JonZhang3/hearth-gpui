@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reworked dialog footer layout, spacing, and action alignment around modal Style Preset metrics.
 use gpui::{
     AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
     prelude::FluentBuilder as _, relative,

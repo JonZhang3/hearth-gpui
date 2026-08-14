@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `ghost`, `aria_label`, `dropdown_menu`, `item`.
+// - Removed examples using `gap_4`, `items_center`.
+// - Reworked Breadcrumb story around accessibility semantics and ARIA state, focus-visible and
+//   focus restoration behavior.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, prelude::FluentBuilder as _, px,

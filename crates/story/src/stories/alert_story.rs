@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed or replaced story helpers: `set_size`.
+// - Added examples for `w_full`, `gap_4`, `destructive`, `description_element`, `aria_label`.
+// - Removed examples using `outline`, `compact`, `set_size`, `gap_2`.
+// - Reworked Alert story around accessibility semantics and ARIA state, keyboard navigation and
+//   activation behavior, focus-visible and focus restoration behavior.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,

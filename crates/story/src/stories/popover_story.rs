@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `item_label`.
+// - Added examples for `aria_label`, `gap_3`, `side`, `side_offset`.
+// - Removed examples using `primary`, `max_w`, `gap_2`, `text_sm`, `min_h`, `top_0` and 7 more.
+// - Reworked Popover story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{
     Action, App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     Half, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _, Render,

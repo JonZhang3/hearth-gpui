@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated resize-handle geometry and hover feedback to semantic Style Preset values.
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{

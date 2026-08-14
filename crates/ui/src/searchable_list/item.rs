@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `select_style`.
+// - Added Select-specific item geometry, colors, check placement, truncation, and disabled opacity.
+// - Migrated regular item rounding and sizing to semantic Style Preset metrics.
 use gpui::{
     AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,

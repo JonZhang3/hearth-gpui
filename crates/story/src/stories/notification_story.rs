@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `outline`, `placement`, `autohide`, `secondary`, `destructive`.
+// - Removed examples using `info`, `success`, `warning`, `danger`, `primary`.
 use std::time::Duration;
 
 use gpui::{

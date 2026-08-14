@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `resolve`, `from_style`, `set_dismiss_exclusion_bounds`,
+//   `prepare_for_open`, `popup_menu_metrics_follow_semantic_density`,
+//   `popup_menu_emits_dismiss_once_per_open_instance`,
+//   `trigger_exclusion_prevents_outside_dismissal_and_reaches_submenus`,
+//   `retained_popup_menu_resets_transient_state_before_reopen`.
+// - Reworked Popup Menu around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;

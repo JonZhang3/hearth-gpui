@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `BadgeVariants`, `BadgeVariant`, `OverlayBadge`.
+// - Added public methods: `new`, `leading`, `trailing`.
+// - Added or exposed behavior through `with_variant`, `secondary`, `destructive`, `outline`,
+//   `ghost`, `link`, `leading`, `trailing` and 7 more.
+// - Removed or replaced `is_icon`, `is_number`.
+// - Reworked Badge around accessibility semantics and ARIA state.
 use gpui::{
     AnyElement, App, Hsla, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px, relative,

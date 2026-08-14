@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `AreaStackMode`.
+// - Added public methods: `stacked`, `stacked_expand`.
+// - Added or exposed behavior through `stacked`, `stacked_expand`,
+//   `area_chart_supports_stacked_and_expand_modes`.
 use std::rc::Rc;
 
 use gpui::{

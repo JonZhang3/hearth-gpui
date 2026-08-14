@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Registered and exported the new AspectRatio, Card, Command, Empty, InputGroup, NativeSelect,
+//   and shadcn alignment stories.
+// - Removed the legacy Tag story registration and export.
 use gpui::{AnyView, App, AppContext as _, Entity, Hsla, Pixels, Render, Window, px};
 use gpui_component::dock::PanelControl;
 

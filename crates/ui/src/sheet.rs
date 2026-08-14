@@ -1,3 +1,15 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `title_element`, `description`, `description_element`, `aria_label`,
+//   `aria_description`, `show_close_button`, `initial_focus`.
+// - Removed public methods: `resizable`.
+// - Added or exposed behavior through `for_density`, `title_element`, `description`,
+//   `description_element`, `aria_label`, `aria_description`, `show_close_button`, `initial_focus`
+//   and 5 more.
+// - Removed or replaced `resizable`.
+// - Reworked Sheet around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, focus-visible and
+//   focus restoration behavior.
 use std::rc::Rc;
 
 use gpui::{

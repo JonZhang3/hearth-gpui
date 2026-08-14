@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reordered imports only; editor story behavior and APIs are unchanged.
 use gpui::{App, AppContext as _, Context, Entity, IntoElement, Render, Styled, Window};
 
 use gpui_component::{ActiveTheme, input::*};

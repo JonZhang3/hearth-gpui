@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced the fixed sidebar transition duration and easing with semantic motion tokens.
+// - Added reduced-motion-aware completion timing for sidebar collapse and expansion.
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt, button::Button, h_flex,
     scroll::ScrollableElement, v_flex,

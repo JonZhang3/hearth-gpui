@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `BreadcrumbLink`, `BreadcrumbPage`, `BreadcrumbSeparator`,
+//   `BreadcrumbEllipsis`.
+// - Added public methods: `aria_label`, `label`, `href`.
+// - Removed public methods: `children`.
+// - Removed or replaced `id`, `is_last`, `children`.
+// - Reworked Breadcrumb around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, keyboard navigation and activation behavior, focus-visible and focus
+//   restoration behavior.
 use std::rc::Rc;
 
 use gpui::{

@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `media`, `size_8`, `destructive`, `variant`.
+// - Removed examples using `p_0`, `on_ok`, `on_cancel`, `p_4`, `border_t_1`, `primary` and 15 more.
+// - Reworked Alert Dialog story around accessibility semantics and ARIA state, focus-visible and
+//   focus restoration behavior.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, Styled as _, Window, div,

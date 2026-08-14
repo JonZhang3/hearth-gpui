@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced legacy error Alerts with the aligned Destructive variant and description slot.
+// - Replaced the selected/toggled inspector Button with a checked Toggle.
+// - Added a localized accessibility label to the close button.
 use std::{cell::OnceCell, collections::HashMap, fmt::Write as _, rc::Rc, sync::OnceLock};
 
 use anyhow::Result;

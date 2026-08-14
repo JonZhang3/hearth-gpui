@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `with_size`, `disabled`, `item_label`, `is_item_enabled`.
+// - Added examples for `text_xs`, `section`, `initial_selected_index`, `text_sm`, `aria_label`.
+// - Removed examples using `text_size`.
+// - Reworked List story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::{rc::Rc, time::Duration};
 
 use fake::Fake;

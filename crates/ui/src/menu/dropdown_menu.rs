@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `side_offset`.
+// - Added or exposed behavior through `dropdown_expanded`, `side_offset`,
+//   `repeated_trigger_click_closes_without_reopening`.
+// - Reworked Dropdown Menu around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior.
 use std::rc::Rc;
 
 use gpui::{

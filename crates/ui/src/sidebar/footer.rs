@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Migrated sidebar footer spacing to semantic sidebar Style Preset metrics.
 use gpui::{
     Div, InteractiveElement, IntoElement, ParentElement, RenderOnce, Styled,
     prelude::FluentBuilder as _,

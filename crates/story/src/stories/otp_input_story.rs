@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `toggle_otp_masked`, `group`, `six_slots`, `separated_pairs`.
+// - Removed or replaced story helpers: `toggle_opt_masked`.
+// - Added examples for `pattern`, `into_iter`, `aria_label`, `gap_3`, `aria_description`,
+//   `invalid`.
+// - Removed examples using `masked`, `groups`, `large`.
+// - Reworked Otp Input story around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior, invalid and validation state handling.
 use gpui::{
     App, AppContext as _, Context, Entity, Focusable, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, px,

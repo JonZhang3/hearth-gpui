@@ -1,3 +1,13 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `SpinnerVariant`, `SpinnerAnimation`.
+// - Added public methods: `variant`, `id`, `aria_label`, `animation`.
+// - Added or exposed behavior through `defaults`, `variant`, `id`, `aria_label`, `animation`,
+//   `builder_preserves_aligned_defaults_and_overrides`,
+//   `explicit_icon_and_animation_are_independent_from_variant_order`,
+//   `exposes_accessible_loading_status`.
+// - Reworked Spinner around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions.
 use std::panic::Location;
 
 use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size};

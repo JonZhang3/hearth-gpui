@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed loading-spinner coupling from button icons and retained icon-only rendering.
 use crate::{Icon, Sizable, Size, progress::ProgressCircle, spinner::Spinner};
 use gpui::{App, IntoElement, RenderOnce, Window};
 

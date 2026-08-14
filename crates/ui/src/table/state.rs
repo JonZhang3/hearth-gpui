@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `accessibility_row_count`.
+// - Added semantic row groups, row and column indices, selectable header metadata, and full row
+//   counts.
+// - Migrated row heights, cell padding, borders, header colors, and rounding to table Style Preset
+//   metrics.
 use std::{ops::Range, rc::Rc, time::Duration};
 
 use crate::{

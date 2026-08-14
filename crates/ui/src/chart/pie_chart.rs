@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `active_index`, `active_offset`, `center_label`, `id`.
+// - Added or exposed behavior through `active_index`, `active_offset`, `center_label`, `id`,
+//   `arcs`, `hovered_index`, `tooltip_state`, `tooltip` and 2 more.
 use std::rc::Rc;
 
 use gpui::{

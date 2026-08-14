@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `item_label`.
+// - Added examples for `initial_focus`, `focus_handle`, `gap_2`, `w_full`, `outline`, `max_w_md`
+//   and 2 more.
+// - Removed examples using `on_ok`, `gap_6`, `primary`.
+// - Reworked Sheet story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density, focus-visible and focus restoration behavior.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::{sync::Arc, time::Duration};
 
 use fake::Fake;

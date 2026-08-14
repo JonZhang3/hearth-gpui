@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Aligned table loading placeholders with semantic table row and cell metrics.
 use crate::{ActiveTheme, Size, h_flex, skeleton::Skeleton, v_flex};
 use gpui::{IntoElement, ParentElement as _, RenderOnce, Styled, prelude::FluentBuilder as _};
 

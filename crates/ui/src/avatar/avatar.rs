@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `AvatarImage`, `AvatarFallback`, `AvatarBadge`.
+// - Added public methods: `text`, `icon`, `child`, `decorative`, `image`, `fallback`, `badge`.
+// - Removed public methods: `src`, `name`, `placeholder`.
+// - Removed or replaced `src`, `name`, `placeholder`, `default_color`, `extract_text_initials`,
+//   `test_avatar_text_initials`, `test_avatar_builder`.
+// - Reworked Avatar around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density.
 use gpui::{
     AnyElement, App, BoxShadow, Div, ElementId, ImageSource, InteractiveElement, Interactivity,
     IntoElement, ObjectFit, ParentElement as _, Pixels, RenderOnce, Role, SharedString,

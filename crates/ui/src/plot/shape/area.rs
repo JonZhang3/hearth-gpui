@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `y0_fn`.
+// - Added or exposed behavior through `step_after_points`, `reversed_step_after_points`,
+//   `append_curve`, `y0_fn`, `step_after_geometry_can_be_replayed_in_exact_reverse`.
 // @reference: https://d3js.org/d3-shape/area
 
 use gpui::{Background, Bounds, Path, PathBuilder, Pixels, Point, Window, px};

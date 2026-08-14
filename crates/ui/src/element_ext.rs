@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added style helpers required by aligned focus rings, overlays, and semantic geometry.
 use gpui::{
     AnyElement, App, Bounds, IntoElement, ParentElement, Pixels, Styled as _, Window, canvas,
 };

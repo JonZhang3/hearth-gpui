@@ -1,3 +1,8 @@
+# Modified from the original gpui-component project in commit 4caf2023.
+# Changes:
+# - Added localization keys: `Common`, `Close`, `Clear`, `Notification`, `DropdownButton`,
+#   `more_options`, `Tree`, `label` and 28 more.
+# - Added translated labels used by accessible close, clear, menu, tree, calendar, and dialog UI.
 _version: 2
 Common:
   Close:

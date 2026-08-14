@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `resolve`, `status_bar_metrics_follow_preset_density`,
+//   `status_bar_builder_preserves_regions`.
+// - Reworked Status Bar around semantic Style Preset geometry and density.
 use gpui::{
     AnyElement, App, IntoElement, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled,
     Window, prelude::FluentBuilder as _, px,

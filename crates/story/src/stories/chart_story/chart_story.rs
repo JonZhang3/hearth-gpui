@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `to_lowercase`, `accessibility`, `stacked`, `active_index`, `center_label`,
+//   `item` and 13 more.
+// - Reworked Chart story around accessibility semantics and ARIA state, semantic Style Preset
+//   geometry and density.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, FontWeight, Hsla, IntoElement,
     ParentElement, Render, Rgba, SharedString, Styled, Window, div, linear_color_stop,

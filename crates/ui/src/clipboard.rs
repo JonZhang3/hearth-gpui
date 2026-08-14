@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Normalized clipboard image handling for the aligned GPUI image API.
 use std::{rc::Rc, time::Duration};
 
 use gpui::{

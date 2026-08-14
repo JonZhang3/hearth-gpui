@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `BarChartLayout`.
+// - Added public methods: `series`, `series_color`, `layout`, `stacked`.
+// - Added or exposed behavior through `series`, `series_color`, `layout`, `stacked`,
+//   `bar_chart_builder_supports_grouped_and_stacked_series`,
+//   `bar_series_color_stays_associated_with_the_latest_series`.
 use std::{ops::RangeInclusive, rc::Rc};
 
 use gpui::{

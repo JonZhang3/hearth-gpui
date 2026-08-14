@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `render_controlled_example`, `render_safe_transfer_example`.
+// - Added examples for `render_safe_transfer_example`, `render_controlled_example`, `w_full`,
+//   `justify_between`, `fallback`, `min_w_0` and 5 more.
+// - Removed examples using `gap_3`, `src`, `anchor`, `text_sm`.
+// - Reworked Hover Card story around keyboard navigation and activation behavior.
 use gpui::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
     Window, div, px, relative,

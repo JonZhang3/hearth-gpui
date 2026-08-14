@@ -1,3 +1,9 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added story helpers for `remove_dynamic_tab`.
+// - Added examples for `max_w_md`, `remove_dynamic_tab`.
+// - Removed examples using `compact`.
+// - Reworked Tabs story around keyboard navigation and activation behavior.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, px,

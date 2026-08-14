@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Replaced `Column::width` with the aligned `Column::w` builder.
+// - Enabled application-owned title-bar dragging for the custom window.
 use std::collections::VecDeque;
 use std::time::Duration;
 

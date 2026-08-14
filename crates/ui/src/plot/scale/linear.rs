@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Adjusted linear-scale behavior for the expanded chart rendering contracts.
 // @reference: https://d3js.org/d3-scale/linear
 
 use itertools::Itertools;

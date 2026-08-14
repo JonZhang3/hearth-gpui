@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public types: `OverlayPhase`, `OverlayTransition`, `OverlayLifecycle`, `MotionElement`.
+// - Added public methods: `effective_motion_duration`, `opened`, `phase`, `animation_key`,
+//   `active_transition`, `is_mounted`, `accepts_input`, `begin_open` and 6 more.
+// - Added or exposed behavior through `effective_motion_duration`, `opened`, `phase`,
+//   `animation_key`, `active_transition`, `is_mounted`, `accepts_input`, `begin_open` and 23 more.
+// - Reworked Animation around interruptible and reduced-motion-aware transitions, invalid and
+//   validation state handling.
 use std::{
     rc::Rc,
     time::{Duration, Instant},

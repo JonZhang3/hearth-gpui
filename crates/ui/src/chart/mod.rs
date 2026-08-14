@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added chart accessibility exports and theme-driven chart typography support.
 mod area_chart;
 mod bar_chart;
 mod candlestick_chart;

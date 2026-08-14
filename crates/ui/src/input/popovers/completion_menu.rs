@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `with_size`, `disabled`, `item_label`.
+// - Reworked Completion Menu around semantic Style Preset geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::rc::Rc;
 
 use gpui::{

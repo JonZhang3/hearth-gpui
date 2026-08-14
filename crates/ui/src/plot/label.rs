@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `plot_text_size`.
+// - Added or exposed behavior through `plot_text_size`.
 use std::fmt::Debug;
 
 use gpui::{

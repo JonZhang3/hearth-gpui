@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Aligned LSP hover presentation with the updated popover and theme APIs.
 use anyhow::Result;
 use gpui::{App, Context, Task, Window};
 use instant::Duration;

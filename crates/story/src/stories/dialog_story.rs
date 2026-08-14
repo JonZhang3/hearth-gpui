@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `show_overlay`, `dismiss_on_escape`, `confirm_on_enter`,
+//   `show_close_button`, `dismiss_on_overlay_click`.
+// - Removed examples using `width`, `overlay`, `keyboard`, `close_button`, `overlay_closable`,
+//   `p_0` and 4 more.
+// - Reworked Dialog story around semantic Style Preset geometry and density, keyboard navigation
+//   and activation behavior.
+// - Replaced the legacy `width` builder with `w`.
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
     ParentElement, Render, SharedString, Styled, Window, div, px,

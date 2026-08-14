@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Passed SettingsMetrics into setting items and replaced fixed item and text gaps.
 use gpui::{
     AnyElement, App, Axis, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
     Stateful, Styled, Window, div, prelude::FluentBuilder as _,

@@ -1,3 +1,8 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reworked Search around accessibility semantics and ARIA state, semantic Style Preset geometry
+//   and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use aho_corasick::AhoCorasick;
 use rust_i18n::t;
 use std::{ops::Range, rc::Rc};

@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Aligned boolean setting fields with the revised Switch API and spacing metrics.
 use std::rc::Rc;
 
 use crate::{

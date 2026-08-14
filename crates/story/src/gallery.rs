@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Reworked Gallery around semantic Style Preset geometry and density.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{prelude::*, *};
 use gpui_component::{
     Icon, IconName, Sizable as _,

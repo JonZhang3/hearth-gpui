@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Removed examples using `rounded_full`.
+// - Reworked Collapsible story around accessibility semantics and ARIA state.
 use gpui::div;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,

@@ -1,3 +1,7 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added public methods: `id`.
+// - Added or exposed behavior through `id`, `scales`, `tooltip_state`, `tooltip`.
 use std::rc::Rc;
 
 use gpui::{

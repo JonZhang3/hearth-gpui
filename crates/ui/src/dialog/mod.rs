@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Exported the aligned dialog presentation and accessibility APIs.
 mod alert_dialog;
 mod content;
 mod description;

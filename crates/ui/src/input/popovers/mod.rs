@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Updated input popover module exports after removing legacy hover styling.
 mod code_action_menu;
 mod completion_menu;
 mod diagnostic_popover;

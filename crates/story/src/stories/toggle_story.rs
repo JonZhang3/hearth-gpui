@@ -1,3 +1,10 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added examples for `trailing_icon`, `invalid`, `items_center`, `aria_label`, `mode`,
+//   `selection` and 2 more.
+// - Removed examples using `segmented`.
+// - Reworked Toggle story around accessibility semantics and ARIA state, focus-visible and focus
+//   restoration behavior, invalid and validation state handling.
 use gpui::{
     App, AppContext as _, Axis, Context, Entity, FocusHandle, Focusable, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, px,

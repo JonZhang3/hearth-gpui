@@ -1,3 +1,6 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Aligned plot-grid rendering with the revised chart theme defaults.
 use gpui::{Bounds, Hsla, PathBuilder, Pixels, Point, Window, px};
 
 use super::origin_point;

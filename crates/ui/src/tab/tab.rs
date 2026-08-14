@@ -1,3 +1,12 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `tab_child_id`, `current`, `transition_to`, `base_height`,
+//   `state_id`, `focus_handle`, `on_group_key_down`,
+//   `pill_foreground_reverses_from_the_sampled_color` and 1 more.
+// - Reworked Tab around accessibility semantics and ARIA state, interruptible and
+//   reduced-motion-aware transitions, semantic Style Preset geometry and density, keyboard
+//   navigation and activation behavior, focus-visible and focus restoration behavior.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use std::{
     rc::Rc,
     sync::Arc,

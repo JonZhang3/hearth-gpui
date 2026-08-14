@@ -1,3 +1,11 @@
+// Modified from the original gpui-component project in commit 4caf2023.
+// Changes:
+// - Added or exposed behavior through `resolve`, `from_style`, `render_at_depth`,
+//   `sidebar_menu_metrics_follow_semantic_density`.
+// - Reworked Menu around accessibility semantics and ARIA state, semantic Style Preset geometry and
+//   density, keyboard navigation and activation behavior, focus-visible and focus restoration
+//   behavior.
+// - Replaced legacy radius access with `Theme.style.radii.md`.
 use crate::{
     ActiveTheme as _, Collapsible, Density, FocusableExt as _, Icon, IconName, Sizable as _,
     StyledExt,
