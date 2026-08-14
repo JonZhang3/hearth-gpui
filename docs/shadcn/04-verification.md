@@ -132,9 +132,9 @@ Run focused checks during development, then the complete suite before release.
 ```bash
 cargo fmt --all -- --check
 cargo clippy -- --deny warnings
-cargo test -p gpui-component
+cargo test -p hearth-gpui
 cargo test --all
-cargo check -p gpui-component --no-default-features
+cargo check -p hearth-gpui --no-default-features
 typos
 ```
 

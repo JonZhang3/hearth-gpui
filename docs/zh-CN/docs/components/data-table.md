@@ -21,7 +21,7 @@ DataTable 是一个面向大数据集场景的高性能表格组件。它支持�
 ## 导入
 
 ```rust
-use gpui_component::table::{
+use hearth_gpui::table::{
     DataTable, TableState, TableDelegate,
     Column, ColumnSort, ColumnFixed,
     TableEvent
@@ -37,7 +37,7 @@ use gpui_component::table::{
 ```rust
 use std::ops::Range;
 use gpui::{App, Context, Window, IntoElement};
-use gpui_component::table::{DataTable, TableDelegate, Column, ColumnSort};
+use hearth_gpui::table::{DataTable, TableDelegate, Column, ColumnSort};
 
 struct MyData {
     id: usize,
@@ -327,7 +327,7 @@ impl TableDelegate for MyTableDelegate {
 
 ```rust
 use gpui::px;
-use gpui_component::Sizable as _;
+use hearth_gpui::Sizable as _;
 use gpui::Styled as _;
 
 DataTable::new(&state)
@@ -397,10 +397,10 @@ DataTable::new(&state)
 - `movable(bool)`
 - `selectable(bool)`
 
-[DataTable]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.DataTable.html
-[TableState]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.TableState.html
-[TableDelegate]: https://docs.rs/gpui-component/latest/gpui_component/table/trait.TableDelegate.html
-[Column]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.Column.html
-[TableEvent]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.TableEvent.html
-[ColumnSort]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.ColumnSort.html
-[ColumnFixed]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.ColumnFixed.html
+[DataTable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.DataTable.html
+[TableState]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.TableState.html
+[TableDelegate]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/trait.TableDelegate.html
+[Column]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.Column.html
+[TableEvent]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.TableEvent.html
+[ColumnSort]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.ColumnSort.html
+[ColumnFixed]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.ColumnFixed.html

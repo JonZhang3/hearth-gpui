@@ -10,7 +10,7 @@ Chart 是一组 GPUI 原生的数据可视化组件，提供 Line、Bar、Area�
 ## 导入
 
 ```rust
-use gpui_component::chart::{
+use hearth_gpui::chart::{
     AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartAccessibilityItem,
     ChartConfig, ChartConfigItem, ChartContainer, ChartLegend, LineChart, PieChart,
     RadarChart, RadialChart, SankeyChart,
@@ -207,10 +207,10 @@ BarChart::new(data)
 
 #### 柱状图对齐方式
 
-`BarAlignment` 用于控制柱子的方向以及基线所在的一侧，需从 `gpui_component::plot::shape` 导入。
+`BarAlignment` 用于控制柱子的方向以及基线所在的一侧，需从 `hearth_gpui::plot::shape` 导入。
 
 ```rust
-use gpui_component::plot::shape::BarAlignment;
+use hearth_gpui::plot::shape::BarAlignment;
 
 // 默认：垂直方向 - 向上
 BarChart::new(data)
@@ -509,7 +509,7 @@ CandlestickChart::new(data)
 #### 基础桑基图
 
 ```rust
-use gpui_component::plot::shape::SankeyLink;
+use hearth_gpui::plot::shape::SankeyLink;
 
 #[derive(Clone)]
 struct FlowNode {
@@ -540,7 +540,7 @@ SankeyChart::new(nodes, links)
 #### 节点对齐
 
 ```rust
-use gpui_component::plot::shape::SankeyAlign;
+use hearth_gpui::plot::shape::SankeyAlign;
 
 // Justify（默认）：没有出边的节点移到最后一列
 SankeyChart::new(nodes, links).node_align(SankeyAlign::Justify)
@@ -571,7 +571,7 @@ SankeyChart::new(nodes, links)
 需要完全控制标签行时使用 `labels`——每行一个 `SankeyLabel`，从上到下排列，每行可单独设置颜色和字号。设置后优先于 `node_label`/`value_label`。例如带同比涨跌幅行的财报标签：
 
 ```rust
-use gpui_component::chart::SankeyLabel;
+use hearth_gpui::chart::SankeyLabel;
 
 SankeyChart::new(nodes, links).labels(move |d: &FlowNode, value| {
     let arrow = if d.growth >= 0. { "▲" } else { "▼" };
@@ -591,7 +591,7 @@ SankeyChart::new(nodes, links).labels(move |d: &FlowNode, value| {
 节点高度默认与流量值成线性关系，数值跨度很大时（如 200:1）小流量几乎不可见、主流量过大。设置 `value_scale(SankeyValueScale::Sqrt)` 即可压缩跨度——组件按值的平方根来定节点高度，小流量保持可见，且无需预处理数据，标签仍显示真实值：
 
 ```rust
-use gpui_component::plot::shape::SankeyValueScale;
+use hearth_gpui::plot::shape::SankeyValueScale;
 
 SankeyChart::new(nodes, links).value_scale(SankeyValueScale::Sqrt)
 ```
@@ -631,7 +631,7 @@ struct StockPrice {
     pub volume: u64,
 }
 
-// 桑基图连接：通过索引引用节点（来自 gpui_component::plot::shape）
+// 桑基图连接：通过索引引用节点（来自 hearth_gpui::plot::shape）
 pub struct SankeyLink {
     pub source: usize,
     pub target: usize,
@@ -1031,9 +1031,9 @@ impl LiveChart {
 }
 ```
 
-[LineChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.LineChart.html
-[BarChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.BarChart.html
-[AreaChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.AreaChart.html
-[PieChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.PieChart.html
-[RadarChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.RadarChart.html
-[CandlestickChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.CandlestickChart.html
+[LineChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.LineChart.html
+[BarChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.BarChart.html
+[AreaChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.AreaChart.html
+[PieChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.PieChart.html
+[RadarChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.RadarChart.html
+[CandlestickChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.CandlestickChart.html

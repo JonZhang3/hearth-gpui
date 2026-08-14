@@ -9,7 +9,7 @@ use gpui::{
     ParentElement, Render, Rgba, SharedString, Styled, Window, div, linear_color_stop,
     linear_gradient, prelude::FluentBuilder, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, StyledExt,
     chart::{
         AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartConfig, ChartConfigItem,

@@ -22,7 +22,7 @@ A comprehensive data table component designed for handling large datasets with h
 ## Import
 
 ```rust
-use gpui_component::table::{
+use hearth_gpui::table::{
     DataTable, TableState, TableDelegate,
     Column, ColumnSort, ColumnFixed,
     TableEvent
@@ -38,7 +38,7 @@ To create a table, you need to implement the `TableDelegate` trait and provide c
 ```rust
 use std::ops::Range;
 use gpui::{App, Context, Window, IntoElement};
-use gpui_component::table::{DataTable, TableDelegate, Column, ColumnSort};
+use hearth_gpui::table::{DataTable, TableDelegate, Column, ColumnSort};
 
 struct MyData {
     id: usize,
@@ -406,7 +406,7 @@ The default surface follows the shadcn Data Table composition: a transparent hea
 
 ```rust
 use gpui::px;
-use gpui_component::Sizable as _;
+use hearth_gpui::Sizable as _;
 use gpui::Styled as _;
 
 let state = cx.new(|cx| {
@@ -678,10 +678,10 @@ impl TableDelegate for MyTableDelegate {
 - `ColumnWidthsChanged(Vec<Pixels>)` - Column widths changed
 - `MoveColumn(usize, usize)` - Column moved (from_ix, to_ix)
 
-[DataTable]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.DataTable.html
-[TableState]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.TableState.html
-[TableDelegate]: https://docs.rs/gpui-component/latest/gpui_component/table/trait.TableDelegate.html
-[Column]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.Column.html
-[TableEvent]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.TableEvent.html
-[ColumnSort]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.ColumnSort.html
-[ColumnFixed]: https://docs.rs/gpui-component/latest/gpui_component/table/enum.ColumnFixed.html
+[DataTable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.DataTable.html
+[TableState]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.TableState.html
+[TableDelegate]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/trait.TableDelegate.html
+[Column]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/struct.Column.html
+[TableEvent]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.TableEvent.html
+[ColumnSort]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.ColumnSort.html
+[ColumnFixed]: https://docs.rs/hearth-gpui/latest/hearth_gpui/table/enum.ColumnFixed.html

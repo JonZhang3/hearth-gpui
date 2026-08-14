@@ -1,6 +1,6 @@
 ---
 name: align-shadcn-component
-description: Compare an existing GPUI Component implementation with the pinned local shadcn/ui sources, produce a decision-complete Vega alignment plan, and immediately implement and verify that plan unless the user explicitly requests analysis or planning only. Use for component-by-component shadcn visual, API, state, motion, interaction, accessibility, Story, or documentation alignment work in this repository.
+description: Compare an existing Hearth GPUI implementation with the pinned local shadcn/ui sources, produce a decision-complete Vega alignment plan, and immediately implement and verify that plan unless the user explicitly requests analysis or planning only. Use for component-by-component shadcn visual, API, state, motion, interaction, accessibility, Story, or documentation alignment work in this repository.
 ---
 
 # Align shadcn Component

@@ -12,7 +12,7 @@ use gpui::{
     ParentElement, Render, SharedString, Styled, Window, div, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Icon, IconName, WindowExt as _,
     button::Button,
     checkbox::Checkbox,

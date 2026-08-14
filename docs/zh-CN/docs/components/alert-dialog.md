@@ -10,7 +10,7 @@ description: 要求用户明确响应后才能返回应用。
 ## 基础用法
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     dialog::{AlertDialog, AlertDialogAction, AlertDialogCancel},
 };
@@ -37,7 +37,7 @@ AlertDialog::new(cx)
 `Small` 使用居中内容和两列等宽 Footer 操作。
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     button::ButtonVariant,
     dialog::{AlertDialogAction, AlertDialogCancel, AlertDialogSize},
 };

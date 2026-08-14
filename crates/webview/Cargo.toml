@@ -1,11 +1,11 @@
 [package]
-name = "gpui-wry"
+name = "hearth-gpui-webview"
 description = "WebView support for GPUI, based on Wry."
 keywords = ["webview", "gpui","wry"]
 license = "Apache-2.0"
-documentation = "https://docs.rs/gpui-component"
-homepage = "https://longbridge.github.io/gpui-component"
-repository = "https://github.com/longbridge/gpui-component/tree/main/crates/webview"
+documentation = "https://docs.rs/hearth-gpui-webview"
+homepage = "https://jonzhang3.github.io/hearth-gpui"
+repository = "https://github.com/JonZhang3/hearth-gpui/tree/main/crates/webview"
 readme = "README.md"
 edition.workspace = true
 publish = true

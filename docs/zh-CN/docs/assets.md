@@ -5,11 +5,11 @@ order: -4
 
 # 图标与资源
 
-GPUI Component 中的 [IconName] 和 [Icon] 提供了一套可直接在 GPUI 应用中使用的图标接口。
+Hearth GPUI 中的 [IconName] 和 [Icon] 提供了一套可直接在 GPUI 应用中使用的图标接口。
 
-但为了尽量减小应用体积，`gpui-component` 默认 **不会内置任何图标资源**。
+但为了尽量减小应用体积，`hearth-gpui` 默认 **不会内置任何图标资源**。
 
-因此仓库把图标资源拆分到了独立的 [gpui-component-assets] crate 中。这样你可以自行决定：
+因此仓库把图标资源拆分到了独立的 [hearth-gpui-assets] crate 中。这样你可以自行决定：
 
 - 直接使用默认内置图标资源
 - 完全不引入图标资源
@@ -17,21 +17,21 @@ GPUI Component 中的 [IconName] 和 [Icon] 提供了一套可直接在 GPUI 应
 
 ## 使用默认内置资源
 
-[gpui-component-assets] 提供了一个默认的资源实现，包含 `assets/icons` 目录下的全部图标文件。
+[hearth-gpui-assets] 提供了一个默认的资源实现，包含 `assets/icons` 目录下的全部图标文件。
 
 如果要使用默认资源，需要在 `Cargo.toml` 中添加：
 
 ```toml
 [dependencies]
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
+hearth-gpui-assets = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 然后在创建 GPUI 应用时，通过 `with_assets` 注册资源源：
 
 ```rs
 use gpui::*;
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 let app = gpui_platform::application().with_assets(Assets);
 ```
@@ -56,7 +56,7 @@ let app = gpui_platform::application().with_assets(Assets);
 ```rs
 use anyhow::anyhow;
 use gpui::*;
-use gpui_component::{v_flex, IconName, Root};
+use hearth_gpui::{v_flex, IconName, Root};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -93,8 +93,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // We must initialize gpui_component before using it.
-        gpui_component::init(cx);
+        // We must initialize hearth_gpui before using it.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -132,10 +132,10 @@ impl Render for Example {
 
 ## 参考资源
 
-- [Lucide Icons](https://lucide.dev/) - GPUI Component 的图标集主要基于 Lucide 开源图标库
+- [Lucide Icons](https://lucide.dev/) - Hearth GPUI 的图标集主要基于 Lucide 开源图标库
 
 [rust-embed]: https://docs.rs/rust-embed/latest/rust_embed/
-[IconName]: https://docs.rs/gpui_component/latest/gpui_component/icon/enum.IconName.html
-[Icon]: https://docs.rs/gpui_component/latest/gpui_component/icon/struct.Icon.html
-[assets]: https://github.com/longbridge/gpui-component/tree/main/crates/assets/assets/
-[gpui-component-assets]: https://crates.io/crates/gpui-component-assets
+[IconName]: https://docs.rs/hearth_gpui/latest/hearth_gpui/icon/enum.IconName.html
+[Icon]: https://docs.rs/hearth_gpui/latest/hearth_gpui/icon/struct.Icon.html
+[assets]: https://github.com/JonZhang3/hearth-gpui/tree/main/crates/assets/assets/
+[hearth-gpui-assets]: https://crates.io/crates/hearth-gpui-assets

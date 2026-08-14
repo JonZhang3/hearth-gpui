@@ -10,7 +10,7 @@ use gpui::{
 };
 
 use crate::section;
-use gpui_component::{button::*, input::*, label::Label, *};
+use hearth_gpui::{button::*, input::*, label::Label, *};
 
 const CODE_EXAMPLE: &str = r#"{"single_line":"code editor"}"#;
 const DECORATIONS_EXAMPLE: &str = "/review decorations with $code-review before merging";

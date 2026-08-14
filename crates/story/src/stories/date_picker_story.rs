@@ -8,7 +8,7 @@ use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement as _, Render,
     Styled as _, Subscription, Window, div, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, Sizable as _, calendar,
     date_picker::{DatePicker, DatePickerEvent, DatePickerState, DateRangePreset},
     v_flex,

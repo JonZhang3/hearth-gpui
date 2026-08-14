@@ -24,10 +24,10 @@ GPUI 组件采用 shadcn 的 Popup 风格 Combobox 组合：Trigger 显示已提
 ## 导入
 
 ```rust
-use gpui_component::combobox::{
+use hearth_gpui::combobox::{
     Combobox, ComboboxState, ComboboxEvent, ComboboxTriggerCtx,
 };
-use gpui_component::searchable_list::{
+use hearth_gpui::searchable_list::{
     SearchableListItem, SearchableVec, SearchableGroup,
 };
 ```

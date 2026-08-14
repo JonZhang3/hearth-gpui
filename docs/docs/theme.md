@@ -7,7 +7,7 @@ order: -4
 All components support theming through the built-in Theme system, the [ActiveTheme] trait provides access to the current theme colors:
 
 ```rs
-use gpui_component::{ActiveTheme as _};
+use hearth_gpui::{ActiveTheme as _};
 
 // Access theme colors in your components
 cx.theme().primary
@@ -26,7 +26,7 @@ resolved values from the single global `Theme`:
 
 ```rs
 use gpui::{App, SharedString};
-use gpui_component::{StylePreset, StyleRegistry, Theme};
+use hearth_gpui::{StylePreset, StyleRegistry, Theme};
 
 pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
     // Vega is the default. Nova is compact and Maia is comfortable.
@@ -82,9 +82,9 @@ Top-level theme fields, such as `cx.theme().button_primary`, remain solid `Hsla`
 
 ## Theme Registry
 
-There have more than 20 built-in themes available in [themes](https://github.com/longbridge/gpui-component/tree/main/themes) folder.
+There have more than 20 built-in themes available in [themes](https://github.com/JonZhang3/hearth-gpui/tree/main/themes) folder.
 
-https://github.com/longbridge/gpui-component/tree/main/themes
+https://github.com/JonZhang3/hearth-gpui/tree/main/themes
 
 And we have a [ThemeRegistry] to help us to load themes.
 
@@ -93,7 +93,7 @@ Use the `name` of an entry in the `themes` array, such as `Ayu Light`, when look
 ```rs
 use std::path::PathBuf;
 use gpui::{App, SharedString};
-use gpui_component::{Theme, ThemeRegistry};
+use hearth_gpui::{Theme, ThemeRegistry};
 
 pub fn init(cx: &mut App) {
     let theme_name = SharedString::from("Ayu Light");
@@ -112,7 +112,7 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-[ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
-[ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
-[StyleRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.StyleRegistry.html
+[ActiveTheme]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/trait.ActiveTheme.html
+[ThemeRegistry]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/struct.ThemeRegistry.html
+[StyleRegistry]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/struct.StyleRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

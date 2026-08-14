@@ -10,7 +10,7 @@ description: A lightweight semantic container for grouping related content.
 ## Import
 
 ```rust
-use gpui_component::group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants as _};
+use hearth_gpui::group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants as _};
 ```
 
 ## Basic usage

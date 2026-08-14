@@ -2,7 +2,7 @@
 // Changes:
 // - Removed the legacy `primary` button variant from the tooltip edge-case example.
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Root, button::*};
+use hearth_gpui::{ActiveTheme as _, Root, button::*};
 
 struct TooltipTopEdgeExample;
 
@@ -38,7 +38,7 @@ fn main() {
     let app = gpui_platform::application();
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(520.), px(260.)), cx)),

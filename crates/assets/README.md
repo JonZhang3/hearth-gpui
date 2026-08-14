@@ -1,6 +1,6 @@
-# GPUI Component Assets
+# Hearth GPUI Assets
 
-The default assets bundle for [GPUI Component](https://github.com/longbridge/gpui-component).
+The default assets bundle for [Hearth GPUI](https://github.com/JonZhang3/hearth-gpui).
 
 ## License
 

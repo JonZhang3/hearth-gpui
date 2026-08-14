@@ -11,7 +11,7 @@ Image 组件为图片展示提供了更稳健的封装，支持加载态、回�
 
 ```rust
 use gpui::{img, ImageSource, ObjectFit};
-use gpui_component::{v_flex, h_flex, div, Icon, IconName};
+use hearth_gpui::{v_flex, h_flex, div, Icon, IconName};
 ```
 
 ## 用法

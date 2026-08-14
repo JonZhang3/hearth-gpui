@@ -2,7 +2,7 @@ use std::{collections::HashMap, rc::Rc, time::Duration};
 
 use anyhow::{Result, anyhow, bail};
 use gpui::{App, Global, Pixels, Point, SharedString, point, px};
-pub use gpui_component_motion::MotionEasing;
+pub use hearth_gpui_motion::MotionEasing;
 
 use crate::Size;
 

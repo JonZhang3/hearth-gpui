@@ -16,7 +16,7 @@ use gpui::{
     AnyElement, App, Element, ElementId, GlobalElementId, Hsla, InspectorElementId, IntoElement,
     ParentElement, Pixels, Point, Styled, Window, point, prelude::FluentBuilder, px, relative,
 };
-use gpui_component_motion::{
+use hearth_gpui_motion::{
     MotionPreference, MotionStatus, MotionValue, TweenSpec, sample_cubic_bezier,
 };
 use smallvec::SmallVec;

@@ -10,7 +10,7 @@ A step-by-step progress component that guides users through a series of steps or
 ## Import
 
 ```rust
-use gpui_component::stepper::{Stepper, StepperItem};
+use hearth_gpui::stepper::{Stepper, StepperItem};
 ```
 
 ## Usage
@@ -37,7 +37,7 @@ Without `on_click`, Stepper is a read-only progress indicator and does not add i
 ### With Icons
 
 ```rust
-use gpui_component::IconName;
+use hearth_gpui::IconName;
 
 Stepper::new("icon-stepper")
     .selected_index(0)
@@ -116,7 +116,7 @@ Stepper::new("center-stepper")
 ### Different Sizes
 
 ```rust
-use gpui_component::{Sizable as _, Size};
+use hearth_gpui::{Sizable as _, Size};
 
 Stepper::new("stepper")
     .xsmall()
@@ -231,6 +231,6 @@ Stepper::new("stepper")
     ])
 ```
 
-[Stepper]: https://docs.rs/gpui-component/latest/gpui_component/stepper/struct.Stepper.html
-[StepperItem]: https://docs.rs/gpui-component/latest/gpui_component/stepper/struct.StepperItem.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Stepper]: https://docs.rs/hearth-gpui/latest/hearth_gpui/stepper/struct.Stepper.html
+[StepperItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/stepper/struct.StepperItem.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

@@ -10,7 +10,7 @@ Stepper 用于按步骤展示流程进度，适合表单向导、订单流程和
 ## 导入
 
 ```rust
-use gpui_component::stepper::{Stepper, StepperItem};
+use hearth_gpui::stepper::{Stepper, StepperItem};
 ```
 
 ## 用法
@@ -37,7 +37,7 @@ Stepper::new("my-stepper")
 ### 带图标的 Stepper
 
 ```rust
-use gpui_component::IconName;
+use hearth_gpui::IconName;
 
 Stepper::new("icon-stepper")
     .selected_index(0)
@@ -114,7 +114,7 @@ Stepper::new("center-stepper")
 ### 不同尺寸
 
 ```rust
-use gpui_component::{Sizable as _, Size};
+use hearth_gpui::{Sizable as _, Size};
 
 Stepper::new("stepper")
     .xsmall()
@@ -213,6 +213,6 @@ Stepper::new("stepper")
     ])
 ```
 
-[Stepper]: https://docs.rs/gpui-component/latest/gpui_component/stepper/struct.Stepper.html
-[StepperItem]: https://docs.rs/gpui-component/latest/gpui_component/stepper/struct.StepperItem.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Stepper]: https://docs.rs/hearth-gpui/latest/hearth_gpui/stepper/struct.Stepper.html
+[StepperItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/stepper/struct.StepperItem.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

@@ -10,7 +10,7 @@ Tooltip presents short supplementary information for a trigger. The application 
 ## Import
 
 ```rust
-use gpui_component::tooltip::{
+use hearth_gpui::tooltip::{
     Tooltip, TooltipAlign, TooltipSide, TooltipTrigger,
 };
 ```

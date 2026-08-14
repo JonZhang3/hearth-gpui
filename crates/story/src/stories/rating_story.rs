@@ -6,7 +6,7 @@
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, IconName, Selectable as _, Sizable as _, Size,
     button::{Button, ButtonGroup},
     h_flex,

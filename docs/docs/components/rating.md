@@ -10,7 +10,7 @@ A theme-aware star rating component that supports pointer and keyboard selection
 ## Import
 
 ```rust
-use gpui_component::rating::Rating;
+use hearth_gpui::rating::Rating;
 ```
 
 ## Usage
@@ -199,6 +199,6 @@ Rating::new("rating")
     .color(cx.theme().orange)
 ```
 
-[Rating]: https://docs.rs/gpui-component/latest/gpui_component/rating/struct.Rating.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
-[Disableable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Disableable.html
+[Rating]: https://docs.rs/hearth-gpui/latest/hearth_gpui/rating/struct.Rating.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html
+[Disableable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Disableable.html

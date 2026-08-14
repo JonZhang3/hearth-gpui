@@ -5,7 +5,7 @@ use gpui::{
     AppContext as _, Context, Entity, HeadlessAppContext, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, px, size,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, IndexPath, StyledExt as _, Theme, ThemeMode,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
@@ -18,7 +18,7 @@ use gpui_component::{
     switch::Switch,
     v_flex,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 const CAPTURE_WIDTH: f32 = 1440.0;
 const CAPTURE_HEIGHT: f32 = 1000.0;
@@ -51,7 +51,7 @@ impl Render for Phase0Capture {
                     .gap_1()
                     .child(div().text_2xl().font_semibold().child("Phase 0 baseline"))
                     .child(format!(
-                        "GPUI Component: {} · Color Theme: {} · viewport: 1440 x 1000",
+                        "Hearth GPUI: {} · Color Theme: {} · viewport: 1440 x 1000",
                         self.revision, mode
                     )),
             )
@@ -149,7 +149,7 @@ fn main() -> Result<()> {
         Arc::new(Assets),
         gpui_platform::current_headless_renderer,
     );
-    cx.update(gpui_component::init);
+    cx.update(hearth_gpui::init);
 
     let capture_revision = revision.clone();
     let window = cx.open_window(

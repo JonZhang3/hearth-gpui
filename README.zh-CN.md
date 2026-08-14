@@ -1,8 +1,8 @@
-# GPUI Component
+# Hearth GPUI
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![Build Status](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
+[![Build Status](https://github.com/JonZhang3/hearth-gpui/actions/workflows/ci.yml/badge.svg)](https://github.com/JonZhang3/hearth-gpui/actions/workflows/ci.yml) [![Docs](https://docs.rs/hearth-gpui/badge.svg)](https://docs.rs/hearth-gpui/) [![Crates.io](https://img.shields.io/crates/v/hearth-gpui.svg)](https://crates.io/crates/hearth-gpui)
 
 > **Modification notice:** This fork contains substantial changes to the
 > original Longbridge project. See [`MODIFICATIONS.md`](./MODIFICATIONS.md) for
@@ -26,9 +26,9 @@
 
 ## Showcase
 
-https://longbridge.github.io/gpui-component/gallery/
+https://jonzhang3.github.io/hearth-gpui/gallery/
 
-我们基于 GPUI Component 构建的商业应用：[Longbridge Pro](https://longbridge.com/desktop)。
+原始 GPUI Component 项目应用于 [Longbridge Pro](https://longbridge.com/desktop)。
 
 <img width="1763" alt="Image" src="https://github.com/user-attachments/assets/e1ecb9c3-2dd3-431e-bd97-5a819c30e551" />
 
@@ -37,14 +37,14 @@ https://longbridge.github.io/gpui-component/gallery/
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 ### Examples
 
 ```rs
 use gpui::*;
-use gpui_component::{button::*, *};
+use hearth_gpui::{button::*, *};
 
 pub struct HelloWorld;
 impl Render for HelloWorld {
@@ -67,8 +67,8 @@ impl Render for HelloWorld {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // 使用任何 GPUI Component 功能之前必须先调用此函数。
-        gpui_component::init(cx);
+        // 使用任何 Hearth GPUI 功能之前必须先调用此函数。
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -85,9 +85,9 @@ fn main() {
 
 ### Assets
 
-GPUI Component 提供了 `Icon` 元素，但默认不包含 SVG 文件。
+Hearth GPUI 提供了 `Icon` 元素，但默认不包含 SVG 文件。
 
-示例使用 [Lucide](https://lucide.dev) 图标，但你可以使用任意喜欢的图标。只需按照 [IconName](https://github.com/longbridge/gpui-component/blob/main/crates/ui/src/icon.rs#L86) 中的定义命名 SVG 文件，然后将所需图标添加到项目中即可。
+示例使用 [Lucide](https://lucide.dev) 图标，但你可以使用任意喜欢的图标。只需按照 [IconName](https://github.com/JonZhang3/hearth-gpui/blob/main/crates/ui/src/icon.rs#L86) 中的定义命名 SVG 文件，然后将所需图标添加到项目中即可。
 
 ## Development
 
@@ -152,7 +152,7 @@ make dev
 
 ## 与其他框架对比
 
-| 特性                | GPUI Component       | [Iced]             | [egui]                | [Qt 6]                                            |
+| 特性                | Hearth GPUI       | [Iced]             | [egui]                | [Qt 6]                                            |
 | ------------------- | -------------------- | ------------------ | --------------------- | ------------------------------------------------- |
 | 语言                | Rust                 | Rust               | Rust                  | C++/QML                                           |
 | 核心                | GPUI                 | wgpu               | wgpu                  | QT                                                |

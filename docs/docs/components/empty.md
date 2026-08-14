@@ -10,7 +10,7 @@ description: A compositional empty or no-result state with optional media and ac
 ## Import
 
 ```rust
-use gpui_component::empty::{
+use hearth_gpui::empty::{
     Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle,
 };
 ```

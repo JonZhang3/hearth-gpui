@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, SharedString, Styled as _, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     Disableable as _, Sizable as _,
     native_select::{NativeSelect, NativeSelectOptGroup, NativeSelectOption},
     v_flex,

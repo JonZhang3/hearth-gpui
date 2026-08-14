@@ -2,7 +2,7 @@
 // Changes:
 // - Replaced legacy `Theme.radius_lg` access with `Theme.style.radii.lg`.
 use gpui::*;
-use gpui_component::ActiveTheme as _;
+use hearth_gpui::ActiveTheme as _;
 
 #[derive(IntoElement)]
 pub struct Checkerboard {

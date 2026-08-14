@@ -14,7 +14,7 @@ use std::{
 };
 
 use gpui::{prelude::FluentBuilder as _, *};
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, Sizable as _,
     avatar::{Avatar, AvatarFallback, AvatarImage},
     button::Button,
@@ -31,8 +31,8 @@ use gpui_component::{
     },
     v_flex,
 };
-use gpui_component_assets::Assets;
-use gpui_component_story::Open;
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::Open;
 use lsp_types::{SemanticToken, SemanticTokenType, SemanticTokens, SemanticTokensLegend};
 use regex::{Captures, Regex};
 
@@ -1320,10 +1320,10 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component_story::init(cx);
+        hearth_gpui_story::init(cx);
         cx.activate(true);
 
-        gpui_component_story::create_new_window("Markdown Editor", Example::view, cx);
+        hearth_gpui_story::create_new_window("Markdown Editor", Example::view, cx);
     });
 }
 

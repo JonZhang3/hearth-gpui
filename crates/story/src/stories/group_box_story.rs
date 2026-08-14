@@ -8,7 +8,7 @@ use gpui::{
     StyleRefinement, Styled, Window, div, relative,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, StyledExt,
     button::Button,
     checkbox::Checkbox,

@@ -10,7 +10,7 @@ description: 支持选择、展开折叠和键盘导航的虚拟化层级视图�
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IconName, Sizable as _, h_flex,
     list::ListItem,
     tree::{TreeItem, TreeState, tree},

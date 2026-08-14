@@ -147,10 +147,10 @@ div()
 
 ## h_flex / v_flex Helpers
 
-gpui-component provides shorthand helpers (import from `gpui_component`):
+hearth-gpui provides shorthand helpers (import from `hearth_gpui`):
 
 ```rust
-use gpui_component::{h_flex, v_flex};
+use hearth_gpui::{h_flex, v_flex};
 
 // h_flex() = div().flex().flex_row().items_center()
 h_flex()
@@ -167,7 +167,7 @@ v_flex()
     .child(submit_btn)
 ```
 
-These are the standard layout primitives in gpui-component — prefer them over raw `div().flex()`.
+These are the standard layout primitives in hearth-gpui — prefer them over raw `div().flex()`.
 
 ## Tailwind-style Shorthand
 

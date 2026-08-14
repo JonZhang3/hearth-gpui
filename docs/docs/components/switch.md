@@ -10,7 +10,7 @@ A toggle switch component for binary on/off states. Features smooth animations, 
 ## Import
 
 ```rust
-use gpui_component::switch::Switch;
+use hearth_gpui::switch::Switch;
 ```
 
 ## Usage

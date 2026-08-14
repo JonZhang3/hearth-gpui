@@ -11,7 +11,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, Focusable, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     Disableable as _, Sizable as _, StyledExt as _,
     checkbox::Checkbox,
     h_flex,

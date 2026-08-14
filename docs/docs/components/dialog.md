@@ -10,7 +10,7 @@ description: A modal surface for focused content and actions.
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     WindowExt as _,
     button::Button,
     dialog::{Dialog, DialogAction, DialogClose, DialogFooter},

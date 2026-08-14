@@ -18,7 +18,7 @@ use gpui::{
     StatefulInteractiveElement, Styled, Subscription, Task, TextAlign, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Selectable, Sizable as _, Size, StyleSized as _, StyledExt,
     button::Button,
     checkbox::Checkbox,

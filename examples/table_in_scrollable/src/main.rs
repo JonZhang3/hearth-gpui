@@ -9,7 +9,7 @@
 //! outside the table), the outer page scrolls instead.
 
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     scroll::ScrollableElement as _,
     table::{Column, DataTable, TableDelegate, TableState},
     *,
@@ -110,8 +110,8 @@ impl Render for Example {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(700.), px(700.)), cx)),

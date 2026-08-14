@@ -10,7 +10,7 @@ description: 保持固定宽高比的布局容器。
 ## 引入
 
 ```rust
-use gpui_component::aspect_ratio::AspectRatio;
+use hearth_gpui::aspect_ratio::AspectRatio;
 ```
 
 ## 用法

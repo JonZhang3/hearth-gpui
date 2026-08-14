@@ -4,7 +4,7 @@
 
 | Item | Value |
 |---|---|
-| GPUI Component baseline | `e1570bdc` |
+| Hearth GPUI baseline | `e1570bdc` |
 | shadcn/ui revision | `607e8a9717fe6ff0d374ba74c651012f9c052534` |
 | shadcn style and base | Vega and Radix |
 | Alignment Story | `Shadcn Alignment` |
@@ -45,7 +45,7 @@ Regenerate the frozen references from an exported baseline worktree with:
 ```bash
 SHADCN_CAPTURE_REVISION=e1570bdc \
 SHADCN_CAPTURE_OUTPUT=/absolute/path/to/docs/shadcn/screenshots/phase0 \
-cargo run -p gpui-component-story \
+cargo run -p hearth-gpui-story \
   --example shadcn_phase0_capture --features visual-test
 ```
 
@@ -80,7 +80,7 @@ The matrix now also includes multiline Input, NumberInput, open/invalid OTP, exp
 Regenerate the matrix with:
 
 ```bash
-cargo run -p gpui-component-story --example shadcn_capture --features visual-test
+cargo run -p hearth-gpui-story --example shadcn_capture --features visual-test
 ```
 
 ## Overlay placement and lifecycle captures
@@ -97,7 +97,7 @@ The dedicated 960 x 640 logical-pixel overlay harness runs with motion enabled. 
 All eight files are 1920 x 1280 Retina output with distinct SHA-256 hashes and visible revision, theme, Style, and scenario metadata. Regenerate them with:
 
 ```bash
-cargo run -p gpui-component-story \
+cargo run -p hearth-gpui-story \
   --example shadcn_overlay_capture --features visual-test
 ```
 
@@ -114,7 +114,7 @@ The same fixed August 2026 Calendar, DatePicker, and invalid Form layout was ren
 All three files are fixed 2000 x 1400 Retina output, identify locale/Style/revision/viewport, and have distinct hashes. Regenerate them with:
 
 ```bash
-cargo run -p gpui-component-story \
+cargo run -p hearth-gpui-story \
   --example shadcn_locale_capture --features visual-test
 ```
 
@@ -152,7 +152,7 @@ The first live inspection found that icon-only overlay close buttons were unname
 Run on the same machine and checkout state:
 
 ```bash
-cargo bench -p gpui-component --bench shadcn_alignment -- \
+cargo bench -p hearth-gpui --bench shadcn_alignment -- \
   --sample-size 30 --warm-up-time 1 --measurement-time 5
 ```
 

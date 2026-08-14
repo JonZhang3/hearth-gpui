@@ -1,8 +1,8 @@
-# GPUI Component
+# Hearth GPUI
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![Build Status](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
+[![Build Status](https://github.com/JonZhang3/hearth-gpui/actions/workflows/ci.yml/badge.svg)](https://github.com/JonZhang3/hearth-gpui/actions/workflows/ci.yml) [![Docs](https://docs.rs/hearth-gpui/badge.svg)](https://docs.rs/hearth-gpui/) [![Crates.io](https://img.shields.io/crates/v/hearth-gpui.svg)](https://crates.io/crates/hearth-gpui)
 
 > **Modification notice:** This fork contains substantial changes to the
 > original Longbridge project. See [`MODIFICATIONS.md`](./MODIFICATIONS.md) for
@@ -26,9 +26,9 @@ UI components for building fantastic desktop applications using [GPUI](https://g
 
 ## Showcase
 
-https://longbridge.github.io/gpui-component/gallery/
+https://jonzhang3.github.io/hearth-gpui/gallery/
 
-Here is the first application: [Longbridge Pro](https://longbridge.com/desktop), built using GPUI Component.
+The original GPUI Component project powers [Longbridge Pro](https://longbridge.com/desktop).
 
 <img width="1763" alt="Image" src="https://github.com/user-attachments/assets/e1ecb9c3-2dd3-431e-bd97-5a819c30e551" />
 
@@ -37,14 +37,14 @@ Here is the first application: [Longbridge Pro](https://longbridge.com/desktop),
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 ### Basic Example
 
 ```rs
 use gpui::*;
-use gpui_component::{button::*, *};
+use hearth_gpui::{button::*, *};
 
 pub struct HelloWorld;
 impl Render for HelloWorld {
@@ -67,8 +67,8 @@ impl Render for HelloWorld {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -85,9 +85,9 @@ fn main() {
 
 ### Icons
 
-GPUI Component has an `Icon` element, but it does not include SVG files by default.
+Hearth GPUI has an `Icon` element, but it does not include SVG files by default.
 
-The example uses [Lucide](https://lucide.dev) icons, but you can use any icons you like. Just name the SVG files as defined in [IconName](https://github.com/longbridge/gpui-component/blob/main/crates/ui/src/icon.rs#L86). You can add any icons you need to your project.
+The example uses [Lucide](https://lucide.dev) icons, but you can use any icons you like. Just name the SVG files as defined in [IconName](https://github.com/JonZhang3/hearth-gpui/blob/main/crates/ui/src/icon.rs#L86). You can add any icons you need to your project.
 
 ## Development
 
@@ -152,7 +152,7 @@ Check out [CONTRIBUTING.md](CONTRIBUTING.md) for more details.
 
 ## Compare to others
 
-| Features              | GPUI Component                 | [Iced]             | [egui]                | [Qt 6]                                            |
+| Features              | Hearth GPUI                 | [Iced]             | [egui]                | [Qt 6]                                            |
 | --------------------- | ------------------------------ | ------------------ | --------------------- | ------------------------------------------------- |
 | Language              | Rust                           | Rust               | Rust                  | C++/QML                                           |
 | Core Render           | GPUI                           | wgpu               | wgpu                  | QT                                                |

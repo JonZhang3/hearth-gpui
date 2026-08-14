@@ -22,7 +22,7 @@ DatePicker 按照 shadcn 的组合方式实现：使用 Outline Button 作为 Tr
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     date_picker::{DatePicker, DatePickerState, DateRangePreset, DatePickerEvent},
     calendar::{Date, Matcher},
 };
@@ -144,7 +144,7 @@ div()
 ### 禁用周末
 
 ```rust
-use gpui_component::calendar;
+use hearth_gpui::calendar;
 
 let date_picker = cx.new(|cx| {
     DatePickerState::new(window, cx)

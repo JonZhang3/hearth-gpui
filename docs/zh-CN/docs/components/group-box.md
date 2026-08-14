@@ -10,7 +10,7 @@ description: 用于组织相关内容的轻量语义容器。
 ## 导入
 
 ```rust
-use gpui_component::group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants as _};
+use hearth_gpui::group_box::{GroupBox, GroupBoxVariant, GroupBoxVariants as _};
 ```
 
 ## 基础用法

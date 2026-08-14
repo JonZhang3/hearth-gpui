@@ -10,7 +10,7 @@ A GPUI-native charting library providing Line, Bar, Area, Pie, Radar, Radial, Ca
 ## Import
 
 ```rust
-use gpui_component::chart::{
+use hearth_gpui::chart::{
     AreaChart, BarChart, CandlestickChart, ChartAccessibility, ChartAccessibilityItem,
     ChartConfig, ChartConfigItem, ChartContainer, ChartLegend, LineChart, PieChart,
     RadarChart, RadialChart, SankeyChart,
@@ -215,10 +215,10 @@ BarChart::new(data)
 
 #### Bar Chart Alignment
 
-`BarAlignment` controls the bar orientation and the side where the baseline sits. Import it from `gpui_component::plot::shape`.
+`BarAlignment` controls the bar orientation and the side where the baseline sits. Import it from `hearth_gpui::plot::shape`.
 
 ```rust
-use gpui_component::plot::shape::BarAlignment;
+use hearth_gpui::plot::shape::BarAlignment;
 
 // Default: vertical bars growing upward from the bottom
 BarChart::new(data)
@@ -534,7 +534,7 @@ A sankey diagram visualizes flows between nodes, ideal for financial statements,
 #### Basic Sankey Chart
 
 ```rust
-use gpui_component::plot::shape::SankeyLink;
+use hearth_gpui::plot::shape::SankeyLink;
 
 #[derive(Clone)]
 struct FlowNode {
@@ -565,7 +565,7 @@ The value label is drawn above the name label. Its closure receives the node's c
 #### Node Alignment
 
 ```rust
-use gpui_component::plot::shape::SankeyAlign;
+use hearth_gpui::plot::shape::SankeyAlign;
 
 // Justify (default): nodes without outgoing links move to the last column
 SankeyChart::new(nodes, links).node_align(SankeyAlign::Justify)
@@ -596,7 +596,7 @@ Link ribbons are filled with a horizontal gradient from the source node color to
 For full control over the label lines, use `labels` — one `SankeyLabel` per line, top to bottom, each with its own color and font size. It takes precedence over `node_label`/`value_label` when set. For example, a financial-statement label with a year-over-year change line:
 
 ```rust
-use gpui_component::chart::SankeyLabel;
+use hearth_gpui::chart::SankeyLabel;
 
 SankeyChart::new(nodes, links).labels(move |d: &FlowNode, value| {
     let arrow = if d.growth >= 0. { "▲" } else { "▼" };
@@ -616,7 +616,7 @@ Line color defaults to the theme foreground and font size to 10; the chart keeps
 Node heights are linear in flow value by default, so a large value range (e.g. 200:1) leaves the small flows nearly invisible and the dominant flow oversized. Set `value_scale(SankeyValueScale::Sqrt)` to compress the range — the component sizes nodes by the square root of the value, so small flows stay visible without pre-transforming the data, and labels still receive the raw values:
 
 ```rust
-use gpui_component::plot::shape::SankeyValueScale;
+use hearth_gpui::plot::shape::SankeyValueScale;
 
 SankeyChart::new(nodes, links).value_scale(SankeyValueScale::Sqrt)
 ```
@@ -661,7 +661,7 @@ struct StockPrice {
     pub volume: u64,
 }
 
-// Sankey flow: nodes are referenced by index (from gpui_component::plot::shape)
+// Sankey flow: nodes are referenced by index (from hearth_gpui::plot::shape)
 pub struct SankeyLink {
     pub source: usize,
     pub target: usize,
@@ -1071,9 +1071,9 @@ impl LiveChart {
 }
 ```
 
-[LineChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.LineChart.html
-[BarChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.BarChart.html
-[AreaChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.AreaChart.html
-[PieChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.PieChart.html
-[RadarChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.RadarChart.html
-[CandlestickChart]: https://docs.rs/gpui-component/latest/gpui_component/chart/struct.CandlestickChart.html
+[LineChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.LineChart.html
+[BarChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.BarChart.html
+[AreaChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.AreaChart.html
+[PieChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.PieChart.html
+[RadarChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.RadarChart.html
+[CandlestickChart]: https://docs.rs/hearth-gpui/latest/hearth_gpui/chart/struct.CandlestickChart.html

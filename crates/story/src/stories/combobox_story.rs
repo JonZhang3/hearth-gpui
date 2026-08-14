@@ -5,7 +5,7 @@
 // - Reworked Combobox story around accessibility semantics and ARIA state, invalid and validation
 //   state handling.
 use gpui::{prelude::FluentBuilder as _, *};
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Icon, IconName, IndexPath, Sizable as _,
     button::Button,
     combobox::*,
@@ -86,7 +86,7 @@ impl SearchableListItem for Industry {
     }
 
     fn render(&self, _window: &mut gpui::Window, cx: &mut gpui::App) -> impl gpui::IntoElement {
-        use gpui_component::ActiveTheme as _;
+        use hearth_gpui::ActiveTheme as _;
 
         h_flex()
             .w_full()

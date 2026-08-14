@@ -12,7 +12,7 @@ Menu 组件同时提供上下文菜单和弹出菜单，支持图标、键盘快
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     menu::{PopupMenu, PopupMenuItem, ContextMenuExt, DropdownMenu},
     Button
 };
@@ -26,7 +26,7 @@ use gpui::{actions, Action};
 右键点击元素时显示上下文菜单：
 
 ```rust
-use gpui_component::menu::ContextMenuExt;
+use hearth_gpui::menu::ContextMenuExt;
 
 div()
     .id("my-element")
@@ -56,7 +56,7 @@ div()
 下拉菜单通常由按钮或其它可交互元素触发：
 
 ```rust
-use gpui_component::popup_menu::{PopupMenuExt as _, PopupMenuItem};
+use hearth_gpui::popup_menu::{PopupMenuExt as _, PopupMenuItem};
 
 let view = cx.entity();
 Button::new("menu-btn")
@@ -64,7 +64,7 @@ Button::new("menu-btn")
     .dropdown_menu(|menu, window, cx| {
         menu.menu("New File", Box::new(NewFile))
             .menu("Open File", Box::new(OpenFile))
-            .link("Documentation", "https://longbridge.github.io/gpui-component/")
+            .link("Documentation", "https://jonzhang3.github.io/hearth-gpui/")
             .separator()
             .item(PopupMenuItem::new("Custom Action")
                 .on_click(window.listener_for(&view, |this, _, window, cx| {
@@ -103,7 +103,7 @@ Button::new("menu-btn")
 ### 图标
 
 ```rust
-use gpui_component::IconName;
+use hearth_gpui::IconName;
 
 menu.menu_with_icon("Search", IconName::Search, Box::new(Search))
     .menu_with_icon("Settings", IconName::Settings, Box::new(OpenSettings))
@@ -183,7 +183,7 @@ menu.link("Documentation", "https://docs.example.com")
 ### 自定义元素
 
 ```rust
-use gpui_component::{h_flex, v_flex};
+use hearth_gpui::{h_flex, v_flex};
 
 menu.menu_element(Box::new(CustomAction), |window, cx| {
         v_flex()
@@ -338,7 +338,7 @@ div()
 ### 不使用 action 添加菜单项
 
 ```rust
-use gpui_component::{menu::PopupMenuItem, Button};
+use hearth_gpui::{menu::PopupMenuItem, Button};
 
 Button::new("custom-item-menu")
     .label("Options")
@@ -445,7 +445,7 @@ Button::new("settings")
 7. 使用清晰、动作导向的文案。
 8. 菜单项很多时开启滚动并设置合理高度。
 
-[PopupMenu]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenu.html
-[PopupMenuItem]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenuItem.html
-[context_menu]: https://docs.rs/gpui-component/latest/gpui_component/menu/trait.ContextMenuExt.html#method.context_menu
+[PopupMenu]: https://docs.rs/hearth-gpui/latest/hearth_gpui/menu/struct.PopupMenu.html
+[PopupMenuItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/menu/struct.PopupMenuItem.html
+[context_menu]: https://docs.rs/hearth-gpui/latest/hearth_gpui/menu/trait.ContextMenuExt.html#method.context_menu
 [Action]: https://docs.rs/gpui/latest/gpui/trait.Action.html

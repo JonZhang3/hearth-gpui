@@ -1,4 +1,4 @@
-# GPUI Component Testing Rules
+# Hearth GPUI Testing Rules
 
 ## Testing Principles
 

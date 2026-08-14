@@ -10,7 +10,7 @@ description: 提供组合式表单字段原语、GPUI 原生网格布局和验�
 ## 导入
 
 ```rust
-use gpui_component::form::{
+use hearth_gpui::form::{
     field, v_form, FieldBody, FieldContent, FieldDescription, FieldError,
     FieldGroup, FieldLabel, FieldLegend, FieldSet,
 };

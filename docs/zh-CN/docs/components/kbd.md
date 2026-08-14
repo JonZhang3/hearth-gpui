@@ -10,7 +10,7 @@ description: 展示键盘输入和组合快捷键。
 ## 导入
 
 ```rust
-use gpui_component::kbd::{Kbd, KbdGroup};
+use hearth_gpui::kbd::{Kbd, KbdGroup};
 ```
 
 ## 基础用法
@@ -67,7 +67,7 @@ macOS 使用符号并省略分隔符；Windows 和 Linux 使用文字标签与 `
 图标应使用 12px 的 `xsmall` 尺寸，与 shadcn Kbd 基线一致。
 
 ```rust
-use gpui_component::{Icon, IconName, Sizable as _};
+use hearth_gpui::{Icon, IconName, Sizable as _};
 
 Kbd::new()
     .child(Icon::new(IconName::ArrowLeft).xsmall())

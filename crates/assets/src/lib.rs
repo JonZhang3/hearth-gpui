@@ -1,12 +1,12 @@
-/// Embed application assets for GPUI Component.
+/// Embed application assets for Hearth GPUI.
 ///
-/// This assets provides icons svg files for [IconName](https://docs.rs/gpui-component/latest/gpui_component/enum.IconName.html).
+/// This assets provides icons svg files for [IconName](https://docs.rs/hearth-gpui/latest/hearth_gpui/enum.IconName.html).
 ///
 /// ## Usage
 ///
 /// ```rust,no_run
 /// use gpui::*;
-/// use gpui_component_assets::Assets;
+/// use hearth_gpui_assets::Assets;
 ///
 /// let app = gpui_platform::application().with_assets(Assets);
 /// ```

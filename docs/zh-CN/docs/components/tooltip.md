@@ -10,7 +10,7 @@ Tooltip 用于为 Trigger 显示简短的补充信息。应用的 `Root` 统一�
 ## 导入
 
 ```rust
-use gpui_component::tooltip::{
+use hearth_gpui::tooltip::{
     Tooltip, TooltipAlign, TooltipSide, TooltipTrigger,
 };
 ```

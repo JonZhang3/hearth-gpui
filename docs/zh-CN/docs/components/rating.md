@@ -10,7 +10,7 @@ Rating 是一个适配主题的星级评分组件，支持鼠标与键盘选择�
 ## 导入
 
 ```rust
-use gpui_component::rating::Rating;
+use hearth_gpui::rating::Rating;
 ```
 
 ## 用法
@@ -198,6 +198,6 @@ Rating::new("rating")
     .color(cx.theme().orange)
 ```
 
-[Rating]: https://docs.rs/gpui-component/latest/gpui_component/rating/struct.Rating.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
-[Disableable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Disableable.html
+[Rating]: https://docs.rs/hearth-gpui/latest/hearth_gpui/rating/struct.Rating.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html
+[Disableable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Disableable.html

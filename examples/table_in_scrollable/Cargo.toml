@@ -8,7 +8,7 @@ edition.workspace = true
 [dependencies]
 gpui.workspace = true
 gpui_platform.workspace = true
-gpui-component = { workspace = true }
+hearth-gpui = { workspace = true }
 
 [lints]
 workspace = true

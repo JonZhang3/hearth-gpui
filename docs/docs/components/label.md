@@ -10,7 +10,7 @@ description: A label for form controls and composed inline content.
 ## Import
 
 ```rust
-use gpui_component::{Disableable as _, label::Label};
+use hearth_gpui::{Disableable as _, label::Label};
 ```
 
 ## Basic

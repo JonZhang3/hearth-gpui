@@ -10,7 +10,7 @@ A tabbed interface component for organizing content into separate sections. Supp
 ## Import
 
 ```rust
-use gpui_component::tab::{Tab, TabBar};
+use hearth_gpui::tab::{Tab, TabBar};
 ```
 
 ## Usage
@@ -76,7 +76,7 @@ TabBar::new("outline-tabs")
 #### Segmented Tabs
 
 ```rust
-use gpui_component::IconName;
+use hearth_gpui::IconName;
 
 TabBar::new("segmented-tabs")
     .segmented()
@@ -110,7 +110,7 @@ TabBar::new("tabs").large()
 ### Tabs with Icons
 
 ```rust
-use gpui_component::{Icon, IconName};
+use hearth_gpui::{Icon, IconName};
 
 TabBar::new("icon-tabs")
     .child(Tab::default().icon(IconName::User).with_variant(TabVariant::Tab))
@@ -121,8 +121,8 @@ TabBar::new("icon-tabs")
 ### Tabs with Prefix and Suffix
 
 ```rust
-use gpui_component::button::Button;
-use gpui_component::{h_flex, IconName};
+use hearth_gpui::button::Button;
+use hearth_gpui::{h_flex, IconName};
 
 TabBar::new("tabs-with-controls")
     .prefix(

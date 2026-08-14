@@ -1,4 +1,4 @@
-const API_URL = "https://api.github.com/repos/longbridge/gpui-component";
+const API_URL = "https://api.github.com/repos/JonZhang3/hearth-gpui";
 const IS_BUILD = process.env.NODE_ENV === "production";
 
 export default {

@@ -12,7 +12,7 @@ VirtualList 是一个面向大规模数据集的高性能列表组件。它只�
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     v_virtual_list, h_virtual_list, VirtualListScrollHandle,
     scroll::{Scrollbar, ScrollbarState, ScrollbarAxis},
 };

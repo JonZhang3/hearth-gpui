@@ -12,7 +12,7 @@
 
 ### Work
 
-1. Record the GPUI Component and shadcn commit hashes in Gallery metadata or developer documentation.
+1. Record the Hearth GPUI and shadcn commit hashes in Gallery metadata or developer documentation.
 2. Add a dedicated `Shadcn Alignment` Story section with light and dark theme switching.
 3. Add independent Color Theme and Style Preset controls to the alignment Story.
 4. Add deterministic state rows for P0 components.

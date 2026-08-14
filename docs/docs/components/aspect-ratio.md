@@ -10,7 +10,7 @@ description: A layout container that preserves a width-to-height ratio.
 ## Import
 
 ```rust
-use gpui_component::aspect_ratio::AspectRatio;
+use hearth_gpui::aspect_ratio::AspectRatio;
 ```
 
 ## Usage

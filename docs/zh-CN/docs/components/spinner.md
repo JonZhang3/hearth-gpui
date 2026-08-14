@@ -10,7 +10,7 @@ description: 显示无法确定完成百分比的加载状态。
 ## 导入
 
 ```rust
-use gpui_component::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
+use hearth_gpui::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
 ```
 
 ## 用法

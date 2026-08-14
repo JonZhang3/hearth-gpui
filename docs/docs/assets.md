@@ -5,29 +5,29 @@ order: -4
 
 # Icons & Assets
 
-The [IconName] and [Icon] in GPUI Component provide a comprehensive set of icons and assets that can be easily integrated into your GPUI applications.
+The [IconName] and [Icon] in Hearth GPUI provide a comprehensive set of icons and assets that can be easily integrated into your GPUI applications.
 
-But for minimal size applications, **we have not embedded any icon assets by default** in `gpui-component` crate.
+But for minimal size applications, **we have not embedded any icon assets by default** in `hearth-gpui` crate.
 
-We split the icon assets into a separate crate [gpui-component-assets] to allow developers to choose whether to include the icon assets in their applications or if you don't need the icons at all, you can build your own assets.
+We split the icon assets into a separate crate [hearth-gpui-assets] to allow developers to choose whether to include the icon assets in their applications or if you don't need the icons at all, you can build your own assets.
 
 ## Use default bundled assets
 
-The [gpui-component-assets] crate provides a default bundled assets implementation that includes all the icon files in the `assets/icons` folder.
+The [hearth-gpui-assets] crate provides a default bundled assets implementation that includes all the icon files in the `assets/icons` folder.
 
-To use the default bundled assets, you need to add the `gpui-component-assets` crate as a dependency in your `Cargo.toml`:
+To use the default bundled assets, you need to add the `hearth-gpui-assets` crate as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
+hearth-gpui-assets = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 Then we need call the `with_assets` method when creating the GPUI application to register the asset source:
 
 ```rs
 use gpui::*;
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 let app = gpui_platform::application().with_assets(Assets);
 ```
@@ -42,7 +42,7 @@ You may have a specific set of icons that you want to use in your application, o
 
 In this case, you can build your own assets by following these steps.
 
-The [assets](https://github.com/longbridge/gpui-component/tree/main/crates/assets/assets/) folder in source code contains all the available icons in SVG format, every file is that GPUI Component support, it matched with the [IconName] enum.
+The [assets](https://github.com/JonZhang3/hearth-gpui/tree/main/crates/assets/assets/) folder in source code contains all the available icons in SVG format, every file is that Hearth GPUI support, it matched with the [IconName] enum.
 
 You can download the SVG files you need from the [assets] folder, or you can use your own SVG files by following the [IconName] naming convention.
 
@@ -53,7 +53,7 @@ And GPUI Application providers an `AssetSource` trait to load the assets.
 ```rs
 use anyhow::anyhow;
 use gpui::*;
-use gpui_component::{v_flex, IconName, Root};
+use hearth_gpui::{v_flex, IconName, Root};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -90,8 +90,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // We must initialize gpui_component before using it.
-        gpui_component::init(cx);
+        // We must initialize hearth_gpui before using it.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -129,10 +129,10 @@ impl Render for Example {
 
 ## Resources
 
-- [Lucide Icons](https://lucide.dev/) - The icon set used in GPUI Component is based on the open-source Lucide Icons library, which provides a wide range of customizable SVG icons.
+- [Lucide Icons](https://lucide.dev/) - The icon set used in Hearth GPUI is based on the open-source Lucide Icons library, which provides a wide range of customizable SVG icons.
 
 [rust-embed]: https://docs.rs/rust-embed/latest/rust_embed/
-[IconName]: https://docs.rs/gpui_component/latest/gpui_component/icon/enum.IconName.html
-[Icon]: https://docs.rs/gpui_component/latest/gpui_component/icon/struct.Icon.html
-[assets]: https://github.com/longbridge/gpui-component/tree/main/crates/assets/assets/
-[gpui-component-assets]: https://crates.io/crates/gpui-component-assets
+[IconName]: https://docs.rs/hearth_gpui/latest/hearth_gpui/icon/enum.IconName.html
+[Icon]: https://docs.rs/hearth_gpui/latest/hearth_gpui/icon/struct.Icon.html
+[assets]: https://github.com/JonZhang3/hearth-gpui/tree/main/crates/assets/assets/
+[hearth-gpui-assets]: https://crates.io/crates/hearth-gpui-assets

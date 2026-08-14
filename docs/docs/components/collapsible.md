@@ -10,7 +10,7 @@ An interactive element which expands/collapses.
 ## Import
 
 ```rust
-use gpui_component::collapsible::Collapsible;
+use hearth_gpui::collapsible::Collapsible;
 ```
 
 ## Usage
@@ -55,4 +55,4 @@ Collapsible::new()
 
 Use `open` to control the expanded state. Add a stable `id` to enable measured dynamic-height enter and exit motion. Closing content remains mounted until the shared Style motion duration completes, and reopening interrupts a pending close safely. Reduced motion removes the delay. Without an `id`, `Collapsible` keeps the legacy immediate show/hide behavior.
 
-[Collapsible]: https://docs.rs/gpui-component/latest/gpui_component/collapsible/struct.Collapsible.html
+[Collapsible]: https://docs.rs/hearth-gpui/latest/hearth_gpui/collapsible/struct.Collapsible.html

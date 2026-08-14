@@ -7,7 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Building GPUI Component Story Web...${NC}"
+echo -e "${GREEN}Building Hearth GPUI Story Web...${NC}"
 
 # Get the script directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -34,7 +34,7 @@ fi
 
 # WASM file is in workspace target directory
 WORKSPACE_ROOT="$PROJECT_ROOT/../.."
-WASM_PATH="$WORKSPACE_ROOT/target/wasm32-unknown-unknown/$BUILD_MODE/gpui_component_story_web.wasm"
+WASM_PATH="$WORKSPACE_ROOT/target/wasm32-unknown-unknown/$BUILD_MODE/hearth_gpui_story_web.wasm"
 
 # Check if WASM file exists
 if [[ ! -f "$WASM_PATH" ]]; then

@@ -12,7 +12,7 @@ Skeleton uses the active Color Theme's semantic `muted` surface and the active S
 ## Import
 
 ```rust
-use gpui_component::skeleton::Skeleton;
+use hearth_gpui::skeleton::Skeleton;
 ```
 
 ## Usage

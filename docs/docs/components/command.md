@@ -10,7 +10,7 @@ description: A searchable command menu with grouped actions and keyboard navigat
 ## Import
 
 ```rust
-use gpui_component::command::{
+use hearth_gpui::command::{
     Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput,
     CommandItem, CommandList, CommandSeparator, CommandShortcut, CommandState,
 };

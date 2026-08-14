@@ -58,7 +58,7 @@ cargo run --example table
 
 ## UI Guides
 
-GPUI Component is inspired by macOS and Windows controls, combined with shadcn/ui design for a modern experience.
+Hearth GPUI is inspired by macOS and Windows controls, combined with shadcn/ui design for a modern experience.
 
 So please refer to the following UI guides when you design or change the UI components:
 

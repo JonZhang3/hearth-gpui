@@ -6,7 +6,7 @@ This document records intentionally deferred shadcn alignment work. An item rema
 
 **Status:** Plot primitive capability deferred; Radial capability matrix otherwise implemented
 
-The pinned shadcn Radial Bar examples can apply `cornerRadius` to the leading and trailing ends of radial segments. GPUI Component's current `Arc` primitive paints annular sectors with straight radial edges and cannot round only the segment caps without changing the underlying path geometry.
+The pinned shadcn Radial Bar examples can apply `cornerRadius` to the leading and trailing ends of radial segments. Hearth GPUI's current `Arc` primitive paints annular sectors with straight radial edges and cannot round only the segment caps without changing the underlying path geometry.
 
 Do not emulate this with circles painted over the endpoints: that breaks narrow rings, padded segments, partial angles, hit testing, and overlapping stacked series. Add rounded caps to the shared `Arc` path primitive, then reuse the exact geometry for paint and pointer hit testing. Acceptance requires full and partial rings, clockwise and counter-clockwise ranges, inner radius zero, narrow segments, padding, background tracks, and stacked series to remain geometrically stable.
 
@@ -16,7 +16,7 @@ Do not emulate this with circles painted over the endpoints: that breaks narrow 
 
 The pinned Vega, Nova, and Maia Table styles apply `transition-colors` to row hover and selected-state changes. GPUI Table and DataTable resolve the same semantic final colors (`muted/50` for hover and `muted` for selected), but hover changes remain immediate because GPUI has no reusable transition contract for stateless or virtualized row hover pseudo-states.
 
-Do not introduce one entity or timer per static or virtualized row solely for this effect. Revisit the transition after GPUI Component has a shared, interruption-safe pseudo-state color animation primitive that preserves `Styled` background overrides, honors reduced motion, and does not add material per-row state or repaint overhead to large tables.
+Do not introduce one entity or timer per static or virtualized row solely for this effect. Revisit the transition after Hearth GPUI has a shared, interruption-safe pseudo-state color animation primitive that preserves `Styled` background overrides, honors reduced motion, and does not add material per-row state or repaint overhead to large tables.
 
 ## Separator accessibility role
 
@@ -66,7 +66,7 @@ Input Group currently accepts the repository's `Input` as its typed control slot
 
 Do not broaden the root to arbitrary `AnyElement` controls until GPUI components share a contract for exposing `FocusHandle`, disabled state, invalid state, and accessibility ownership. Visual introspection of an opaque element is not an acceptable substitute.
 
-`InlineStart` and `InlineEnd` currently resolve to left and right because GPUI Component has no shared logical layout-direction contract. Revisit their physical placement after the repository defines inherited LTR/RTL direction for layout, pointer hit regions, keyboard navigation, and accessibility ordering. Acceptance requires mirrored inline geometry without changing block placement or caller APIs.
+`InlineStart` and `InlineEnd` currently resolve to left and right because Hearth GPUI has no shared logical layout-direction contract. Revisit their physical placement after the repository defines inherited LTR/RTL direction for layout, pointer hit regions, keyboard navigation, and accessibility ordering. Acceptance requires mirrored inline geometry without changing block placement or caller APIs.
 
 ## Select scale and isolated-opacity parity
 

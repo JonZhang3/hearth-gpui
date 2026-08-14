@@ -10,7 +10,7 @@ use gpui::{
     Styled, Window, div, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Disableable, Sizable, h_flex,
     radio::{Radio, RadioGroup, RadioGroupItem},
     v_flex,

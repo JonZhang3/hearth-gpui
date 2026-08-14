@@ -8,7 +8,7 @@ use gpui::{
     AnyElement, App, Bounds, ElementId, Hsla, IntoElement, PathBuilder, Pixels, Point,
     SharedString, Window, fill, point, px,
 };
-use gpui_component_macros::IntoPlot;
+use hearth_gpui_macros::IntoPlot;
 use num_traits::{Num, ToPrimitive};
 
 use crate::{

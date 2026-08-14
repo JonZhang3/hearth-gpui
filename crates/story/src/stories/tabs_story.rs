@@ -9,7 +9,7 @@ use gpui::{
     Styled, Window, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable, Size,
     button::{Button, ButtonGroup},
     checkbox::Checkbox,

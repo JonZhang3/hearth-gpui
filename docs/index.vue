@@ -1,6 +1,6 @@
 <template>
     <div class="banner">
-        <h1>GPUI Component</h1>
+        <h1>Hearth GPUI</h1>
         <div class="banner-description">
             {{ bannerPrefix }}
             <a href="https://gpui.rs" target="_blank">GPUI</a><span v-if="!isZh">.</span>
@@ -12,7 +12,7 @@
         </div>
         <div class="version">
             {{ versionLabel }}
-            <a href="https://crates.io/crates/gpui-component" target="_blank">{{
+            <a href="https://crates.io/crates/hearth-gpui" target="_blank">{{
                 VERSION
             }}</a>
         </div>

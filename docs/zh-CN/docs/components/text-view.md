@@ -10,7 +10,7 @@ description: 渲染 Markdown 与 HTML 文本，并支持自定义 Markdown 插�
 ## 导入
 
 ```rust
-use gpui_component::text::{markdown, TextView};
+use hearth_gpui::text::{markdown, TextView};
 ```
 
 ## 用法
@@ -20,7 +20,7 @@ use gpui_component::text::{markdown, TextView};
 只需要渲染 Markdown 时，可以使用 `markdown` helper：
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 markdown("# Hello\n\nThis is **Markdown**.")
     .selectable(true)
@@ -30,7 +30,7 @@ markdown("# Hello\n\nThis is **Markdown**.")
 如果需要稳定 id，也可以直接构造 `TextView`：
 
 ```rust
-use gpui_component::text::TextView;
+use hearth_gpui::text::TextView;
 
 TextView::markdown("preview", markdown_source)
     .selectable(true)
@@ -55,7 +55,7 @@ Markdown 插件实现 `MarkdownPlugin`：
 
 ```rust
 use gpui::{App, IntoElement, ParentElement as _, Window};
-use gpui_component::text::{
+use hearth_gpui::text::{
     markdown_ast, MarkdownNode, MarkdownParseContext, MarkdownPlugin,
 };
 

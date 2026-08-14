@@ -20,18 +20,18 @@ Button::new("ok")
     .on_click(|_, _, _| println!("Button clicked!"))
 ```
 
-## Install GPUI Component
+## Install Hearth GPUI
 
 Add the following to your `Cargo.toml`:
 
-GPUI and GPUI Component are under active development, recently GPUI have some new features not published on crates.io, so we recommend using the git version for now.
+GPUI and Hearth GPUI are under active development, recently GPUI have some new features not published on crates.io, so we recommend using the git version for now.
 
 The documentation on this site are based on the **Git main branch**, if you use the crates.io version, there may be some differences.
 
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 ## Hello World
@@ -40,7 +40,7 @@ The following `src/main.rs` is a simple "Hello, World!" application:
 
 ```rs
 use gpui::*;
-use gpui_component::{button::*, *};
+use hearth_gpui::{button::*, *};
 
 pub struct HelloWorld;
 impl Render for HelloWorld {
@@ -63,8 +63,8 @@ impl Render for HelloWorld {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

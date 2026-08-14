@@ -15,7 +15,7 @@ Theme and Style Preset through [Button] instead of duplicating fixed values.
 ## Import
 
 ```rust
-use gpui_component::button::{Button, DropdownButton};
+use hearth_gpui::button::{Button, DropdownButton};
 ```
 
 ## Usage
@@ -70,7 +70,7 @@ Use `.aria_label(...)` to name the composite group when its surrounding context 
 The menu trigger has a localized "More options" accessible name by default; use
 `.menu_aria_label(...)` when the menu has a more specific purpose.
 
-[Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
-[DropdownButton]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.DropdownButton.html
-[PopupMenu]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenu.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Button]: https://docs.rs/hearth-gpui/latest/hearth_gpui/button/struct.Button.html
+[DropdownButton]: https://docs.rs/hearth-gpui/latest/hearth_gpui/button/struct.DropdownButton.html
+[PopupMenu]: https://docs.rs/hearth-gpui/latest/hearth_gpui/menu/struct.PopupMenu.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

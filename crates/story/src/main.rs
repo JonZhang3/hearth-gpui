@@ -1,5 +1,5 @@
-use gpui_component_assets::Assets;
-use gpui_component_story::{Gallery, create_new_window, init};
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::{Gallery, create_new_window, init};
 
 fn main() {
     let app = gpui_platform::application().with_assets(Assets);
@@ -12,7 +12,7 @@ fn main() {
         cx.activate(true);
 
         create_new_window(
-            "GPUI Component",
+            "Hearth GPUI",
             move |window, cx| Gallery::view(name.as_deref(), window, cx),
             cx,
         );

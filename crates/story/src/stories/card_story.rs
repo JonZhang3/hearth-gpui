@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, Styled, Window, prelude::FluentBuilder as _, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Sizable as _,
     button::Button,
     card::{

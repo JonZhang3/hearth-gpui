@@ -9,7 +9,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, IconName, Sizable as _, alert::Alert, button::Button, dock::PanelControl,
     text::markdown, v_flex,
 };

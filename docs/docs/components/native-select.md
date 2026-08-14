@@ -15,7 +15,7 @@ Use [`Select`](select) when options need search, rich rows, or virtualization.
 ## Import
 
 ```rust
-use gpui_component::native_select::{
+use hearth_gpui::native_select::{
     NativeSelect, NativeSelectOptGroup, NativeSelectOption,
 };
 ```

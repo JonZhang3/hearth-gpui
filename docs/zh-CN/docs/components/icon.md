@@ -7,12 +7,12 @@ description: 以不同尺寸、颜色和变换方式显示 SVG 图标。
 
 Icon 是一个灵活的图标组件，可渲染内置图标库或自定义资源路径中的 SVG 图标。图标基于 Lucide.dev，并支持尺寸、颜色、变换与无障碍语义定制。
 
-在开始之前，建议先阅读 [Icons & Assets](../assets.md)，了解如何在 GPUI 与 GPUI Component 应用中使用 SVG。
+在开始之前，建议先阅读 [Icons & Assets](../assets.md)，了解如何在 GPUI 与 Hearth GPUI 应用中使用 SVG。
 
 ## 导入
 
 ```rust
-use gpui_component::{Icon, IconName};
+use hearth_gpui::{Icon, IconName};
 ```
 
 ## 用法
@@ -145,7 +145,7 @@ Icon::informative(
 如果你需要更贴合业务的图标命名，可以自己定义 `IconName` 并实现 `IconNamed` trait。
 
 ```rust
-use gpui_component::IconNamed;
+use hearth_gpui::IconNamed;
 
 pub enum IconName {
     Encounters,
@@ -186,7 +186,7 @@ div()
 ### 按钮中的图标
 
 ```rust
-use gpui_component::button::Button;
+use hearth_gpui::button::Button;
 
 Button::new("like-btn")
     .icon(

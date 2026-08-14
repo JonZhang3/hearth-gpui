@@ -3,7 +3,7 @@
 // - Replaced legacy theme radius access with `Theme.style.radii.md` in sidebar surfaces.
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Icon, IconName, Selectable,
     button::Button,
     sidebar::{
@@ -12,7 +12,7 @@ use gpui_component::{
     },
     *,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 pub struct Example {
     collapsible: SidebarCollapsible,
@@ -195,7 +195,7 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(900.), px(620.)), cx)),

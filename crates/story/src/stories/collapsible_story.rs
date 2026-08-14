@@ -8,14 +8,14 @@ use gpui::{
     Styled, Window, prelude::FluentBuilder as _,
 };
 
-use gpui_component::group_box::{GroupBox, GroupBoxVariants as _};
-use gpui_component::label::Label;
-use gpui_component::{
+use hearth_gpui::group_box::{GroupBox, GroupBoxVariants as _};
+use hearth_gpui::label::Label;
+use hearth_gpui::{
     ActiveTheme, IconName, StyledExt,
     badge::{Badge, BadgeVariants as _},
     h_flex,
 };
-use gpui_component::{Sizable, button::Button, collapsible::Collapsible, v_flex};
+use hearth_gpui::{Sizable, button::Button, collapsible::Collapsible, v_flex};
 
 use crate::section;
 

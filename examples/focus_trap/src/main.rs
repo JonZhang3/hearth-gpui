@@ -2,7 +2,7 @@
 // Changes:
 // - Replaced legacy theme radius access with `Theme.style.radii.md`.
 use gpui::*;
-use gpui_component::{button::*, h_flex, v_flex, *};
+use hearth_gpui::{button::*, h_flex, v_flex, *};
 
 pub struct Example {
     trap1_handle: FocusHandle,
@@ -139,7 +139,7 @@ fn main() {
     let app = gpui_platform::application();
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(800.), px(600.)), cx)),

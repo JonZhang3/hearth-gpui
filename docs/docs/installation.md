@@ -5,7 +5,7 @@ order: -1
 
 # Installation
 
-Before you start to build your application with `gpui-component`, you need to install the library.
+Before you start to build your application with `hearth-gpui`, you need to install the library.
 
 ## System Requirements
 
@@ -34,15 +34,15 @@ Run `./script/bootstrap` to install system dependencies.
 
 ## Rust and Cargo
 
-We use Rust programming language to build the `gpui-component` library. Make sure you have Rust and Cargo installed on your system.
+We use Rust programming language to build the `hearth-gpui` library. Make sure you have Rust and Cargo installed on your system.
 
 - Rust 1.90 or later
 - Cargo (comes with Rust)
 
-To install the `gpui-component` library, you can use Cargo, the Rust package manager. Add the following line to your `Cargo.toml` file under the `[dependencies]` section:
+To install the `hearth-gpui` library, you can use Cargo, the Rust package manager. Add the following line to your `Cargo.toml` file under the `[dependencies]` section:
 
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```

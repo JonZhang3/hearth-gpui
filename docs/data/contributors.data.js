@@ -1,6 +1,6 @@
 const IGNORE_LOGINS = ["dependabot[bot]", "copilot"];
 const API_URL =
-  "https://api.github.com/repos/longbridge/gpui-component/contributors";
+  "https://api.github.com/repos/JonZhang3/hearth-gpui/contributors";
 
 export default {
   async load() {

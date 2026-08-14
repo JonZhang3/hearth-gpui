@@ -10,7 +10,7 @@ description: A compact label for status or metadata, with optional overlay indic
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     badge::{Badge, BadgeVariants as _, OverlayBadge},
     Sizable as _,
 };
@@ -132,5 +132,5 @@ OverlayBadge::new().count(212).large().child(target)
 - [Badge]
 - [OverlayBadge]
 
-[Badge]: https://docs.rs/gpui_component/latest/gpui_component/badge/struct.Badge.html
-[OverlayBadge]: https://docs.rs/gpui_component/latest/gpui_component/badge/struct.OverlayBadge.html
+[Badge]: https://docs.rs/hearth_gpui/latest/hearth_gpui/badge/struct.Badge.html
+[OverlayBadge]: https://docs.rs/hearth_gpui/latest/hearth_gpui/badge/struct.OverlayBadge.html

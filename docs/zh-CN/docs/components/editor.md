@@ -10,7 +10,7 @@ Editor 是一个功能更强的多行文本输入组件，在基础输入能力�
 ## 导入
 
 ```rust
-use gpui_component::input::{InputState, Input};
+use hearth_gpui::input::{InputState, Input};
 ```
 
 ## 用法
@@ -55,11 +55,11 @@ Input::new(&state)
 
 ### CodeEditor
 
-GPUI Component 的 `InputState` 支持代码编辑器模式，可提供语法高亮、行号和搜索功能。
+Hearth GPUI 的 `InputState` 支持代码编辑器模式，可提供语法高亮、行号和搜索功能。
 
 它面向高性能场景，能够高效处理大文件。语法高亮基于 [tree-sitter](https://tree-sitter.github.io/tree-sitter/)，文本存储和编辑基于 [ropey](https://github.com/cessen/ropey)。
 
-启用 `gpui-component/tree-sitter-languages` 可包含所有内置 Tree-sitter 语法；如果只需要少量语言，可以只启用 `gpui-component/tree-sitter-markdown` 或 `gpui-component/tree-sitter-rust` 等单语言 feature，以减少下游应用体积。
+启用 `hearth-gpui/tree-sitter-languages` 可包含所有内置 Tree-sitter 语法；如果只需要少量语言，可以只启用 `hearth-gpui/tree-sitter-markdown` 或 `hearth-gpui/tree-sitter-rust` 等单语言 feature，以减少下游应用体积。
 
 ```rust
 let state = cx.new(|cx|
@@ -93,7 +93,7 @@ Input::new(&state)
 ### TabSize
 
 ```rust
-use gpui_component::input::TabSize;
+use hearth_gpui::input::TabSize;
 
 let state = cx.new(|cx|
     InputState::new(window, cx)

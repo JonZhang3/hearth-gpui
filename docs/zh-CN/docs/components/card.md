@@ -11,7 +11,7 @@ Card 提供类型明确的 Header、Content、Footer 和 Media 插槽，使选�
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::card::{
+use hearth_gpui::card::{
     Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardMedia,
     CardTitle,
 };
@@ -124,4 +124,4 @@ GPUI 支持在尺寸明确的区域使用 `container_query`，因此响应式内
 
 Card 背景使用 Color Theme 的 `card.background` 和 `card.foreground`。未声明这些字段的主题会分别回退到 `background` 和 `foreground`。Vega 提供 xs shadow，Nova 提供紧凑的着色 Footer，Maia 通过语义 Style Preset 属性提供更大的圆角和 Header gap。
 
-[Card]: https://docs.rs/gpui-component/latest/gpui_component/card/struct.Card.html
+[Card]: https://docs.rs/hearth-gpui/latest/hearth_gpui/card/struct.Card.html

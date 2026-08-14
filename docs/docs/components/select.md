@@ -22,7 +22,7 @@ For richer selection UIs with custom trigger rendering or multi-select, see [Com
 ## Import
 
 ```rust
-use gpui_component::select::{
+use hearth_gpui::select::{
     Select, SelectState, SelectItem, SelectDelegate,
     SelectEvent, SelectPosition, SearchableVec, SelectGroup
 };
@@ -172,7 +172,7 @@ Select::new(&state).small()
 Select::new(&state) // default
 ```
 
-`small` and `default` match the canonical shadcn sizes. `xsmall` and `large` remain GPUI Component extensions for dense desktop layouts.
+`small` and `default` match the canonical shadcn sizes. `xsmall` and `large` remain Hearth GPUI extensions for dense desktop layouts.
 
 ### Disabled State
 
@@ -420,7 +420,7 @@ Select::new(&state)
 
 ## Style Presets
 
-Select consumes semantic Control, Focus, Radius, Elevation, and Motion metrics. Vega is the default baseline; Nova and Maia change density, radius, padding, and popup elevation without changing Color Theme selection. Search, the clear action, custom item rendering, and virtualized desktop scrolling are GPUI Component extensions.
+Select consumes semantic Control, Focus, Radius, Elevation, and Motion metrics. Vega is the default baseline; Nova and Maia change density, radius, padding, and popup elevation without changing Color Theme selection. Search, the clear action, custom item rendering, and virtualized desktop scrolling are Hearth GPUI extensions.
 
 ## Color Theme
 
@@ -435,4 +435,4 @@ The dropdown respects the current theme and uses the following theme tokens:
 - `border` - Menu border
 - `radius` - Border radius
 
-[SelectItem]: https://docs.rs/gpui-component/latest/gpui_component/select/trait.SelectItem.html
+[SelectItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/select/trait.SelectItem.html

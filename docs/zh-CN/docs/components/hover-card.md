@@ -11,7 +11,7 @@ description: 通过鼠标悬停或键盘焦点打开的非模态预览浮层。
 ## 导入
 
 ```rust
-use gpui_component::hover_card::{HoverCard, HoverCardAlign, HoverCardSide};
+use hearth_gpui::hover_card::{HoverCard, HoverCardAlign, HoverCardSide};
 ```
 
 ## 使用
@@ -33,7 +33,7 @@ HoverCard::new("user-preview")
                     .gap_1()
                     .child(div().font_semibold().child("Jason Lee"))
                     .child(div().text_color(cx.theme().muted_foreground).child(
-                        "The author of GPUI Component."
+                        "The author of Hearth GPUI."
                     ))
             )
     )

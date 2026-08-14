@@ -10,7 +10,7 @@ A shadcn-aligned checkbox for binary and mixed selection. The default size follo
 ## Import
 
 ```rust
-use gpui_component::checkbox::Checkbox;
+use hearth_gpui::checkbox::Checkbox;
 ```
 
 ## Usage
@@ -57,7 +57,7 @@ Checkbox::new("cb").label("Medium") // default
 Checkbox::new("cb-lg").large().label("Large")
 ```
 
-The default Checkbox is 16 px with a 14 px indicator, matching shadcn. The additional sizes are a GPUI Component extension.
+The default Checkbox is 16 px with a 14 px indicator, matching shadcn. The additional sizes are a Hearth GPUI extension.
 
 ### Disabled State
 
@@ -163,4 +163,4 @@ The default Vega appearance uses a 4 px radius and subtle elevation. Nova keeps 
 
 Motion also follows the active Style Preset. Vega and Maia transition the focus or invalid ring, while Nova transitions the control colors. The indicator itself changes immediately, matching shadcn `transition-none`. Reduced Motion renders the final state without a transition.
 
-[Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html
+[Checkbox]: https://docs.rs/hearth-gpui/latest/hearth_gpui/checkbox/struct.Checkbox.html

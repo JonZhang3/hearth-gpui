@@ -22,7 +22,7 @@ Select 允许用户从一组选项中选择一个值。
 ## 导入
 
 ```rust
-use gpui_component::select::{
+use hearth_gpui::select::{
     Select, SelectState, SelectItem, SelectDelegate,
     SelectEvent, SelectPosition, SearchableVec, SelectGroup
 };
@@ -165,7 +165,7 @@ Select::new(&state).small()
 Select::new(&state)
 ```
 
-`small` 和默认尺寸与 shadcn 的 canonical size 对齐；`xsmall` 和 `large` 是用于桌面密集布局的 GPUI Component 扩展。
+`small` 和默认尺寸与 shadcn 的 canonical size 对齐；`xsmall` 和 `large` 是用于桌面密集布局的 Hearth GPUI 扩展。
 
 ### 禁用态
 
@@ -333,7 +333,7 @@ Select::new(&state)
 
 ## Style Preset
 
-Select 使用语义化的 Control、Focus、Radius、Elevation 和 Motion metrics。Vega 是默认基准；Nova 和 Maia 只改变密度、圆角、间距及弹出层阴影，不改变独立选择的 Color Theme。搜索、清空操作、自定义选项渲染和虚拟化桌面滚动属于 GPUI Component 扩展。
+Select 使用语义化的 Control、Focus、Radius、Elevation 和 Motion metrics。Vega 是默认基准；Nova 和 Maia 只改变密度、圆角、间距及弹出层阴影，不改变独立选择的 Color Theme。搜索、清空操作、自定义选项渲染和虚拟化桌面滚动属于 Hearth GPUI 扩展。
 
 ## Color Theme
 
@@ -348,4 +348,4 @@ Select 会使用当前主题中的这些 token：
 - `border` - 菜单边框
 - `radius` - 圆角
 
-[SelectItem]: https://docs.rs/gpui-component/latest/gpui_component/select/trait.SelectItem.html
+[SelectItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/select/trait.SelectItem.html

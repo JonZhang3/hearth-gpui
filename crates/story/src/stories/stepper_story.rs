@@ -5,7 +5,7 @@ use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Subscription, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     IconName, Selectable as _, Sizable, Size, StyledExt,
     button::{Button, ButtonGroup},
     checkbox::Checkbox,

@@ -10,7 +10,7 @@ Scrollable 是一个功能完整的可滚动容器组件，支持自定义滚动
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     scroll::{ScrollableElement, ScrollbarAxis, ScrollbarShow},
     StyledExt as _,
 };
@@ -28,7 +28,7 @@ use gpui_component::{
 
 ```rust
 use gpui::div;
-use gpui_component::ScrollableElement;
+use hearth_gpui::ScrollableElement;
 
 div()
     .id("scrollable-container")
@@ -103,7 +103,7 @@ div()
 如果你需要更高的控制粒度，可以手动创建滚动条：
 
 ```rust
-use gpui_component::scroll::{ScrollableElement};
+use hearth_gpui::scroll::{ScrollableElement};
 
 pub struct ScrollableView {
     scroll_handle: ScrollHandle,
@@ -134,7 +134,7 @@ impl Render for ScrollableView {
 渲染超长列表时，推荐使用 `VirtualList`：
 
 ```rust
-use gpui_component::{VirtualList, VirtualListScrollHandle};
+use hearth_gpui::{VirtualList, VirtualListScrollHandle};
 
 pub struct LargeListView {
     items: Vec<String>,
@@ -221,7 +221,7 @@ VirtualList::new(
 控制滚动条何时显示：
 
 ```rust
-use gpui_component::scroll::ScrollbarShow;
+use hearth_gpui::scroll::ScrollbarShow;
 
 theme.scrollbar_show = ScrollbarShow::Scrolling;
 theme.scrollbar_show = ScrollbarShow::Hover;

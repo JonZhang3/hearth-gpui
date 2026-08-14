@@ -11,7 +11,7 @@ Breadcrumb 使用明确的 Link、Page、Separator 和 Ellipsis 元素，导航�
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::{
+use hearth_gpui::{
     IconName, Sizable as _,
     breadcrumb::{
         Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage,

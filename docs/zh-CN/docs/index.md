@@ -1,11 +1,11 @@
 ---
 title: 介绍
-description: 使用 GPUI 构建跨平台桌面应用的 Rust GPUI Component。
+description: 使用 GPUI 构建跨平台桌面应用的 Rust Hearth GPUI。
 ---
 
-# GPUI Component 简介
+# Hearth GPUI 简介
 
-GPUI Component 是一个基于 [GPUI](https://gpui.rs) 的 Rust UI 组件库，用于构建跨平台桌面应用。
+Hearth GPUI 是一个基于 [GPUI](https://gpui.rs) 的 Rust UI 组件库，用于构建跨平台桌面应用。
 
 它目前提供 60+ 组件，覆盖表单、布局、图表、编辑器、主题与高性能列表等常见桌面场景，适合直接用于复杂产品界面开发。
 

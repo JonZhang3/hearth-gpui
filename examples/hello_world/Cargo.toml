@@ -1,6 +1,6 @@
 [package]
 name = "hello_world"
-description = "A minimal example of application development with GPUI Component."
+description = "A minimal example of application development with Hearth GPUI."
 version = "0.5.1"
 publish = false
 edition.workspace = true
@@ -9,7 +9,7 @@ edition.workspace = true
 anyhow.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
-gpui-component = { workspace = true }
+hearth-gpui = { workspace = true }
 
 [lints]
 workspace = true

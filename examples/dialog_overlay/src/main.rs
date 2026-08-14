@@ -2,8 +2,8 @@
 // Changes:
 // - Enabled application-owned title-bar dragging for the custom dialog-overlay window.
 use gpui::*;
-use gpui_component::{button::*, menu::ContextMenuExt, text::TextView, *};
-use gpui_component_assets::Assets;
+use hearth_gpui::{button::*, menu::ContextMenuExt, text::TextView, *};
+use hearth_gpui_assets::Assets;
 
 actions!(class_menu, [Open, Delete, Export, Info]);
 
@@ -111,7 +111,7 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(

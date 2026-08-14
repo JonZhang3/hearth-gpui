@@ -12,7 +12,7 @@ description: DropdownButton 由一个主按钮和一个触发下拉菜单的按�
 ## 导入
 
 ```rust
-use gpui_component::button::{Button, DropdownButton};
+use hearth_gpui::button::{Button, DropdownButton};
 ```
 
 ## 用法
@@ -64,7 +64,7 @@ DropdownButton::new("dropdown")
 
 当周围上下文不能充分说明组合按钮用途时，使用 `.aria_label(...)` 为组合控件命名。菜单 Trigger 默认使用本地化的“更多选项”无障碍名称；菜单用途更具体时可通过 `.menu_aria_label(...)` 覆盖。
 
-[Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
-[DropdownButton]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.DropdownButton.html
-[PopupMenu]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenu.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Button]: https://docs.rs/hearth-gpui/latest/hearth_gpui/button/struct.Button.html
+[DropdownButton]: https://docs.rs/hearth-gpui/latest/hearth_gpui/button/struct.DropdownButton.html
+[PopupMenu]: https://docs.rs/hearth-gpui/latest/hearth_gpui/menu/struct.PopupMenu.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

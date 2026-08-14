@@ -10,7 +10,7 @@ description: 支持分组、搜索、选择、禁用项和增量加载的虚拟�
 ## 基础用法
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IndexPath,
     list::{List, ListDelegate, ListItem, ListState},
 };

@@ -4,7 +4,7 @@
 //   and shadcn alignment stories.
 // - Removed the legacy Tag story registration and export.
 use gpui::{AnyView, App, AppContext as _, Entity, Hsla, Pixels, Render, Window, px};
-use gpui_component::dock::PanelControl;
+use hearth_gpui::dock::PanelControl;
 
 mod accordion_story;
 mod alert_dialog_story;

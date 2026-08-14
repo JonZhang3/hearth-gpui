@@ -13,7 +13,7 @@ Calendar 是一个与 shadcn 对齐的独立日历组件，支持单日与日期
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     calendar::{Calendar, CalendarState, CalendarEvent, Date, Matcher},
 };
 ```
@@ -236,6 +236,6 @@ Calendar::new(&state)
     .number_of_months(3)
 ```
 
-[Calendar]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.Calendar.html
-[CalendarState]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.CalendarState.html
-[RangeMatcher]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.RangeMatcher.html
+[Calendar]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.Calendar.html
+[CalendarState]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.CalendarState.html
+[RangeMatcher]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.RangeMatcher.html

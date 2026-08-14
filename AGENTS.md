@@ -1,6 +1,6 @@
 # Repository Instructions
 
-GPUI Component is a Rust workspace for building cross-platform desktop UI components with GPUI.
+Hearth GPUI is a Rust workspace for building cross-platform desktop UI components with GPUI.
 
 Read [CLAUDE.md](CLAUDE.md) before starting any task. It is the authority for project commands, repository structure, component architecture, and available project skills.
 

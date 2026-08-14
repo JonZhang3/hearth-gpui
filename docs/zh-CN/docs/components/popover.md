@@ -10,7 +10,7 @@ Popover 用于在触发元素附近展示富交互内容。默认表面会消费
 ## 导入
 
 ```rust
-use gpui_component::popover::{
+use hearth_gpui::popover::{
     Popover, PopoverAlign, PopoverDescription, PopoverHeader, PopoverSide, PopoverTitle,
     PopoverTrigger,
 };
@@ -22,7 +22,7 @@ use gpui_component::popover::{
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     popover::{Popover, PopoverDescription, PopoverHeader, PopoverTitle},
 };

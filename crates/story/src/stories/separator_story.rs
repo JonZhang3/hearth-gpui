@@ -6,9 +6,9 @@ use crate::section;
 use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled, Window,
 };
-use gpui_component::{ActiveTheme, h_flex, label::Label, separator::Separator, v_flex};
+use hearth_gpui::{ActiveTheme, h_flex, label::Label, separator::Separator, v_flex};
 
-const DESCRIPTION: &str = "GPUI Component is a Rust GUI components for building fantastic cross-platform desktop application by using GPUI.";
+const DESCRIPTION: &str = "Hearth GPUI is a Rust GUI components for building fantastic cross-platform desktop application by using GPUI.";
 
 pub struct SeparatorStory {
     focus_handle: gpui::FocusHandle,
@@ -53,7 +53,7 @@ impl Render for SeparatorStory {
                         .w_full()
                         .mt_4()
                         .child(
-                            v_flex().gap_1().child("GPUI Component").child(
+                            v_flex().gap_1().child("Hearth GPUI").child(
                                 Label::new(DESCRIPTION)
                                     .text_color(cx.theme().muted_foreground)
                                     .text_sm(),

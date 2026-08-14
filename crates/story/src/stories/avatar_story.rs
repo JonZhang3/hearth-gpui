@@ -8,7 +8,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, IconName, Sizable as _,
     avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
     dock::PanelControl,

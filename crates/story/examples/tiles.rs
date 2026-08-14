@@ -3,7 +3,7 @@
 // - Replaced legacy `Theme.radius_lg` access with `Theme.style.radii.lg` for tile panels.
 use anyhow::{Context as _, Result};
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Root, Sizable, TitleBar,
     dock::{
         DockArea, DockAreaState, DockEvent, DockItem, Panel, PanelEvent, PanelInfo, PanelRegistry,
@@ -12,8 +12,8 @@ use gpui_component::{
     input::{Input, InputState},
     scroll::ScrollbarShow,
 };
-use gpui_component_assets::Assets;
-use gpui_component_story::{ButtonStory, IconStory, StoryContainer};
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::{ButtonStory, IconStory, StoryContainer};
 use serde::{Deserialize, Serialize};
 use std::{sync::Arc, time::Duration};
 
@@ -142,8 +142,8 @@ actions!(workspace, [Open, CloseWindow]);
 pub fn init(cx: &mut App) {
     cx.on_action(|_action: &Open, _cx: &mut App| {});
 
-    gpui_component::init(cx);
-    gpui_component_story::init(cx);
+    hearth_gpui::init(cx);
+    hearth_gpui_story::init(cx);
 }
 
 pub struct StoryTiles {
@@ -440,8 +440,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
-        gpui_component_story::init(cx);
+        hearth_gpui::init(cx);
+        hearth_gpui_story::init(cx);
         ContainerPanel::init(cx);
 
         cx.on_action(quit);

@@ -10,7 +10,7 @@ Alert 用于展示重要状态或操作提示。图标、标题、描述和操�
 ## 导入
 
 ```rust
-use gpui_component::alert::Alert;
+use hearth_gpui::alert::Alert;
 ```
 
 ## 基础用法
@@ -131,5 +131,5 @@ Alert::new("sync-status")
 - [Alert]
 - [AlertVariant]
 
-[Alert]: https://docs.rs/gpui-component/latest/gpui_component/alert/struct.Alert.html
-[AlertVariant]: https://docs.rs/gpui-component/latest/gpui_component/alert/enum.AlertVariant.html
+[Alert]: https://docs.rs/hearth-gpui/latest/hearth_gpui/alert/struct.Alert.html
+[AlertVariant]: https://docs.rs/hearth-gpui/latest/hearth_gpui/alert/enum.AlertVariant.html

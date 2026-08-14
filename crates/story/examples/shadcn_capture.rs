@@ -6,9 +6,9 @@ use gpui::{
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window,
     div, point, px, size,
 };
-use gpui_component::{ActiveTheme as _, StyledExt as _, Theme, ThemeMode};
-use gpui_component_assets::Assets;
-use gpui_component_story::{ShadcnAlignmentStory, Story};
+use hearth_gpui::{ActiveTheme as _, StyledExt as _, Theme, ThemeMode};
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::{ShadcnAlignmentStory, Story};
 
 const CAPTURE_WIDTH: f32 = 1440.0;
 const CAPTURE_HEIGHT: f32 = 1000.0;
@@ -134,7 +134,7 @@ fn main() -> Result<()> {
         gpui_platform::current_headless_renderer,
     );
     cx.update(|cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
         cx.set_reduce_motion(true);
     });
 

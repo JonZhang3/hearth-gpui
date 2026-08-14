@@ -11,7 +11,7 @@ Separator 使用当前 Color Theme 的语义 `border` 颜色绘制一条 1px 分
 ## 导入
 
 ```rust
-use gpui_component::separator::Separator;
+use hearth_gpui::separator::Separator;
 ```
 
 ## 水平分隔线
@@ -43,7 +43,7 @@ h_flex()
 
 ## GPUI 扩展
 
-虚线、标签和颜色覆盖作为 GPUI Component 扩展继续保留：
+虚线、标签和颜色覆盖作为 Hearth GPUI 扩展继续保留：
 
 ```rust
 Separator::horizontal_dashed()

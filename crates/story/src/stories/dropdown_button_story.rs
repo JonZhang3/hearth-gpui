@@ -11,7 +11,7 @@ use gpui::{
 use serde::Deserialize;
 
 use crate::section;
-use gpui_component::{
+use hearth_gpui::{
     Disableable, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _, DropdownButton},
     checkbox::Checkbox,

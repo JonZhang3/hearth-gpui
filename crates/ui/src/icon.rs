@@ -13,7 +13,7 @@ use gpui::{
     ParentElement, Radians, Render, RenderOnce, Role, SharedString, Stateful,
     StatefulInteractiveElement, StyleRefinement, Styled, Transformation, Window, div, svg,
 };
-use gpui_component_macros::icon_named;
+use hearth_gpui_macros::icon_named;
 
 /// Types implementing this trait can automatically be converted to [`Icon`].
 ///
@@ -30,12 +30,12 @@ impl<T: IconNamed> From<T> for Icon {
     }
 }
 
-// Generate `IconName` from the icons that `gpui-component-assets` ships.
+// Generate `IconName` from the icons that `hearth-gpui-assets` ships.
 // The `$VAR` form resolves to the absolute path published by the assets
 // crate's `build.rs` (via cargo's `links` mechanism) and re-exported by
-// our own `build.rs`. See `gpui_component_macros::icon_named!`'s doc
+// our own `build.rs`. See `hearth_gpui_macros::icon_named!`'s doc
 // comment for the full mechanism.
-icon_named!(IconName, "$GPUI_COMPONENT_DEFAULT_ICONS_DIR");
+icon_named!(IconName, "$HEARTH_GPUI_DEFAULT_ICONS_DIR");
 
 impl IconName {
     /// Return the icon as a Entity<Icon>

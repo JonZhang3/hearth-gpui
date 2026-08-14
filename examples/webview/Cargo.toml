@@ -12,10 +12,10 @@ inspector = []
 anyhow.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
-gpui-component = { workspace = true }
+hearth-gpui = { workspace = true }
 
 # WebView dependencies
-gpui-wry = { path = "../../crates/webview" }
+hearth-gpui-webview = { path = "../../crates/webview" }
 wry = { version = "0.53.3", package = "lb-wry" }
 raw-window-handle = { version = "0.6", features = ["std"] }
 

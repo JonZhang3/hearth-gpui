@@ -10,7 +10,7 @@ description: A composable one-time-code input with native editing and shadcn-ali
 ## Import
 
 ```rust
-use gpui_component::input::{
+use hearth_gpui::input::{
     InputEvent, OtpEvent, OtpInput, OtpInputGroup, OtpInputSeparator,
     OtpInputSlot, OtpState,
 };

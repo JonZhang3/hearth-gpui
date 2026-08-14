@@ -10,7 +10,7 @@ Input Group 将一个 `Input` 及其相关内容呈现为统一控件表面。�
 ## 导入
 
 ```rust
-use gpui_component::input::{
+use hearth_gpui::input::{
     Input, InputGroup, InputGroupAddon, InputGroupAddonAlign,
     InputGroupButton, InputGroupButtonSize, InputGroupText, InputState,
 };

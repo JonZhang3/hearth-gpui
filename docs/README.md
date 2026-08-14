@@ -1,4 +1,4 @@
-# gpui-component-docs
+# hearth-gpui-docs
 
 To install dependencies:
 

@@ -10,7 +10,7 @@ description: 用于集中展示内容与操作的模态表面。
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     WindowExt as _,
     button::Button,
     dialog::{Dialog, DialogAction, DialogClose, DialogFooter},

@@ -6,7 +6,7 @@
 // - Reworked Select story around accessibility semantics and ARIA state, semantic Style Preset
 //   geometry and density, invalid and validation state handling.
 use gpui::*;
-use gpui_component::{button::*, checkbox::*, input::*, select::*, separator::*, *};
+use hearth_gpui::{button::*, checkbox::*, input::*, select::*, separator::*, *};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
 

@@ -11,7 +11,7 @@ use gpui::{
 use regex::Regex;
 
 use crate::section;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Disableable, IconName, Sizable,
     button::Button,
     input::{InputEvent, InputState, MaskPattern, NumberInput, NumberInputEvent, StepAction},

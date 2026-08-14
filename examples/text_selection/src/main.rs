@@ -10,13 +10,13 @@
 //! Run: `cargo run -p text_selection`
 
 use gpui::{prelude::FluentBuilder as _, *};
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     input::{Input, InputState},
     text::TextView,
     *,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 struct ChatExample {
     input: Entity<InputState>,
@@ -81,8 +81,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::centered(size(px(800.), px(600.)), cx)),

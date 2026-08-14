@@ -7,7 +7,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Pixels, Render, Styled, UniformListScrollHandle, Window, div, px, uniform_list,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Selectable,
     button::{Button, ButtonGroup},
     h_flex,

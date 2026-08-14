@@ -10,7 +10,7 @@ The [Pagination] component provides centered page navigation with previous and n
 ## Import
 
 ```rust
-use gpui_component::pagination::Pagination;
+use hearth_gpui::pagination::Pagination;
 ```
 
 ## Usage
@@ -62,7 +62,7 @@ Pagination::new("my-pagination")
 The Pagination supports the [Sizable] trait for different sizes:
 
 ```rust
-use gpui_component::{Sizable as _, Size};
+use hearth_gpui::{Sizable as _, Size};
 
 Pagination::new("my-pagination")
     .xsmall()
@@ -178,5 +178,5 @@ Pagination::new("large-pagination")
     })
 ```
 
-[Pagination]: https://docs.rs/gpui-component/latest/gpui_component/pagination/struct.Pagination.html
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Pagination]: https://docs.rs/hearth-gpui/latest/hearth_gpui/pagination/struct.Pagination.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

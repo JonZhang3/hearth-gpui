@@ -1,7 +1,7 @@
 ---
 title: Skills
 layout: home
-description: GPUI Component Skills - Available skills for working with GPUI Component
+description: Hearth GPUI Skills - Available skills for working with Hearth GPUI
 ---
 
 <script setup>

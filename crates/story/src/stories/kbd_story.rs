@@ -7,7 +7,7 @@ use gpui::{
     Styled, Window,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     Icon, IconName, Sizable as _, h_flex,
     kbd::{Kbd, KbdGroup},
     v_flex,

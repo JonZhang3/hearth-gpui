@@ -2,7 +2,7 @@
 
 ## Current strengths
 
-GPUI Component already contains substantial shadcn-inspired infrastructure. The work is an alignment and completion effort, not a ground-up redesign.
+Hearth GPUI already contains substantial shadcn-inspired infrastructure. The work is an alignment and completion effort, not a ground-up redesign.
 
 | Area | Current implementation |
 |---|---|

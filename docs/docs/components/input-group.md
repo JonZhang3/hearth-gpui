@@ -10,7 +10,7 @@ Input Group presents one `Input` and its related content as a single control sur
 ## Import
 
 ```rust
-use gpui_component::input::{
+use hearth_gpui::input::{
     Input, InputGroup, InputGroupAddon, InputGroupAddonAlign,
     InputGroupButton, InputGroupButtonSize, InputGroupText, InputState,
 };

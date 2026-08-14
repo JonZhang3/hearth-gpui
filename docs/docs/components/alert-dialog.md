@@ -10,7 +10,7 @@ description: Requires an explicit response before returning to the application.
 ## Basic usage
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     dialog::{AlertDialog, AlertDialogAction, AlertDialogCancel},
 };
@@ -37,7 +37,7 @@ AlertDialog::new(cx)
 `Small` centers the content and gives both footer actions equal width.
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     button::ButtonVariant,
     dialog::{AlertDialogAction, AlertDialogCancel, AlertDialogSize},
 };

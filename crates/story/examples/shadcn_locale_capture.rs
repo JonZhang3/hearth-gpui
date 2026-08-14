@@ -6,7 +6,7 @@ use gpui::{
     AppContext as _, Context, Entity, HeadlessAppContext, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, px, size,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, StyledExt as _, Theme, ThemeMode,
     calendar::{Calendar, CalendarState},
     date_picker::{DatePicker, DatePickerState},
@@ -15,7 +15,7 @@ use gpui_component::{
     input::{Input, InputState},
     v_flex,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 const CAPTURE_WIDTH: f32 = 1000.;
 const CAPTURE_HEIGHT: f32 = 700.;
@@ -142,7 +142,7 @@ fn capture_locale(
     output_dir: &PathBuf,
     copy: LocaleCopy,
 ) -> Result<()> {
-    gpui_component::set_locale(copy.locale);
+    hearth_gpui::set_locale(copy.locale);
     cx.update(|cx| {
         Theme::change(ThemeMode::Light, None, cx);
         Theme::set_style("vega", cx)
@@ -175,7 +175,7 @@ fn main() -> Result<()> {
         gpui_platform::current_headless_renderer,
     );
     cx.update(|cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
         cx.set_reduce_motion(true);
     });
 

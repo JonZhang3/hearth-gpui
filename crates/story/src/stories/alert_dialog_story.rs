@@ -9,7 +9,7 @@ use gpui::{
     ParentElement as _, Render, Styled as _, Window, div,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, WindowExt as _,
     button::{Button, ButtonVariant},
     dialog::{AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogSize},

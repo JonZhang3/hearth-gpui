@@ -12,7 +12,7 @@ Table 是一个简单、无状态、可组合的表格组件，用于渲染表�
 ## 导入
 
 ```rust
-use gpui_component::table::{
+use hearth_gpui::table::{
     Table, TableHeader, TableBody, TableFooter,
     TableRow, TableHead, TableCell, TableCaption,
 };
@@ -91,7 +91,7 @@ TableCell::new().text_right().child("$1,000.00")
 通过 `Selectable` 同时设置选中视觉和 `aria-selected`：
 
 ```rust
-use gpui_component::Selectable as _;
+use hearth_gpui::Selectable as _;
 
 TableRow::new()
     .selected(true)

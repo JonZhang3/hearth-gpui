@@ -9,7 +9,7 @@ use gpui::{
     IntoElement, ParentElement, Render, Styled, Window,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Theme, WindowExt as _,
     button::Button,
     h_flex,
@@ -25,7 +25,7 @@ const NOTIFICATION_MARKDOWN: &str = r#"
 This is a custom notification.
 - List item 1
 - List item 2
-- [Click here](https://github.com/longbridge/gpui-component)
+- [Click here](https://github.com/JonZhang3/hearth-gpui)
 "#;
 
 pub struct NotificationStory {

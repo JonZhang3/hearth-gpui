@@ -10,7 +10,7 @@ Sheet 用于在窗口边缘显示辅助导航、表单或设置内容。组件�
 ## 导入
 
 ```rust
-use gpui_component::{Placement, WindowExt};
+use hearth_gpui::{Placement, WindowExt};
 ```
 
 窗口的第一层视图必须是 [`Root`](/docs/root)。使用自定义 Root 组合时，需要渲染

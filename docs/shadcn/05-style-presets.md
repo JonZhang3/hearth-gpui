@@ -2,7 +2,7 @@
 
 ## Decision
 
-GPUI Component supports Color Themes and Style Presets as independent selections. Vega, Nova, and Maia are built in. Vega is the explicit default.
+Hearth GPUI supports Color Themes and Style Presets as independent selections. Vega, Nova, and Maia are built in. Vega is the explicit default.
 
 ```text
 Color Theme ---------------------> Theme colors, typography, syntax

@@ -3,7 +3,7 @@
 // - Removed the legacy `primary` button variant and unused variant import.
 // - Enabled application-owned title-bar dragging for the custom window.
 use gpui::*;
-use gpui_component::{Root, TitleBar, button::Button, h_flex, v_flex};
+use hearth_gpui::{Root, TitleBar, button::Button, h_flex, v_flex};
 
 pub struct Example;
 impl Render for Example {
@@ -39,10 +39,10 @@ impl Render for Example {
 }
 
 fn main() {
-    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
+    let app = gpui_platform::application().with_assets(hearth_gpui_assets::Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             let window_options = WindowOptions {

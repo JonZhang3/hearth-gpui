@@ -5,7 +5,7 @@ order: -1
 
 # 安装
 
-在开始使用 `gpui-component` 构建应用之前，需要先准备对应的开发环境并安装依赖。
+在开始使用 `hearth-gpui` 构建应用之前，需要先准备对应的开发环境并安装依赖。
 
 ## 系统要求
 
@@ -36,7 +36,7 @@ order: -1
 
 ## Rust 和 Cargo
 
-`gpui-component` 使用 Rust 构建，因此请确保系统已经安装 Rust 和 Cargo。
+`hearth-gpui` 使用 Rust 构建，因此请确保系统已经安装 Rust 和 Cargo。
 
 - Rust 1.90 或更高版本
 - Cargo（通常随 Rust 一起安装）
@@ -46,5 +46,5 @@ order: -1
 ```toml
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```

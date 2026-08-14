@@ -1,5 +1,5 @@
 {
-  description = "gpui-component";
+  description = "hearth-gpui";
 
   inputs = {
     nixpkgs.url      = "github:NixOS/nixpkgs/nixos-unstable";
@@ -45,7 +45,7 @@
       in
       {
         defaultPackage = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
-          pname = "gpui-component-story";
+          pname = "hearth-gpui-story";
           version = "0.5.1";
           src = ./.;
           cargoLock = {
@@ -55,7 +55,7 @@
           nativeBuildInputs = build-dependencies;
           buildInputs = dynamic-libraries;
           postFixup = ''
-            wrapProgram $out/bin/gpui-component-story \
+            wrapProgram $out/bin/hearth-gpui-story \
             --suffix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath dynamic-libraries} \
             --set FONTCONFIG_FILE ${fontsConf}
           '';

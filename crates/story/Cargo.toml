@@ -3,14 +3,14 @@
 # - Added the `visual-test` feature backed by GPUI and gpui_platform test support.
 # - Registered four shadcn capture examples that require the visual-test feature.
 [package]
-name = "gpui-component-story"
+name = "hearth-gpui-story"
 version = "0.5.1"
 publish = false
 edition.workspace = true
 
 [features]
-inspector = ["gpui-component/inspector"]
-tree-sitter = ["gpui-component/tree-sitter-languages"]
+inspector = ["hearth-gpui/inspector"]
+tree-sitter = ["hearth-gpui/tree-sitter-languages"]
 visual-test = ["gpui/test-support", "gpui_platform/test-support"]
 default = ["tree-sitter"]
 
@@ -18,8 +18,8 @@ default = ["tree-sitter"]
 anyhow.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
-gpui-component = { workspace = true }
-gpui-component-assets.workspace = true
+hearth-gpui = { workspace = true }
+hearth-gpui-assets.workspace = true
 
 autocorrect = "2.14.2"
 chrono = "0.4"

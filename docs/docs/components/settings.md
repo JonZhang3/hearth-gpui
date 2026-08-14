@@ -13,7 +13,7 @@ We can search by title, description, and custom keywords to filter the settings 
 ## Import
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use hearth_gpui::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
 ```
 
 ## Usage
@@ -43,7 +43,7 @@ Settings
 ### Basic Settings
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use hearth_gpui::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
 
 Settings::new("my-settings")
     .pages(vec![
@@ -88,7 +88,7 @@ Settings::new("app-settings")
 ### Group Variants
 
 ```rust
-use gpui_component::group_box::GroupBoxVariant;
+use hearth_gpui::group_box::GroupBoxVariant;
 
 Settings::new("my-settings")
     .with_group_variant(GroupBoxVariant::Outline)
@@ -234,13 +234,13 @@ SettingItem::new(
 ### With Markdown Description
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 SettingItem::new(
     "Documentation",
     SettingField::element(...)
 )
-.description(markdown("Rust doc for the `gpui-component` crate."))
+.description(markdown("Rust doc for the `hearth-gpui` crate."))
 ```
 
 ### Disabled
@@ -383,7 +383,7 @@ SettingItem::new(
 ### NumberInput
 
 ```rust
-use gpui_component::setting::NumberFieldOptions;
+use hearth_gpui::setting::NumberFieldOptions;
 
 SettingItem::new(
     "Font Size",
@@ -428,7 +428,7 @@ You may have a complex field that you want to reuse, you may want split the elem
 In this case, the [SettingFieldElement] trait can help you to create a custom field element.
 
 ```rust
-use gpui_component::setting::{SettingFieldElement, RenderOptions};
+use hearth_gpui::setting::{SettingFieldElement, RenderOptions};
 
 struct OpenURLSettingField {
     label: SharedString,
@@ -458,7 +458,7 @@ SettingItem::new(
     "GitHub Repository",
     SettingField::element(OpenURLSettingField {
         label: "Repository...".into(),
-        url: "https://github.com/longbridge/gpui-component".into(),
+        url: "https://github.com/JonZhang3/hearth-gpui".into(),
     })
 )
 ```
@@ -494,7 +494,7 @@ semantic density; child fields continue to use their own component metrics.
 
 ```rust
 use gpui::{App, SharedString};
-use gpui_component::{
+use hearth_gpui::{
     Settings, SettingPage, SettingGroup, SettingItem, SettingField,
     setting::NumberFieldOptions,
     group_box::GroupBoxVariant,
@@ -576,12 +576,12 @@ Settings::new("app-settings")
     ])
 ```
 
-[Settings]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.Settings.html
-[SettingPage]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingPage.html
-[SettingGroup]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingGroup.html
-[SettingItem]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingItem.html
-[SettingField]: https://docs.rs/gpui-component/latest/gpui_component/setting/enum.SettingField.html
-[SettingFieldElement]: https://docs.rs/gpui-component/latest/gpui_component/setting/trait.SettingFieldElement.html
-[NumberFieldOptions]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.NumberFieldOptions.html
+[Settings]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.Settings.html
+[SettingPage]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingPage.html
+[SettingGroup]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingGroup.html
+[SettingItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingItem.html
+[SettingField]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/enum.SettingField.html
+[SettingFieldElement]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/trait.SettingFieldElement.html
+[NumberFieldOptions]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.NumberFieldOptions.html
 [GroupBox]: ./group-box.md
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

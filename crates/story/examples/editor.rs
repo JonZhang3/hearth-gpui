@@ -14,7 +14,7 @@ use std::{
 
 use autocorrect::ignorer::Ignorer;
 use gpui::{prelude::FluentBuilder, *};
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, IconName, Sizable, WindowExt,
     button::Button,
     dialog::AlertDialogAction,
@@ -30,8 +30,8 @@ use gpui_component::{
     tree::{TreeItem, TreeState, tree},
     v_flex,
 };
-use gpui_component_assets::Assets;
-use gpui_component_story::Open;
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::Open;
 use lsp_types::{
     CodeAction, CodeActionKind, CompletionContext, CompletionItem, CompletionResponse,
     CompletionTextEdit, InlineCompletionContext, InlineCompletionItem, InlineCompletionResponse,
@@ -1210,11 +1210,11 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component_story::init(cx);
+        hearth_gpui_story::init(cx);
         init();
         cx.activate(true);
 
-        gpui_component_story::create_new_window_with_size(
+        hearth_gpui_story::create_new_window_with_size(
             "Editor",
             Some(size(px(1200.), px(750.))),
             |window, cx| cx.new(|cx| Example::new(window, cx)),

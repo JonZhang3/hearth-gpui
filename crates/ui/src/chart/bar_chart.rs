@@ -11,7 +11,7 @@ use gpui::{
     AnyElement, App, Background, Bounds, Corners, ElementId, Hsla, IntoElement, LinearColorStop,
     Pixels, Point, SharedString, Size, TextAlign, Window, linear_gradient, point, px,
 };
-use gpui_component_macros::IntoPlot;
+use hearth_gpui_macros::IntoPlot;
 use num_traits::{Num, ToPrimitive};
 
 use crate::{

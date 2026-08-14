@@ -11,7 +11,7 @@ use gpui::{
     Half, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _, Render,
     Styled as _, WeakEntity, Window, actions, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, WindowExt,
     button::Button,
     h_flex,
@@ -87,13 +87,13 @@ impl ListDelegate for DropdownListDelegate {
         10
     }
 
-    fn item_label(&self, ix: gpui_component::IndexPath, _: &App) -> gpui::SharedString {
+    fn item_label(&self, ix: hearth_gpui::IndexPath, _: &App) -> gpui::SharedString {
         format!("Item {}", ix.row).into()
     }
 
     fn render_item(
         &mut self,
-        ix: gpui_component::IndexPath,
+        ix: hearth_gpui::IndexPath,
         _: &mut Window,
         _: &mut Context<ListState<Self>>,
     ) -> Self::Item {
@@ -102,9 +102,9 @@ impl ListDelegate for DropdownListDelegate {
 
     fn set_selected_index(
         &mut self,
-        _: Option<gpui_component::IndexPath>,
+        _: Option<hearth_gpui::IndexPath>,
         _: &mut Window,
-        _: &mut Context<gpui_component::list::ListState<Self>>,
+        _: &mut Context<hearth_gpui::list::ListState<Self>>,
     ) {
     }
 

@@ -16,7 +16,7 @@ use gpui::{
     prelude::FluentBuilder as _, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, IndexPath, Placement, WindowExt,
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,

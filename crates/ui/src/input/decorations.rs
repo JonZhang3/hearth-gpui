@@ -28,7 +28,7 @@ struct TextDecorationCollectionId(usize);
 
 /// An independently managed collection of [`TextDecoration`]s.
 ///
-/// This is the GPUI Component counterpart of Monaco's
+/// This is the Hearth GPUI counterpart of Monaco's
 /// [`IEditorDecorationsCollection`](https://microsoft.github.io/monaco-editor/typedoc/interfaces/editor_editor_api.editor.IEditorDecorationsCollection.html).
 #[derive(Clone, Debug)]
 pub struct TextDecorationCollection {

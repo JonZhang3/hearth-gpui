@@ -10,7 +10,7 @@ use gpui::{
     App, AppContext, Context, Entity, Focusable, IntoElement, ParentElement, Render, Styled,
     Window, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, IconName, Sizable,
     badge::{Badge, BadgeVariants as _},
     button::Button,

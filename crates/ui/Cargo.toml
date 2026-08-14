@@ -1,15 +1,15 @@
 # Modified from the original gpui-component project in commit 4caf2023.
 # Changes:
-# - Added the gpui-component-motion runtime dependency.
+# - Added the hearth-gpui-motion runtime dependency.
 # - Added Criterion, GPUI bench support, gpui_platform test support, and the shadcn_alignment bench target.
 [package]
 description = "UI components for building fantastic desktop application by using GPUI."
 keywords = ["desktop", "gpui", "shadcn", "ui", "uikit"]
 license = "Apache-2.0"
-name = "gpui-component"
-documentation = "https://docs.rs/gpui-component"
-homepage = "https://longbridge.github.io/gpui-component"
-repository = "https://github.com/longbridge/gpui-component"
+name = "hearth-gpui"
+documentation = "https://docs.rs/hearth-gpui"
+homepage = "https://jonzhang3.github.io/hearth-gpui"
+repository = "https://github.com/JonZhang3/hearth-gpui"
 readme = "../../README.md"
 version = "0.5.2"
 publish = true
@@ -101,10 +101,10 @@ tree-sitter-zig = ["tree-sitter", "dep:tree-sitter-zig"]
 [dependencies]
 anyhow.workspace = true
 gpui = { workspace = true }
-gpui-component-motion.workspace = true
+hearth-gpui-motion.workspace = true
 gpui_macros.workspace = true
-gpui-component-macros = { workspace = true }
-gpui-component-assets = { workspace = true }
+hearth-gpui-macros = { workspace = true }
+hearth-gpui-assets = { workspace = true }
 notify.workspace = true
 ropey.workspace = true
 rust-i18n.workspace = true
@@ -234,11 +234,11 @@ harness = false
 [lints]
 workspace = true
 
-# `gpui-component-assets` ships the canonical icon set whose variants we
+# `hearth-gpui-assets` ships the canonical icon set whose variants we
 # enumerate to generate `IconName` at build time. Cargo's
 # `DEP_<links>_<key>` propagation (the bridge that hands the icons-dir
 # path from the assets crate's build.rs into our own) only works through
 # *regular* dependencies, not build-deps, so this has to live here even
 # though our use is entirely build-time.
 [package.metadata.cargo-machete]
-ignored = ["gpui-component-assets"]
+ignored = ["hearth-gpui-assets"]

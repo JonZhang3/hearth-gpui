@@ -42,7 +42,7 @@ Toggle::new("medium").label("Default");
 Toggle::new("large").large().label("Large");
 ```
 
-`XSmall` remains a GPUI Component extension and is not part of the shadcn Toggle API.
+`XSmall` remains a Hearth GPUI extension and is not part of the shadcn Toggle API.
 
 ## States
 

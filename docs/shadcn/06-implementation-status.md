@@ -44,17 +44,17 @@ Verified on macOS on 2026-08-06:
 
 | Command or check | Result |
 |---|---|
-| `cargo check -p gpui-component-story` | Passed |
-| `cargo check -p gpui-component --no-default-features` | Passed |
+| `cargo check -p hearth-gpui-story` | Passed |
+| `cargo check -p hearth-gpui --no-default-features` | Passed |
 | `cargo clippy -- --deny warnings` | Passed for the workspace |
-| `cargo test -p gpui-component` | 399 default-feature library tests passed |
+| `cargo test -p hearth-gpui` | 399 default-feature library tests passed |
 | `cargo test --all` | Passed; 417 feature-unified library tests and all workspace crate and doc tests passed |
 | `cargo fmt --all -- --check` | Passed after applying repository-wide rustfmt |
 | `git diff --check` | Passed |
 | Story Gallery startup | Passed; Theme registry reload completed without runtime error |
 | `typos` | Passed with temporary `typos-cli 1.49.0`; no project dependency added |
-| `cargo bench -p gpui-component --bench shadcn_alignment --no-run` | Passed in release profile |
-| `cargo run -p gpui-component-story --example shadcn_capture --features visual-test` | Generated 28 fixed 1440 x 1000 logical-pixel references at 2x Retina output; all files have distinct hashes |
+| `cargo bench -p hearth-gpui --bench shadcn_alignment --no-run` | Passed in release profile |
+| `cargo run -p hearth-gpui-story --example shadcn_capture --features visual-test` | Generated 28 fixed 1440 x 1000 logical-pixel references at 2x Retina output; all files have distinct hashes |
 | Phase 0/current release benchmark | Comparable 30-sample frame-time and allocation results recorded in [release evidence](./07-release-evidence.md) |
 | Live macOS Accessibility tree | Attached to a temporary application bundle; verified roles, names, values, disabled/mixed/invalid examples, form error description, Dialog/Sheet/Notification Close labels, and Escape dismissal |
 

@@ -4,7 +4,7 @@ async function init() {
 
   try {
     // Import the WASM module
-    const wasm = await import('./wasm/gpui_component_story_web.js');
+    const wasm = await import('./wasm/hearth_gpui_story_web.js');
     await wasm.default();
 
     // Initialize the story gallery

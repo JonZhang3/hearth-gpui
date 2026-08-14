@@ -10,7 +10,7 @@ use gpui::{
     IntoElement, MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription,
     Window, div, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, IconName, Side, Sizable as _, StyleRegistry, Theme, TitleBar, WindowExt as _,
     badge::OverlayBadge,
     button::Button,
@@ -73,12 +73,12 @@ impl Render for AppTitleBar {
                     .child(self.font_size_selector.clone())
                     .child(
                         Button::new("github")
-                            .aria_label("GPUI Component GitHub repository")
+                            .aria_label("Hearth GPUI GitHub repository")
                             .icon(IconName::Github)
                             .small()
                             .ghost()
                             .on_click(|_, _, cx| {
-                                cx.open_url("https://github.com/longbridge/gpui-component")
+                                cx.open_url("https://github.com/JonZhang3/hearth-gpui")
                             }),
                     )
                     .child(

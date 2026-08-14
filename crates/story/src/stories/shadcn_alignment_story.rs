@@ -3,7 +3,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, SharedString,
     Styled, Window, div, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, IconName, IndexPath, Placement, Sizable as _,
     StyleRegistry, StyledExt as _, Theme, ThemeMode, WindowExt as _,
     accordion::Accordion,
@@ -492,7 +492,7 @@ impl Render for ShadcnAlignmentStory {
                         h_flex()
                             .gap_2()
                             .child(
-                                Avatar::new("alignment-avatar", "GPUI Component")
+                                Avatar::new("alignment-avatar", "Hearth GPUI")
                                     .fallback(AvatarFallback::text("GC")),
                             )
                             .child(Badge::new().child("Primary"))

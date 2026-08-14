@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use crate::section;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Sizable,
     button::Button,
     h_flex,
@@ -58,11 +58,11 @@ impl TextareaStory {
                     unindent::unindent(
                         r#"Hello 世界，this is GPUI component.
 
-                    The GPUI Component is a collection of UI components for GPUI framework, including.
+                    The Hearth GPUI is a collection of UI components for GPUI framework, including.
 
                     Button, Input, Checkbox, Radio, Dropdown, Tab, and more...
 
-                    Here is an application that is built by using GPUI Component.
+                    Here is an application that is built by using Hearth GPUI.
 
                     > This application is still under development, not published yet.
 

@@ -3,7 +3,7 @@
 // - Reordered imports only; editor story behavior and APIs are unchanged.
 use gpui::{App, AppContext as _, Context, Entity, IntoElement, Render, Styled, Window};
 
-use gpui_component::{ActiveTheme, input::*};
+use hearth_gpui::{ActiveTheme, input::*};
 
 const EXAMPLE_CODE: &str = include_str!("./editor_story.rs");
 

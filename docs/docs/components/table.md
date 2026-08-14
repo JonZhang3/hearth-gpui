@@ -12,7 +12,7 @@ The default presentation follows shadcn Vega: a transparent header with medium-w
 ## Import
 
 ```rust
-use gpui_component::table::{
+use hearth_gpui::table::{
     Table, TableHeader, TableBody, TableFooter,
     TableRow, TableHead, TableCell, TableCaption,
 };
@@ -93,7 +93,7 @@ TableCell::new().text_right().child("$1,000.00")
 Use `Selectable` to expose a selected row visually and through `aria-selected`:
 
 ```rust
-use gpui_component::Selectable as _;
+use hearth_gpui::Selectable as _;
 
 TableRow::new()
     .selected(true)

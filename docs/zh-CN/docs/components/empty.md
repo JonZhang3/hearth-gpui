@@ -10,7 +10,7 @@ description: 可组合的空状态或无结果状态，支持媒体、说明与�
 ## 导入
 
 ```rust
-use gpui_component::empty::{
+use hearth_gpui::empty::{
     Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle,
 };
 ```

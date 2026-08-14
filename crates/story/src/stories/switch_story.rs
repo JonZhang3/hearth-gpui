@@ -9,7 +9,7 @@ use gpui::{
     Render, SharedString, Styled, Window, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Disableable as _, Sizable, h_flex, label::Label, switch::Switch, v_flex,
 };
 
@@ -149,7 +149,7 @@ impl Render for SwitchStory {
                         Switch::new("disabled-left-label")
                             .w(px(200.))
                             .label("Airplane Mode")
-                            .label_side(gpui_component::Side::Left)
+                            .label_side(hearth_gpui::Side::Left)
                             .checked(true)
                             .disabled(true),
                     ),

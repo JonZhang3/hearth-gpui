@@ -10,7 +10,7 @@ A comprehensive scrollable container component that provides custom scrollbars, 
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     scroll::{ScrollableElement, ScrollbarAxis, ScrollbarShow},
     StyledExt as _,
 };
@@ -30,7 +30,7 @@ This method is almost like the `overflow_scroll()` method, but it adds scrollbar
 
 ```rust
 use gpui::div;
-use gpui_component::ScrollableElement;
+use hearth_gpui::ScrollableElement;
 
 div()
     .id("scrollable-container")
@@ -107,7 +107,7 @@ div()
 For more control, you can create scrollbars manually:
 
 ```rust
-use gpui_component::scroll::{ScrollableElement};
+use hearth_gpui::scroll::{ScrollableElement};
 
 pub struct ScrollableView {
     scroll_handle: ScrollHandle,
@@ -138,7 +138,7 @@ impl Render for ScrollableView {
 For rendering large lists efficiently, use `VirtualList`:
 
 ```rust
-use gpui_component::{VirtualList, VirtualListScrollHandle};
+use hearth_gpui::{VirtualList, VirtualListScrollHandle};
 
 pub struct LargeListView {
     items: Vec<String>,
@@ -228,7 +228,7 @@ Customize scrollbar appearance through theme configuration:
 Control when scrollbars are visible:
 
 ```rust
-use gpui_component::scroll::ScrollbarShow;
+use hearth_gpui::scroll::ScrollbarShow;
 
 // In theme initialization
 theme.scrollbar_show = ScrollbarShow::Scrolling;  // Show only when scrolling

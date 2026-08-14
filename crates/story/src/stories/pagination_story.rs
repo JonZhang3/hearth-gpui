@@ -5,7 +5,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     Disableable, Selectable as _, Sizable, Size,
     button::{Button, ButtonGroup},
     pagination::Pagination,

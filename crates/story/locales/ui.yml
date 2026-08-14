@@ -4,7 +4,7 @@
 #   `month_short.April`, `month_short.May`, `month_short.June`, `month_short.July`,
 #   `month_short.August` and 4 more.
 _version: 2
-gpui_component:
+hearth_gpui:
   Calendar:
     week.0:
       fr: Di

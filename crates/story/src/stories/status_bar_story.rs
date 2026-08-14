@@ -6,7 +6,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, Sizable as _, WindowExt as _, button::Button,
     dock::PanelControl, h_flex, progress::ProgressCircle, separator::Separator,
     status_bar::StatusBar, v_flex,

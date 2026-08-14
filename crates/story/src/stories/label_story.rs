@@ -12,7 +12,7 @@ use gpui::{
     Styled, Subscription, Window, div,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     Disableable as _, Icon, IconName, Sizable as _, StyledExt,
     button::{Button, ButtonVariant, ButtonVariants as _},
     checkbox::Checkbox,

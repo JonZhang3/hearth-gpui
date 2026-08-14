@@ -44,7 +44,7 @@ pub trait WindowExt: Sized {
     /// # Examples
     ///
     /// ```ignore
-    /// use gpui_component::dialog::{AlertDialogAction, AlertDialogCancel, AlertDialogContent};
+    /// use hearth_gpui::dialog::{AlertDialogAction, AlertDialogCancel, AlertDialogContent};
     ///
     /// window.open_alert_dialog(cx, |alert, _, _| {
     ///     alert.content(

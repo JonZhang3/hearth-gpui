@@ -26,10 +26,10 @@ Use `Select` for simple single-value picking. Use `Combobox` when you need multi
 ## Import
 
 ```rust
-use gpui_component::combobox::{
+use hearth_gpui::combobox::{
     Combobox, ComboboxState, ComboboxEvent, ComboboxTriggerCtx,
 };
-use gpui_component::searchable_list::{
+use hearth_gpui::searchable_list::{
     SearchableListItem, SearchableVec, SearchableGroup,
 };
 ```

@@ -10,7 +10,7 @@ TitleBar 用于替换系统默认标题栏，提供可定制的窗口标题区�
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     badge::{Badge, BadgeVariants as _},
     TitleBar,
 };

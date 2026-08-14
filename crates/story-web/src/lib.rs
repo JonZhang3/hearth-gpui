@@ -5,9 +5,9 @@
 use std::borrow::Cow;
 
 use gpui::{prelude::*, *};
-use gpui_component::{Root, theme::Theme};
-use gpui_component_assets::Assets;
-use gpui_component_story::{Gallery, StoryRoot};
+use hearth_gpui::{Root, theme::Theme};
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::{Gallery, StoryRoot};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -36,10 +36,10 @@ pub fn run() -> Result<(), JsValue> {
     };
 
     app.with_assets(Assets::new(
-        "https://longbridge.github.io/gpui-component/gallery/",
+        "https://jonzhang3.github.io/hearth-gpui/gallery/",
     ))
     .run(|cx: &mut App| {
-        gpui_component_story::init(cx);
+        hearth_gpui_story::init(cx);
 
         // Load fonts for WASM (system fonts are not available in the browser).
         // - Noto Sans SC: subset covering GB2312 Level 1 (~3755 common Chinese characters) + Latin
@@ -60,7 +60,7 @@ pub fn run() -> Result<(), JsValue> {
 
         cx.open_window(WindowOptions::default(), |window, cx| {
             let view = Gallery::view(None, window, cx);
-            let story_root = cx.new(|cx| StoryRoot::new("GPUI Component", view, window, cx));
+            let story_root = cx.new(|cx| StoryRoot::new("Hearth GPUI", view, window, cx));
             cx.new(|cx| Root::new(story_root, window, cx))
         })
         .expect("Failed to open window");

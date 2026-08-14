@@ -11,7 +11,7 @@ Accessibility。`Radio` 仍可用于独立的受控渲染；互斥选项应优�
 ## 导入
 
 ```rust
-use gpui_component::radio::{Radio, RadioGroup, RadioGroupItem};
+use hearth_gpui::radio::{Radio, RadioGroup, RadioGroupItem};
 ```
 
 ## 基本用法
@@ -131,7 +131,7 @@ Radio 激活只会请求 `true`；再次激活已经选中的 Radio 不会取消
 - Light 模式下未选中控件透明；Dark 模式使用语义化 input 表面色。
 - Checked、unchecked、invalid 和 focus 的颜色变化立即完成。固定版本 shadcn 没有为 Radio Group
   声明 Indicator 或颜色过渡。
-- `Sizable` 是 GPUI Component 为特殊紧凑或大尺寸组合保留的扩展；默认尺寸是 shadcn 验收基准。
+- `Sizable` 是 Hearth GPUI 为特殊紧凑或大尺寸组合保留的扩展；默认尺寸是 shadcn 验收基准。
 
 ## API
 

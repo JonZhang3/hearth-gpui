@@ -23,7 +23,7 @@
         <div class="mt-6 text-(--muted-foreground)">
             {{ moreText }}
             <a
-                href="https://github.com/longbridge/gpui-component/graphs/contributors"
+                href="https://github.com/JonZhang3/hearth-gpui/graphs/contributors"
                 target="_blank"
             >
                 {{ contributorsLinkText }}</a

@@ -10,7 +10,7 @@ description: Renders Markdown and HTML text with optional custom Markdown plugin
 ## Import
 
 ```rust
-use gpui_component::text::{markdown, TextView};
+use hearth_gpui::text::{markdown, TextView};
 ```
 
 ## Usage
@@ -20,7 +20,7 @@ use gpui_component::text::{markdown, TextView};
 Use the `markdown` helper when you only need to render Markdown text:
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 markdown("# Hello\n\nThis is **Markdown**.")
     .selectable(true)
@@ -30,7 +30,7 @@ markdown("# Hello\n\nThis is **Markdown**.")
 You can also construct a `TextView` directly when you need a stable id:
 
 ```rust
-use gpui_component::text::TextView;
+use hearth_gpui::text::TextView;
 
 TextView::markdown("preview", markdown_source)
     .selectable(true)
@@ -55,7 +55,7 @@ A Markdown plugin implements `MarkdownPlugin`:
 
 ```rust
 use gpui::{App, IntoElement, ParentElement as _, Window};
-use gpui_component::text::{
+use hearth_gpui::text::{
     markdown_ast, MarkdownNode, MarkdownParseContext, MarkdownPlugin,
 };
 

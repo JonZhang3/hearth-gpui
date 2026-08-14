@@ -3,7 +3,7 @@
 // - Reworked Gallery around semantic Style Preset geometry and density.
 // - Replaced legacy radius access with `Theme.style.radii.md`.
 use gpui::{prelude::*, *};
-use gpui_component::{
+use hearth_gpui::{
     Icon, IconName, Sizable as _,
     button::Button,
     h_flex,
@@ -234,7 +234,7 @@ impl Render for Gallery {
                                                         .line_height(relative(1.25))
                                                         .overflow_hidden()
                                                         .text_ellipsis()
-                                                        .child("GPUI Component")
+                                                        .child("Hearth GPUI")
                                                         .child(
                                                             div()
                                                                 .text_color(
@@ -342,9 +342,9 @@ impl Render for Gallery {
                             .ghost()
                             .xsmall()
                             .icon(IconName::Github)
-                            .tooltip("GPUI Component GitHub repository")
+                            .tooltip("Hearth GPUI GitHub repository")
                             .on_click(|_, _, cx| {
-                                cx.open_url("https://github.com/longbridge/gpui-component")
+                                cx.open_url("https://github.com/JonZhang3/hearth-gpui")
                             }),
                     ),
             )

@@ -12,7 +12,7 @@ High-level Chart axis labels resolve the active Theme's standard `text-xs` size 
 ## Import
 
 ```rust
-use gpui_component::plot::{
+use hearth_gpui::plot::{
     scale::{Scale, ScaleLinear, ScaleBand, ScalePoint, ScaleOrdinal},
     shape::{Bar, Stack, Line, Area, Pie, Arc},
     PlotAxis, AxisText

@@ -10,7 +10,7 @@ description: 支持分组操作、搜索和键盘导航的命令菜单。
 ## 导入
 
 ```rust
-use gpui_component::command::{
+use hearth_gpui::command::{
     Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput,
     CommandItem, CommandList, CommandSeparator, CommandShortcut, CommandState,
 };

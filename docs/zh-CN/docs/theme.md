@@ -7,7 +7,7 @@ order: -4
 所有组件都支持内置主题系统。[ActiveTheme] trait 用于访问当前主题中的颜色值：
 
 ```rs
-use gpui_component::{ActiveTheme as _};
+use hearth_gpui::{ActiveTheme as _};
 
 // Access theme colors in your components
 cx.theme().primary
@@ -23,7 +23,7 @@ Color Theme 与 Style Preset 是两个独立输入。Color Theme 管理语义颜
 
 ```rs
 use gpui::{App, SharedString};
-use gpui_component::{StylePreset, StyleRegistry, Theme};
+use hearth_gpui::{StylePreset, StyleRegistry, Theme};
 
 pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
     // Vega 是默认 preset；Nova 更紧凑，Maia 更宽松。
@@ -71,7 +71,7 @@ pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
 
 ## Theme Registry
 
-仓库在 [themes](https://github.com/longbridge/gpui-component/tree/main/themes) 目录下内置了 20+ 主题。
+仓库在 [themes](https://github.com/JonZhang3/hearth-gpui/tree/main/themes) 目录下内置了 20+ 主题。
 
 你可以通过 [ThemeRegistry] 来加载和监听这些主题文件：
 
@@ -80,7 +80,7 @@ pub fn configure_style(cx: &mut App) -> anyhow::Result<()> {
 ```rs
 use std::path::PathBuf;
 use gpui::{App, SharedString};
-use gpui_component::{Theme, ThemeRegistry};
+use hearth_gpui::{Theme, ThemeRegistry};
 
 pub fn init(cx: &mut App) {
     let theme_name = SharedString::from("Ayu Light");
@@ -99,7 +99,7 @@ pub fn init(cx: &mut App) {
 }
 ```
 
-[ActiveTheme]: https://docs.rs/gpui-component/latest/gpui_component/theme/trait.ActiveTheme.html
-[ThemeRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.ThemeRegistry.html
-[StyleRegistry]: https://docs.rs/gpui-component/latest/gpui_component/theme/struct.StyleRegistry.html
+[ActiveTheme]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/trait.ActiveTheme.html
+[ThemeRegistry]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/struct.ThemeRegistry.html
+[StyleRegistry]: https://docs.rs/hearth-gpui/latest/hearth_gpui/theme/struct.StyleRegistry.html
 [App]: https://docs.rs/gpui/latest/gpui/struct.App.html

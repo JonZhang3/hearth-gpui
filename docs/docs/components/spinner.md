@@ -10,7 +10,7 @@ description: Displays an indeterminate loading status.
 ## Import
 
 ```rust
-use gpui_component::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
+use hearth_gpui::spinner::{Spinner, SpinnerAnimation, SpinnerVariant};
 ```
 
 ## Usage

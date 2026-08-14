@@ -1,8 +1,8 @@
-# GPUI Component Story Web
+# Hearth GPUI Story Web
 
-Web-based component gallery for GPUI Component library.
+Web-based component gallery for Hearth GPUI library.
 
-**Live Demo**: https://longbridge.github.io/gpui-component/gallery/
+**Live Demo**: https://jonzhang3.github.io/hearth-gpui/gallery/
 
 ## Prerequisites
 
@@ -47,13 +47,13 @@ make build-prod
 This builds the project with:
 - Release mode WASM
 - Production optimizations
-- Base path set to `/gpui-component/gallery/` for GitHub Pages
+- Base path set to `/hearth-gpui/gallery/` for GitHub Pages
 
 The output will be in `www/dist/` directory.
 
 ## Deployment
 
-The gallery is automatically deployed to GitHub Pages at `/gpui-component/gallery/` when docs are released.
+The gallery is automatically deployed to GitHub Pages at `/hearth-gpui/gallery/` when docs are released.
 
 The deployment is handled by `.github/workflows/release-docs.yml` which:
 1. Builds WASM in release mode

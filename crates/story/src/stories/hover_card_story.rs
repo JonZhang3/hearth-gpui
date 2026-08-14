@@ -9,7 +9,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render, Styled as _,
     Window, div, px, relative,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, StyledExt,
     avatar::{Avatar, AvatarFallback, AvatarImage},
     button::Button,
@@ -122,7 +122,7 @@ impl HoverCardStory {
                                                 .text_color(cx.theme().link)
                                                 .text_sm(),
                                         )
-                                        .child(div().mt_1().child("The author of GPUI Component.")),
+                                        .child(div().mt_1().child("The author of Hearth GPUI.")),
                                 )
                         }),
                 )

@@ -16,7 +16,7 @@ use gpui::{
     prelude::FluentBuilder as _, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Disableable, Icon, IconName, IndexPath, Selectable, Sizable,
     button::Button,
     checkbox::Checkbox,
@@ -148,7 +148,7 @@ impl Selectable for CompanyListItem {
 }
 
 impl Sizable for CompanyListItem {
-    fn with_size(mut self, size: impl Into<gpui_component::Size>) -> Self {
+    fn with_size(mut self, size: impl Into<hearth_gpui::Size>) -> Self {
         self.base = self.base.with_size(size);
         self
     }

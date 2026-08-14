@@ -1,8 +1,8 @@
 [package]
-name = "gpui-component-motion"
-description = "Renderer-independent motion primitives for GPUI Component."
+name = "hearth-gpui-motion"
+description = "Renderer-independent motion primitives for Hearth GPUI."
 license = "Apache-2.0"
-repository = "https://github.com/longbridge/gpui-component"
+repository = "https://github.com/JonZhang3/hearth-gpui"
 version = "0.1.0"
 publish = true
 edition.workspace = true

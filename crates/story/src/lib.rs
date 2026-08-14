@@ -13,7 +13,7 @@ use gpui::{
     WindowBounds, WindowKind, WindowOptions, actions, div, prelude::FluentBuilder as _, px, rems,
     size,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, IconName, Root, TitleBar, WindowExt,
     button::Button,
     dialog::AlertDialogAction,
@@ -176,7 +176,7 @@ pub fn init(cx: &mut App) {
             .with(tracing_subscriber::fmt::layer())
             .with(
                 tracing_subscriber::EnvFilter::from_default_env()
-                    .add_directive("gpui_component=trace".parse().unwrap()),
+                    .add_directive("hearth_gpui=trace".parse().unwrap()),
             )
             .try_init();
     }
@@ -189,21 +189,20 @@ pub fn init(cx: &mut App) {
             .with(tracing_subscriber::fmt::layer().without_time())
             .with(
                 tracing_subscriber::EnvFilter::from_default_env()
-                    .add_directive("gpui_component=trace".parse().unwrap()),
+                    .add_directive("hearth_gpui=trace".parse().unwrap()),
             )
             .try_init();
     }
 
-    rust_i18n::extend!(gpui_component);
-    gpui_component::init(cx);
+    rust_i18n::extend!(hearth_gpui);
+    hearth_gpui::init(cx);
     AppState::init(cx);
     themes::init(cx);
     stories::init(cx);
 
     #[cfg(not(target_family = "wasm"))]
     {
-        let http_client =
-            reqwest_client::ReqwestClient::user_agent("gpui-component/story").unwrap();
+        let http_client = reqwest_client::ReqwestClient::user_agent("hearth-gpui/story").unwrap();
         cx.set_http_client(std::sync::Arc::new(http_client));
     }
 
@@ -212,7 +211,7 @@ pub fn init(cx: &mut App) {
         // Safety: the web examples run single-threaded; the client is
         // created and used exclusively on the main thread.
         let http_client = unsafe {
-            gpui_web::FetchHttpClient::with_user_agent("gpui-component/story")
+            gpui_web::FetchHttpClient::with_user_agent("hearth-gpui/story")
                 .expect("failed to create FetchHttpClient")
         };
         cx.set_http_client(std::sync::Arc::new(http_client));
@@ -245,11 +244,11 @@ pub fn init(cx: &mut App) {
                                     content
                                         .title("About")
                                         .description_element(markdown(
-                                            "GPUI Component Storybook\n\n\
+                                            "Hearth GPUI Storybook\n\n\
                                             Version 0.1.0\n\n\
-                                            https://longbridge.github.io/gpui-component",
+                                            https://jonzhang3.github.io/hearth-gpui",
                                         ))
-                                        .aria_description("GPUI Component Storybook version 0.1.0")
+                                        .aria_description("Hearth GPUI Storybook version 0.1.0")
                                         .action(AlertDialogAction::new("about-ok", "OK"))
                                 })
                             });
@@ -746,18 +745,18 @@ impl Render for StoryRoot {
 mod tests {
     #[test]
     fn extends_component_translations_with_story_locales() {
-        rust_i18n::extend!(gpui_component);
+        rust_i18n::extend!(hearth_gpui);
 
         assert_eq!(
-            gpui_component::_rust_i18n_try_translate("fr", "Calendar.month.January"),
+            hearth_gpui::_rust_i18n_try_translate("fr", "Calendar.month.January"),
             Some("Janvier".into())
         );
         assert_eq!(
-            gpui_component::_rust_i18n_try_translate("en", "Calendar.month.January"),
+            hearth_gpui::_rust_i18n_try_translate("en", "Calendar.month.January"),
             Some("January".into())
         );
         assert_eq!(
-            gpui_component::_rust_i18n_try_translate("fr", "Calendar.month_short.January"),
+            hearth_gpui::_rust_i18n_try_translate("fr", "Calendar.month_short.January"),
             Some("Janv.".into())
         );
     }

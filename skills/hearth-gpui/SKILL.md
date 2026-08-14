@@ -1,12 +1,12 @@
 ---
-name: gpui-component
-description: How to use the gpui-component UI library in GPUI applications. Use when building UIs with gpui-component components (Button, Input, Select, Dialog, Tabs, Sidebar, List, Table, etc.), setting up the library, handling component state, theming, or finding the right component for a given UI need.
+name: hearth-gpui
+description: How to use the hearth-gpui UI library in GPUI applications. Use when building UIs with hearth-gpui components (Button, Input, Select, Dialog, Tabs, Sidebar, List, Table, etc.), setting up the library, handling component state, theming, or finding the right component for a given UI need.
 ---
 
 ## Documentation
 
-- **Full reference**: fetch `https://longbridge.github.io/gpui-component/llms-full.txt`
-- **Per-component API**: fetch `https://longbridge.github.io/gpui-component/docs/components/{name}.md`
+- **Full reference**: fetch `https://jonzhang3.github.io/hearth-gpui/llms-full.txt`
+- **Per-component API**: fetch `https://jonzhang3.github.io/hearth-gpui/docs/components/{name}.md`
   - e.g. `button.md`, `input.md`, `select.md`, `dialog.md`, `data-table.md`
 - **Any site page** can be fetched as Markdown by appending `.md` to the URL
 
@@ -14,7 +14,7 @@ description: How to use the gpui-component UI library in GPUI applications. Use 
 
 **Setup** — always required:
 ```rust
-gpui_component::init(cx);               // in app.run(), must be first
+hearth_gpui::init(cx);               // in app.run(), must be first
 Root::new(view, window, cx)             // first-level view in every window
 ```
 

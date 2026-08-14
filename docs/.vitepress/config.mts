@@ -33,9 +33,9 @@ function createFooter(prefix = "", locale: "en" | "zh" = "en") {
   const discussionText = locale === "zh" ? "讨论" : "Discussion";
   const message =
     locale === "zh"
-      ? `GPUI Component 是一个基于 Apache-2.0 许可证的开源项目，
+      ? `Hearth GPUI 是一个基于 Apache-2.0 许可证的开源项目，
         由 <a href='https://longbridge.com' target='_blank'>Longbridge</a> 开发。`
-      : `GPUI Component is an open source project under the Apache-2.0 License,
+      : `Hearth GPUI is an open source project under the Apache-2.0 License,
         developed by <a href='https://longbridge.com' target='_blank'>Longbridge</a>.`;
 
   return {
@@ -43,17 +43,17 @@ function createFooter(prefix = "", locale: "en" | "zh" = "en") {
     copyright: `
       <a href="https://gpui.rs">GPUI</a>
       |
-      <a href="/gpui-component/gallery/" target="_blank">Gallery</a>
+      <a href="/hearth-gpui/gallery/" target="_blank">Gallery</a>
       |
-      <a href="/gpui-component${prefix}/contributors">${contributorsText}</a>
+      <a href="/hearth-gpui${prefix}/contributors">${contributorsText}</a>
       |
-      <a href="/gpui-component${prefix}/skills" target="_blank">${skillsText}</a>
+      <a href="/hearth-gpui${prefix}/skills" target="_blank">${skillsText}</a>
       |
-      <a href="/gpui-component/llms-full.txt" target="_blank">llms-full.txt</a>
+      <a href="/hearth-gpui/llms-full.txt" target="_blank">llms-full.txt</a>
       |
-      <a href="https://github.com/longbridge/gpui-component/issues" target="_blank">${reportBugText}</a>
+      <a href="https://github.com/JonZhang3/hearth-gpui/issues" target="_blank">${reportBugText}</a>
       |
-      <a href="https://github.com/longbridge/gpui-component/discussions" target="_blank">${discussionText}</a>
+      <a href="https://github.com/JonZhang3/hearth-gpui/discussions" target="_blank">${discussionText}</a>
       <br />
       Icon resources are used <a href="https://lucide.dev" target="_blank">Lucide</a>,
       <a href="https://isocons.app" target="_blank">Isocons</a>.
@@ -76,7 +76,7 @@ function createNav(prefix = "", locale: "en" | "zh" = "en") {
     { text: gettingStartedText, link: `${prefix}/docs/getting-started` || "/docs/getting-started" },
     { text: componentsText, link: `${prefix}/docs/components` || "/docs/components" },
     { text: "Gallery", link: "/gallery/", target: "_blank" },
-    { text: "API Doc", link: "https://docs.rs/gpui-component" },
+    { text: "API Doc", link: "https://docs.rs/hearth-gpui" },
     {
       text: resourcesText,
       items: [
@@ -86,15 +86,15 @@ function createNav(prefix = "", locale: "en" | "zh" = "en") {
         },
         {
           text: releasesText,
-          link: "https://github.com/longbridge/gpui-component/releases",
+          link: "https://github.com/JonZhang3/hearth-gpui/releases",
         },
         {
           text: issuesText,
-          link: "https://github.com/longbridge/gpui-component/issues",
+          link: "https://github.com/JonZhang3/hearth-gpui/issues",
         },
         {
           text: discussionText,
-          link: "https://github.com/longbridge/gpui-component/discussions",
+          link: "https://github.com/JonZhang3/hearth-gpui/discussions",
         },
       ],
     },
@@ -120,8 +120,8 @@ const sharedThemeConfig = {
 
 // https://vitepress.dev/reference/site-config
 const config: UserConfig = {
-  title: "GPUI Component",
-  base: "/gpui-component/",
+  title: "Hearth GPUI",
+  base: "/hearth-gpui/",
   description:
     "Rust GUI components for building fantastic cross-platform desktop application by using GPUI.",
   cleanUrls: true,
@@ -130,7 +130,7 @@ const config: UserConfig = {
       "link",
       {
         rel: "icon",
-        href: "/gpui-component/logo.svg",
+        href: "/hearth-gpui/logo.svg",
         media: "(prefers-color-scheme: light)",
       },
     ],
@@ -138,7 +138,7 @@ const config: UserConfig = {
       "link",
       {
         rel: "icon",
-        href: "/gpui-component/logo-dark.svg",
+        href: "/hearth-gpui/logo-dark.svg",
         media: "(prefers-color-scheme: dark)",
       },
     ],
@@ -159,7 +159,7 @@ const config: UserConfig = {
         footer: createFooter("", "en"),
         editLink: {
           pattern:
-            "https://github.com/longbridge/gpui-component/edit/main/docs/:path",
+            "https://github.com/JonZhang3/hearth-gpui/edit/main/docs/:path",
         },
       },
     },
@@ -180,7 +180,7 @@ const config: UserConfig = {
         darkModeSwitchTitle: "切换到深色模式",
         editLink: {
           pattern:
-            "https://github.com/longbridge/gpui-component/edit/main/docs/:path",
+            "https://github.com/JonZhang3/hearth-gpui/edit/main/docs/:path",
         },
       },
     },

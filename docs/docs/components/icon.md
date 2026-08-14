@@ -7,12 +7,12 @@ description: Display SVG icons with various sizes, colors, and transformations.
 
 A flexible icon component that renders SVG icons from the bundled icon library or a custom asset path. Icons are based on Lucide.dev and support customization of size, color, transformation, and accessibility semantics.
 
-Before you start, please make sure you have read: [Icons & Assets](../assets.md) to understand how use SVG in GPUI & GPUI Component application.
+Before you start, please make sure you have read: [Icons & Assets](../assets.md) to understand how use SVG in GPUI & Hearth GPUI application.
 
 ## Import
 
 ```rust
-use gpui_component::{Icon, IconName};
+use hearth_gpui::{Icon, IconName};
 ```
 
 ## Usage
@@ -156,7 +156,7 @@ The Icon component supports several predefined sizes:
 You can define your own `IconName` to have more specific icons for your application. We have `IconNamed` trait for you to implement for your.
 
 ```rust
-use gpui_component::IconNamed;
+use hearth_gpui::IconNamed;
 
 pub enum IconName {
     Encounters,
@@ -199,7 +199,7 @@ div()
 ### Icon in Button
 
 ```rust
-use gpui_component::button::Button;
+use hearth_gpui::button::Button;
 
 Button::new("like-btn")
     .icon(

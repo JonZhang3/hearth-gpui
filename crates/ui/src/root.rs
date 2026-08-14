@@ -145,7 +145,7 @@ impl Root {
     /// Enable or disable the Linux client-side window border wrapper.
     ///
     /// Defaults to `true`. Use `bordered(false)` for layer-shell fullscreen windows
-    /// or other surfaces that should not render GPUI Component's window border.
+    /// or other surfaces that should not render Hearth GPUI's window border.
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
@@ -166,7 +166,7 @@ impl Root {
         let root = window
             .root::<Root>()
             .flatten()
-            .expect("BUG: window first layer should be a gpui_component::Root.");
+            .expect("BUG: window first layer should be a hearth_gpui::Root.");
 
         root.update(cx, |root, cx| f(root, window, cx))
     }

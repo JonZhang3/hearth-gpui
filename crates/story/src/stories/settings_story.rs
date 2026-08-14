@@ -7,7 +7,7 @@ use gpui::{
     ParentElement as _, Render, SharedString, Styled, Window, prelude::FluentBuilder, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, Size, Theme, ThemeMode,
     button::Button,
     group_box::GroupBoxVariant,
@@ -147,7 +147,7 @@ impl SettingsStory {
                         .ghost()
                         .xsmall()
                         .on_click(|_, _, cx| {
-                            cx.open_url("https://longbridge.github.io/gpui-component/")
+                            cx.open_url("https://jonzhang3.github.io/hearth-gpui/")
                         })
                 })
                 .groups(vec![
@@ -341,9 +341,7 @@ impl SettingsStory {
                                         .with_size(options.size)
                                         .disabled(options.disabled)
                                         .on_click(|_, _, cx| {
-                                            cx.open_url(
-                                                "https://github.com/longbridge/gpui-component",
-                                            );
+                                            cx.open_url("https://github.com/JonZhang3/hearth-gpui");
                                         }),
                                 )
                                 .into_any_element()
@@ -451,7 +449,7 @@ impl SettingsStory {
                             .items_center()
                             .justify_center()
                             .child(Icon::new(IconName::GalleryVerticalEnd).size_16())
-                            .child("GPUI Component")
+                            .child("Hearth GPUI")
                             .child(
                                 Label::new(
                                     "Rust GUI components for building fantastic cross-platform \
@@ -468,7 +466,7 @@ impl SettingsStory {
                             "GitHub Repository",
                             SettingField::element(OpenURLSettingField::new(
                                 "Repository...",
-                                "https://github.com/longbridge/gpui-component",
+                                "https://github.com/JonZhang3/hearth-gpui",
                             )),
                         )
                         .description("Open the GitHub repository in your default browser."),
@@ -476,11 +474,11 @@ impl SettingsStory {
                             "Documentation",
                             SettingField::element(OpenURLSettingField::new(
                                 "Rust Docs...",
-                                "https://docs.rs/gpui-component"
+                                "https://docs.rs/hearth-gpui"
                             )),
                         )
                         .description(markdown(
-                            "Rust doc for the `gpui-component` crate.",
+                            "Rust doc for the `hearth-gpui` crate.",
                         )),
                         SettingItem::new(
                             "Website",
@@ -490,11 +488,11 @@ impl SettingsStory {
                                     .label("Website...")
                                     .with_size(options.size)
                                     .on_click(|_, _window, cx| {
-                                        cx.open_url("https://longbridge.github.io/gpui-component/");
+                                        cx.open_url("https://jonzhang3.github.io/hearth-gpui/");
                                     })
                             }),
                         )
-                        .description("Official website and documentation for the GPUI Component."),
+                        .description("Official website and documentation for the Hearth GPUI."),
                     ])),
         ]
     }

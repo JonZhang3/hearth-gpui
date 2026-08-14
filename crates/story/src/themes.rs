@@ -2,11 +2,11 @@
 // Changes:
 // - Added or exposed behavior through `default_style`.
 use gpui::{Action, App, SharedString};
-use gpui_component::{Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
+use hearth_gpui::{Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
 use serde::{Deserialize, Serialize};
 
 #[cfg(not(target_family = "wasm"))]
-use gpui_component::ActiveTheme;
+use hearth_gpui::ActiveTheme;
 
 #[cfg(target_family = "wasm")]
 use crate::embedded_themes;

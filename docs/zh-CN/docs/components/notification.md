@@ -10,7 +10,7 @@ Notification 是一个 toast 通知系统，用于向用户显示短暂消息。
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     notification::{Notification, NotificationType},
     WindowExt
 };
@@ -22,10 +22,10 @@ use gpui_component::{
 
 如果你想显示通知，需要在应用根视图中渲染 notification layer。
 
-[Root::render_notification_layer](https://docs.rs/gpui-component/latest/gpui_component/struct.Root.html#method.render_notification_layer) 会将当前激活的通知渲染在应用内容之上。
+[Root::render_notification_layer](https://docs.rs/hearth-gpui/latest/hearth_gpui/struct.Root.html#method.render_notification_layer) 会将当前激活的通知渲染在应用内容之上。
 
 ```rust
-use gpui_component::{TitleBar, Root};
+use hearth_gpui::{TitleBar, Root};
 
 struct Example {}
 
@@ -152,7 +152,7 @@ Notification::new()
 ### 自定义内容
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 let markdown_content = r#"
 ## 可访问性

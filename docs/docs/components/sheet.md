@@ -12,7 +12,7 @@ backdrop dismissal, exit motion, and focus restoration.
 ## Import
 
 ```rust
-use gpui_component::{Placement, WindowExt};
+use hearth_gpui::{Placement, WindowExt};
 ```
 
 The first window view must be [`Root`](/docs/root). Render `Root::render_sheet_layer` when using a

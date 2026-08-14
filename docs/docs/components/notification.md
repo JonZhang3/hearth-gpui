@@ -10,7 +10,7 @@ A toast notification system for displaying temporary messages to users. Notifica
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     notification::{Notification, NotificationType},
     WindowExt
 };
@@ -22,10 +22,10 @@ use gpui_component::{
 
 You need to set up your application's root view to render the notification layer. This is typically done in your main application struct's render method.
 
-The [Root::render_notification_layer](https://docs.rs/gpui-component/latest/gpui_component/struct.Root.html#method.render_notification_layer) function handles rendering any active modals on top of your app content.
+The [Root::render_notification_layer](https://docs.rs/hearth-gpui/latest/hearth_gpui/struct.Root.html#method.render_notification_layer) function handles rendering any active modals on top of your app content.
 
 ```rust
-use gpui_component::{TitleBar, Root};
+use hearth_gpui::{TitleBar, Root};
 
 struct Example {}
 
@@ -164,7 +164,7 @@ Notification::new()
 ### Custom Content
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 let markdown_content = r#"
 ## Accessibility
@@ -280,7 +280,7 @@ Notification::warning("System maintenance will begin in 30 minutes.")
 ### Batch Operation Results
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 let results_content = r#"
 ## Batch Operation Complete

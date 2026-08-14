@@ -2,7 +2,7 @@
 
 ## Decision
 
-GPUI Component uses a renderer-independent `gpui-component-motion` crate for timing and
+Hearth GPUI uses a renderer-independent `hearth-gpui-motion` crate for timing and
 interruption state. `ui::animation` is the GPUI Adapter that owns element state, frame requests,
 style interpolation, and deferred completion callbacks. Components own interaction state and
 decide what completion means, such as unmounting an overlay or restoring focus.

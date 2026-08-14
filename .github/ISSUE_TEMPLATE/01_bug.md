@@ -7,12 +7,12 @@ assignees:
 
 ## Description
 
-Use English with clear and concise description of the bug, if you just have a question or need help, please submit to [Discussions](https://github.com/longbridge/gpui-component/discussions/categories/q-a).
+Use English with clear and concise description of the bug, if you just have a question or need help, please submit to [Discussions](https://github.com/JonZhang3/hearth-gpui/discussions/categories/q-a).
 
 ## Environment
 
 - GPUI: [e.g., v0.2.2]
-- GPUI Component: [e.g., v0.4.0]
+- Hearth GPUI: [e.g., v0.4.0]
 - Platform: [e.g., macOS 26, Windows 11, Ubuntu 20.04]
 
 ## Steps to Reproduce

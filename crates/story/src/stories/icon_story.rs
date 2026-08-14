@@ -5,7 +5,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
     Styled, Window, radians,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
     button::{Button, ButtonVariant, ButtonVariants},
     dock::PanelControl,

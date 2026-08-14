@@ -14,7 +14,7 @@ disclosure through the same semantic contracts used by the rest of the component
 ## Import
 
 ```rust
-use gpui_component::sidebar::{
+use hearth_gpui::sidebar::{
     Sidebar, SidebarHeader, SidebarFooter, SidebarGroup,
     SidebarMenu, SidebarMenuItem, SidebarToggleButton
 };
@@ -25,7 +25,7 @@ use gpui_component::sidebar::{
 ### Basic Sidebar
 
 ```rust
-use gpui_component::{sidebar::*, Side};
+use hearth_gpui::{sidebar::*, Side};
 
 Sidebar::new()
     .header(
@@ -144,7 +144,7 @@ Sidebar::new()
 ### With Badges and Suffixes
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     badge::{Badge, BadgeVariants as _},
     switch::Switch,
 };
@@ -193,7 +193,7 @@ Sidebar::new()
 Add right-click context menus to sidebar menu items for additional actions:
 
 ```rust
-use gpui_component::menu::PopupMenu;
+use hearth_gpui::menu::PopupMenu;
 
 SidebarMenuItem::new("Project Files")
     .icon(IconName::Folder)
@@ -253,7 +253,7 @@ Sidebar::new()
 ### Interactive Header with Popup Menu
 
 ```rust
-use gpui_component::menu::DropdownMenu;
+use hearth_gpui::menu::DropdownMenu;
 
 SidebarHeader::new()
     .child(

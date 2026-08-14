@@ -10,7 +10,7 @@ A powerful multi-line text input component that extends the basic input function
 ## Import
 
 ```rust
-use gpui_component::input::{InputState, Input};
+use hearth_gpui::input::{InputState, Input};
 ```
 
 ## Usage
@@ -55,12 +55,12 @@ Input::new(&state)
 
 ### CodeEditor
 
-GPUI Component's `InputState` supports a code editor mode with syntax highlighting, line numbers, and search functionality.
+Hearth GPUI's `InputState` supports a code editor mode with syntax highlighting, line numbers, and search functionality.
 
 It design for high performance and can handle large files efficiently. We
 used [tree-sitter](https://tree-sitter.github.io/tree-sitter/) for syntax highlighting, and [ropey](https://github.com/cessen/ropey) for text storage and manipulation.
 
-Enable `gpui-component/tree-sitter-languages` to include all built-in Tree-sitter grammars, or enable only the grammars you need, such as `gpui-component/tree-sitter-markdown` or `gpui-component/tree-sitter-rust`, to reduce downstream bundle size.
+Enable `hearth-gpui/tree-sitter-languages` to include all built-in Tree-sitter grammars, or enable only the grammars you need, such as `hearth-gpui/tree-sitter-markdown` or `hearth-gpui/tree-sitter-rust`, to reduce downstream bundle size.
 
 ```rust
 let state = cx.new(|cx|
@@ -94,7 +94,7 @@ Input::new(&state)
 ### TabSize
 
 ```rust
-use gpui_component::input::TabSize;
+use hearth_gpui::input::TabSize;
 
 let state = cx.new(|cx|
     InputState::new(window, cx)

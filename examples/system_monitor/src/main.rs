@@ -6,8 +6,8 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use gpui::{actions, prelude::FluentBuilder as _, *};
-use gpui_component::ThemeMode;
-use gpui_component::{
+use hearth_gpui::ThemeMode;
+use hearth_gpui::{
     ActiveTheme, Icon, IconName, Root, Sizable, Theme, TitleBar,
     chart::AreaChart,
     h_flex,
@@ -603,10 +603,10 @@ impl Render for SystemMonitor {
 }
 
 fn main() {
-    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
+    let app = gpui_platform::application().with_assets(hearth_gpui_assets::Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         cx.bind_keys([
             #[cfg(target_os = "macos")]

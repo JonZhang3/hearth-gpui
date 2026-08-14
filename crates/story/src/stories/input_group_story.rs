@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, IntoElement, Keystroke, ParentElement as _, Render,
     Styled as _, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Icon, IconName,
     button::Button,
     input::{

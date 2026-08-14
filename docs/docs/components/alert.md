@@ -10,7 +10,7 @@ Alert displays important status or guidance. Its icon, title, description, and a
 ## Import
 
 ```rust
-use gpui_component::alert::Alert;
+use hearth_gpui::alert::Alert;
 ```
 
 ## Basic
@@ -131,5 +131,5 @@ Alert::new("sync-status")
 - [Alert]
 - [AlertVariant]
 
-[Alert]: https://docs.rs/gpui-component/latest/gpui_component/alert/struct.Alert.html
-[AlertVariant]: https://docs.rs/gpui-component/latest/gpui_component/alert/enum.AlertVariant.html
+[Alert]: https://docs.rs/hearth-gpui/latest/hearth_gpui/alert/struct.Alert.html
+[AlertVariant]: https://docs.rs/hearth-gpui/latest/hearth_gpui/alert/enum.AlertVariant.html

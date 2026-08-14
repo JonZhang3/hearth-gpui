@@ -22,7 +22,7 @@ DatePicker follows the shadcn composition of an Outline Button trigger, a start-
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     date_picker::{DatePicker, DatePickerState, DateRangePreset, DatePickerEvent},
     calendar::{Date, Matcher},
 };
@@ -148,7 +148,7 @@ div()
 ### Disabled Weekends
 
 ```rust
-use gpui_component::calendar;
+use hearth_gpui::calendar;
 
 let date_picker = cx.new(|cx| {
     DatePickerState::new(window, cx)

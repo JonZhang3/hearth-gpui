@@ -10,7 +10,7 @@ description: 用于表单控件和行内组合内容的标签组件。
 ## 导入
 
 ```rust
-use gpui_component::{Disableable as _, label::Label};
+use hearth_gpui::{Disableable as _, label::Label};
 ```
 
 ## 基础用法

@@ -9,7 +9,7 @@ use gpui::{
     AnyElement, App, Bounds, Corners, ElementId, Hsla, IntoElement, Pixels, Point, SharedString,
     TextAlign, Window, fill, linear_color_stop, linear_gradient, point, px,
 };
-use gpui_component_macros::IntoPlot;
+use hearth_gpui_macros::IntoPlot;
 
 use crate::{
     ActiveTheme,

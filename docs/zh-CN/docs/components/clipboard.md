@@ -10,7 +10,7 @@ Clipboard 组件提供了一个简单的复制按钮，可将文本或其它数�
 ## 导入
 
 ```rust
-use gpui_component::clipboard::Clipboard;
+use hearth_gpui::clipboard::Clipboard;
 ```
 
 ## 用法
@@ -46,7 +46,7 @@ Clipboard::new("dynamic-clipboard")
 ### 自定义组合内容
 
 ```rust
-use gpui_component::label::Label;
+use hearth_gpui::label::Label;
 
 h_flex()
     .gap_2()
@@ -63,7 +63,7 @@ h_flex()
 Clipboard 很适合作为输入框后缀：
 
 ```rust
-use gpui_component::input::{InputState, Input};
+use hearth_gpui::input::{InputState, Input};
 
 let url_state = cx.new(|cx| InputState::new(window, cx).default_value("https://github.com"));
 
@@ -111,7 +111,7 @@ h_flex()
 ### 表单字段集成
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     input::{InputState, Input},
     h_flex, label::Label
 };
@@ -167,4 +167,4 @@ Clipboard 当前主要支持复制文本字符串，内部使用 GPUI 的 `Clipb
 - UTF-8 编码内容
 - 跨平台剪贴板写入
 
-[Clipboard]: https://docs.rs/gpui-component/latest/gpui_component/clipboard/struct.Clipboard.html
+[Clipboard]: https://docs.rs/hearth-gpui/latest/hearth_gpui/clipboard/struct.Clipboard.html

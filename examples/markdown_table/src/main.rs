@@ -12,12 +12,12 @@
 //! Run: `cargo run -p markdown_table`
 
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     text::{TextView, TextViewStyle},
     *,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 const SOURCE: &str = include_str!("report.md");
 
@@ -121,8 +121,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         // `WIN_W=<px>` overrides the window width, to check how the table
         // adapts at different frame widths.

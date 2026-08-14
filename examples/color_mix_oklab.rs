@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     h_flex,
     theme::{ActiveTheme, Colorize},
     v_flex, Root, Sizable,
@@ -149,7 +149,7 @@ fn main() {
     env_logger::init();
 
     Application::new().run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         cx.activate(true);
         cx.on_action(|_: &Quit, cx: &mut AppContext| {

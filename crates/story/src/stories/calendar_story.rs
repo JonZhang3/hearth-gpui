@@ -7,7 +7,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, Styled as _, Window, prelude::FluentBuilder as _,
 };
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme,
     calendar::{Calendar, CalendarState},
     v_flex,

@@ -1,5 +1,5 @@
 use gpui::*;
-use gpui_component::{ActiveTheme as _, Root, StyledExt as _, h_flex, v_flex};
+use hearth_gpui::{ActiveTheme as _, Root, StyledExt as _, h_flex, v_flex};
 
 struct RootBorderlessExample;
 
@@ -22,7 +22,7 @@ impl Render for RootBorderlessExample {
                     .max_w(px(560.))
                     .text_color(cx.theme().muted_foreground)
                     .child(
-                        "This window requests client-side decorations, while Root disables GPUI Component's window border wrapper.",
+                        "This window requests client-side decorations, while Root disables Hearth GPUI's window border wrapper.",
                     ),
             )
             .child(
@@ -52,7 +52,7 @@ impl Render for RootBorderlessExample {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         let window_options = WindowOptions {
             titlebar: None,

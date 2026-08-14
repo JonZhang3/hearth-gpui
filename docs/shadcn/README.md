@@ -2,11 +2,11 @@
 
 ## Status
 
-This directory defines the architecture, implementation batches, and verification contract for aligning GPUI Component with shadcn/ui. The Style Preset foundation and cross-family token migration are implemented; visual and platform verification remains continuous release work.
+This directory defines the architecture, implementation batches, and verification contract for aligning Hearth GPUI with shadcn/ui. The Style Preset foundation and cross-family token migration are implemented; visual and platform verification remains continuous release work.
 
 | Baseline | Revision |
 |---|---|
-| GPUI Component | `e1570bdc` |
+| Hearth GPUI | `e1570bdc` |
 | Local shadcn/ui checkout | `/Users/jon/Desktop/ui` |
 | shadcn/ui | `607e8a9717fe6ff0d374ba74c651012f9c052534` |
 | Baseline date | 2026-08-05 |
@@ -15,7 +15,7 @@ The shadcn revision is intentionally pinned. Future upstream changes must be rev
 
 ## Goal
 
-Improve the visual consistency, interaction states, and motion of existing GPUI Component controls while preserving native desktop behavior. The Theme/Style split is an intentional breaking API redesign for new applications.
+Improve the visual consistency, interaction states, and motion of existing Hearth GPUI controls while preserving native desktop behavior. The Theme/Style split is an intentional breaking API redesign for new applications.
 
 The work is successful when:
 
@@ -37,9 +37,9 @@ shadcn/ui v4 separates style from behavior. A single source directory is therefo
 | Interaction composition | `apps/v4/registry/bases/radix/ui` | Trigger/content structure, state model, focus and dismissal intent |
 | Compatibility examples | `apps/v4/registry/new-york-v4/ui` | Existing shadcn API vocabulary and example coverage |
 | Accessibility cross-check | `apps/v4/registry/bases/aria/ui` and `bases/base/ui` | Keyboard and semantic behavior comparison |
-| Native behavior | Existing GPUI Component contracts, Apple HIG, Fluent Design | Final authority when Web and desktop behavior differ |
+| Native behavior | Existing Hearth GPUI contracts, Apple HIG, Fluent Design | Final authority when Web and desktop behavior differ |
 
-`Vega` is the default alignment target because shadcn describes it as clean, neutral, and familiar, and it is closest to the current GPUI Component default theme. The first release also includes `Nova` and `Maia` as distinct Style Presets. Nova validates compact density; Maia validates comfortable spacing and larger radii. Mira, Lyra, Luma, Sera, and Rhea remain deferred until the first three presets prove the abstraction.
+`Vega` is the default alignment target because shadcn describes it as clean, neutral, and familiar, and it is closest to the current Hearth GPUI default theme. The first release also includes `Nova` and `Maia` as distinct Style Presets. Nova validates compact density; Maia validates comfortable spacing and larger radii. Mira, Lyra, Luma, Sera, and Rhea remain deferred until the first three presets prove the abstraction.
 
 ## Theme architecture decision
 
@@ -117,7 +117,7 @@ When sources disagree, apply the following order:
 
 1. Accessibility and data safety.
 2. Native desktop platform behavior.
-3. Existing documented GPUI Component contract.
+3. Existing documented Hearth GPUI contract.
 4. shadcn interaction intent.
 5. Vega visual specification.
 6. Exact Tailwind values.

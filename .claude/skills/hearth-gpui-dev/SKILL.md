@@ -1,6 +1,6 @@
 ---
-name: gpui-component-dev
-description: Contributing to the gpui-component library: creating new UI components, writing component stories, writing component documentation, and writing GitHub PR descriptions. Use when adding a new component to crates/ui, writing a story in crates/story/src/stories, creating docs in the docs/ folder, or writing a PR description for this project.
+name: hearth-gpui-dev
+description: Contributing to the hearth-gpui library: creating new UI components, writing component stories, writing component documentation, and writing GitHub PR descriptions. Use when adding a new component to crates/ui, writing a story in crates/story/src/stories, creating docs in the docs/ folder, or writing a PR description for this project.
 ---
 
 ## Navigation

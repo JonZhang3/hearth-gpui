@@ -14,7 +14,7 @@ Color Theme 与 Style Preset；macOS 和 Windows 中的选项菜单由操作系�
 ## 导入
 
 ```rust
-use gpui_component::native_select::{
+use hearth_gpui::native_select::{
     NativeSelect, NativeSelectOptGroup, NativeSelectOption,
 };
 ```

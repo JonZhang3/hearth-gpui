@@ -1,4 +1,4 @@
-# GPUI Component Code Style Guide
+# Hearth GPUI Code Style Guide
 
 Based on analysis of `Button`, `Checkbox`, `Input`, `Select`, and other components in `crates/ui/src`.
 

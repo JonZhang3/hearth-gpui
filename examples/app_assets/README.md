@@ -1,10 +1,10 @@
-## Icon assets in GPUI Component
+## Icon assets in Hearth GPUI
 
-The [IconName](https://github.com/longbridge/gpui-component/blob/6998708b817024c2ac0f1ea164d74ddfc024e124/crates/ui/src/icon.rs#L9) is a enum that defined a bunch of icon names, because some internal components in GPUI Component will use them.
+The [IconName](https://github.com/JonZhang3/hearth-gpui/blob/6998708b817024c2ac0f1ea164d74ddfc024e124/crates/ui/src/icon.rs#L9) is a enum that defined a bunch of icon names, because some internal components in Hearth GPUI will use them.
 
 You can see, we have a lot of svg icon files in the `assets/icons` folder, but we are not embed all of the icon files in the library by default. This for keep the library size small.
 
-So you must have your own icon files to use the `Icon` component in GPUI Component.
+So you must have your own icon files to use the `Icon` component in Hearth GPUI.
 
 You can download the icon files from [here](https://lucide.dev/) or use your own icon files as you wish, just use the same filename as the icon name (match with the `IconName` defined) you want to use.
 
@@ -22,7 +22,7 @@ app_root
   Cargo.toml
 ```
 
-You also can just copy the svg files you want from the `assets/icons` folder in GPUI Component repo to your own assets folder.
+You also can just copy the svg files you want from the `assets/icons` folder in Hearth GPUI repo to your own assets folder.
 
 ## How to use
 
@@ -63,20 +63,20 @@ fn main() {
 
 ## Use default bundled assets.
 
-The `gpui-component-assets` crate provide a default bundled assets implementation that include all the icon files in the `assets/icons` folder.
+The `hearth-gpui-assets` crate provide a default bundled assets implementation that include all the icon files in the `assets/icons` folder.
 
 If you don't want to manage your own icon files, you can just use the default bundled assets.
 
-Just add `gpui-component-assets` as a dependency in your `Cargo.toml`:
+Just add `hearth-gpui-assets` as a dependency in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gpui-component = "*"
-gpui-component-assets = "*"
+hearth-gpui = "*"
+hearth-gpui-assets = "*"
 ```
 
 And then use it in your application:
 
 ```rs
-let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
+let app = gpui_platform::application().with_assets(hearth_gpui_assets::Assets);
 ```

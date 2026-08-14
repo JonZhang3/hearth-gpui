@@ -16,7 +16,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 
 ## P0: core controls
 
-| GPUI Component | shadcn reference | Primary work | Acceptance focus |
+| Hearth GPUI | shadcn reference | Primary work | Acceptance focus |
 |---|---|---|---|
 | Button, ButtonIcon, ButtonGroup, DropdownButton | `button`, `button-group` | Vega variants and dimensions, leading/trailing icon slots, explicit Spinner composition, action-group layout, focus, pressed, and disabled states | Stable dimensions; desktop cursor; all variants in light and dark; child callbacks remain independent |
 | Toggle | `toggle`, `toggle-group` | Align on, off, hover, focus, outline, and grouped radii | Selected state is visually persistent and accessible |
@@ -34,7 +34,7 @@ Every component consumes resolved metrics from `Theme`; it must not switch rende
 
 ## P1: overlays and navigation
 
-| GPUI Component | shadcn reference | Primary work | Acceptance focus |
+| Hearth GPUI | shadcn reference | Primary work | Acceptance focus |
 |---|---|---|---|
 | Popover | `popover` | Shared anchored-surface style and enter or exit lifecycle | Side-aware motion, outside click, nested overlay behavior |
 | HoverCard | `hover-card` | Surface, timing, safe hover corridor, side-aware motion | Open and close delays; trigger-to-card movement |
@@ -78,7 +78,7 @@ These components do not need shadcn structural parity. They consume the shared c
 
 Equivalent concepts use different names. They do not require duplicate components.
 
-| shadcn concept | GPUI Component equivalent |
+| shadcn concept | Hearth GPUI equivalent |
 |---|---|
 | `input-otp` | `OtpInput` |
 | `radio-group` | `Radio`, `RadioGroupItem`, and `RadioGroup` |

@@ -58,7 +58,7 @@ jobs:
       - name: Check without default features (tree-sitter disabled)
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
-          cargo check -p gpui-component --no-default-features
+          cargo check -p hearth-gpui --no-default-features
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
@@ -71,4 +71,4 @@ jobs:
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
           cargo test --all
-          cargo test -p gpui-component --doc
+          cargo test -p hearth-gpui --doc

@@ -3,7 +3,7 @@
 // - Enabled application-owned title-bar dragging.
 use anyhow::{Context as _, Result};
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     IconName, Root, Sizable,
     button::Button,
     dock::{ClosePanel, DockArea, DockAreaState, DockEvent, DockItem, DockPlacement, ToggleZoom},
@@ -11,8 +11,8 @@ use gpui_component::{
     status_bar::StatusBar,
 };
 
-use gpui_component_assets::Assets;
-use gpui_component_story::{
+use hearth_gpui_assets::Assets;
+use hearth_gpui_story::{
     AccordionStory, AppState, AppTitleBar, ButtonStory, CalendarStory, DataTableStory, DialogStory,
     FormStory, IconStory, ImageStory, InputStory, LabelStory, ListStory, NotificationStory, Open,
     PopoverStory, ProgressStory, ResizableStory, ScrollbarStory, SelectStory, SidebarStory,
@@ -43,7 +43,7 @@ const STATE_FILE: &str = "docks.json";
 
 pub fn init(cx: &mut App) {
     cx.on_action(|_action: &Open, _cx: &mut App| {});
-    gpui_component_story::init(cx);
+    hearth_gpui_story::init(cx);
 
     cx.bind_keys(vec![
         KeyBinding::new("shift-escape", ToggleZoom, None),
@@ -387,7 +387,7 @@ impl StoryWorkspace {
             let options = WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(window_bounds)),
                 #[cfg(not(target_os = "linux"))]
-                titlebar: Some(gpui_component::TitleBar::title_bar_options()),
+                titlebar: Some(hearth_gpui::TitleBar::title_bar_options()),
                 #[cfg(not(target_os = "linux"))]
                 app_owns_titlebar_drag: true,
                 window_min_size: Some(gpui::Size {

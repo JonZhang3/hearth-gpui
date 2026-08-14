@@ -10,7 +10,7 @@ Avatar 使用 shadcn Vega 的几何规格。图片和回退内容裁剪为圆形
 ## 导入
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IconName,
     avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
 };
@@ -104,5 +104,5 @@ AvatarGroup::new()
 
 AvatarGroup 的尺寸优先级最高，会统一应用到全部 Avatar 和尾部项。
 
-[Avatar]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.Avatar.html
-[AvatarGroup]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.AvatarGroup.html
+[Avatar]: https://docs.rs/hearth-gpui/latest/hearth_gpui/avatar/struct.Avatar.html
+[AvatarGroup]: https://docs.rs/hearth-gpui/latest/hearth_gpui/avatar/struct.AvatarGroup.html

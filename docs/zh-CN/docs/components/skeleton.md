@@ -12,7 +12,7 @@ Skeleton 使用当前 Color Theme 的语义 `muted` 表面色和当前 Style Pre
 ## 导入
 
 ```rust
-use gpui_component::skeleton::Skeleton;
+use hearth_gpui::skeleton::Skeleton;
 ```
 
 ## 用法

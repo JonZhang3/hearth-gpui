@@ -10,7 +10,7 @@ description: A virtualized list with sections, search, selection, disabled items
 ## Basic usage
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IndexPath,
     list::{List, ListDelegate, ListItem, ListState},
 };

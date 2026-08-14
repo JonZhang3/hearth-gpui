@@ -209,8 +209,8 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
  "rust-embed",
 ]
 
@@ -1878,9 +1878,9 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]
@@ -2386,8 +2386,8 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
 ]
 
 [[package]]
@@ -3090,177 +3090,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui-component"
-version = "0.5.2"
-dependencies = [
- "aho-corasick",
- "anyhow",
- "async-channel",
- "chrono",
- "core-text",
- "criterion",
- "enum-iterator",
- "futures",
- "gpui",
- "gpui-component-assets",
- "gpui-component-macros",
- "gpui-component-motion",
- "gpui_macros",
- "gpui_platform",
- "html5ever 0.27.0",
- "indoc",
- "instant",
- "itertools 0.13.0",
- "log",
- "lsp-types 0.97.0",
- "markdown",
- "markup5ever_rcdom",
- "notify",
- "num-traits",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "once_cell",
- "paste",
- "raw-window-handle",
- "regex",
- "resvg 0.45.1",
- "ropey",
- "rust-i18n",
- "rust_decimal",
- "schemars",
- "serde",
- "serde_json",
- "serde_repr",
- "smallvec",
- "smol",
- "tracing",
- "tree-sitter",
- "tree-sitter-astro-next",
- "tree-sitter-bash",
- "tree-sitter-c",
- "tree-sitter-c-sharp",
- "tree-sitter-cmake",
- "tree-sitter-cpp",
- "tree-sitter-css",
- "tree-sitter-diff",
- "tree-sitter-elixir",
- "tree-sitter-embedded-template",
- "tree-sitter-go",
- "tree-sitter-graphql",
- "tree-sitter-html",
- "tree-sitter-java",
- "tree-sitter-javascript",
- "tree-sitter-jsdoc",
- "tree-sitter-json",
- "tree-sitter-kotlin-sg",
- "tree-sitter-lua",
- "tree-sitter-make",
- "tree-sitter-md",
- "tree-sitter-php",
- "tree-sitter-proto",
- "tree-sitter-python",
- "tree-sitter-ruby",
- "tree-sitter-rust",
- "tree-sitter-scala",
- "tree-sitter-sequel",
- "tree-sitter-svelte-next",
- "tree-sitter-swift",
- "tree-sitter-toml-ng",
- "tree-sitter-typescript",
- "tree-sitter-yaml",
- "tree-sitter-zig",
- "unicode-segmentation",
- "uuid",
- "windows 0.58.0",
- "zed-sum-tree",
-]
-
-[[package]]
-name = "gpui-component-assets"
-version = "0.5.1"
-dependencies = [
- "anyhow",
- "gpui",
- "log",
- "rust-embed",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "zed-reqwest",
-]
-
-[[package]]
-name = "gpui-component-macros"
-version = "0.5.1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "gpui-component-motion"
-version = "0.1.0"
-
-[[package]]
-name = "gpui-component-story"
-version = "0.5.1"
-dependencies = [
- "anyhow",
- "autocorrect",
- "chrono",
- "color-lsp",
- "csv",
- "dirs",
- "fake",
- "getrandom 0.2.17",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "gpui_platform",
- "gpui_web",
- "gtk",
- "itertools 0.14.0",
- "lsp-types 0.97.0",
- "rand 0.8.6",
- "regex",
- "reqwest_client",
- "rust-i18n",
- "serde",
- "serde_json",
- "smol",
- "tracing",
- "tracing-subscriber",
- "tree-sitter-navi",
- "unindent",
-]
-
-[[package]]
-name = "gpui-component-story-web"
-version = "0.5.1"
-dependencies = [
- "console_error_panic_hook",
- "console_log",
- "gpui",
- "gpui-component",
- "gpui-component-assets",
- "gpui-component-story",
- "gpui_platform",
- "log",
- "tracing-wasm",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "gpui-wry"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "gpui",
- "lb-wry",
-]
-
-[[package]]
 name = "gpui_linux"
 version = "0.1.0"
 source = "git+https://github.com/zed-industries/zed#4aad57fd1f002f9feeea2b7fb6229ccbcd576cb1"
@@ -3663,6 +3492,177 @@ dependencies = [
 ]
 
 [[package]]
+name = "hearth-gpui"
+version = "0.5.2"
+dependencies = [
+ "aho-corasick",
+ "anyhow",
+ "async-channel",
+ "chrono",
+ "core-text",
+ "criterion",
+ "enum-iterator",
+ "futures",
+ "gpui",
+ "gpui_macros",
+ "gpui_platform",
+ "hearth-gpui-assets",
+ "hearth-gpui-macros",
+ "hearth-gpui-motion",
+ "html5ever 0.27.0",
+ "indoc",
+ "instant",
+ "itertools 0.13.0",
+ "log",
+ "lsp-types 0.97.0",
+ "markdown",
+ "markup5ever_rcdom",
+ "notify",
+ "num-traits",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "once_cell",
+ "paste",
+ "raw-window-handle",
+ "regex",
+ "resvg 0.45.1",
+ "ropey",
+ "rust-i18n",
+ "rust_decimal",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "smallvec",
+ "smol",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-astro-next",
+ "tree-sitter-bash",
+ "tree-sitter-c",
+ "tree-sitter-c-sharp",
+ "tree-sitter-cmake",
+ "tree-sitter-cpp",
+ "tree-sitter-css",
+ "tree-sitter-diff",
+ "tree-sitter-elixir",
+ "tree-sitter-embedded-template",
+ "tree-sitter-go",
+ "tree-sitter-graphql",
+ "tree-sitter-html",
+ "tree-sitter-java",
+ "tree-sitter-javascript",
+ "tree-sitter-jsdoc",
+ "tree-sitter-json",
+ "tree-sitter-kotlin-sg",
+ "tree-sitter-lua",
+ "tree-sitter-make",
+ "tree-sitter-md",
+ "tree-sitter-php",
+ "tree-sitter-proto",
+ "tree-sitter-python",
+ "tree-sitter-ruby",
+ "tree-sitter-rust",
+ "tree-sitter-scala",
+ "tree-sitter-sequel",
+ "tree-sitter-svelte-next",
+ "tree-sitter-swift",
+ "tree-sitter-toml-ng",
+ "tree-sitter-typescript",
+ "tree-sitter-yaml",
+ "tree-sitter-zig",
+ "unicode-segmentation",
+ "uuid",
+ "windows 0.58.0",
+ "zed-sum-tree",
+]
+
+[[package]]
+name = "hearth-gpui-assets"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "log",
+ "rust-embed",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "zed-reqwest",
+]
+
+[[package]]
+name = "hearth-gpui-macros"
+version = "0.5.1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "hearth-gpui-motion"
+version = "0.1.0"
+
+[[package]]
+name = "hearth-gpui-story"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "autocorrect",
+ "chrono",
+ "color-lsp",
+ "csv",
+ "dirs",
+ "fake",
+ "getrandom 0.2.17",
+ "gpui",
+ "gpui_platform",
+ "gpui_web",
+ "gtk",
+ "hearth-gpui",
+ "hearth-gpui-assets",
+ "itertools 0.14.0",
+ "lsp-types 0.97.0",
+ "rand 0.8.6",
+ "regex",
+ "reqwest_client",
+ "rust-i18n",
+ "serde",
+ "serde_json",
+ "smol",
+ "tracing",
+ "tracing-subscriber",
+ "tree-sitter-navi",
+ "unindent",
+]
+
+[[package]]
+name = "hearth-gpui-story-web"
+version = "0.5.1"
+dependencies = [
+ "console_error_panic_hook",
+ "console_log",
+ "gpui",
+ "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
+ "hearth-gpui-story",
+ "log",
+ "tracing-wasm",
+ "wasm-bindgen",
+]
+
+[[package]]
+name = "hearth-gpui-webview"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "lb-wry",
+]
+
+[[package]]
 name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3680,8 +3680,8 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
 ]
 
 [[package]]
@@ -4143,9 +4143,9 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]
@@ -4782,9 +4782,9 @@ name = "markdown_table"
 version = "0.5.1"
 dependencies = [
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]
@@ -7072,8 +7072,8 @@ name = "root_borderless"
 version = "0.5.1"
 dependencies = [
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
 ]
 
 [[package]]
@@ -7724,9 +7724,9 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]
@@ -8269,9 +8269,9 @@ dependencies = [
  "battery",
  "core-foundation 0.10.0",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
  "metal",
  "smol",
  "sysinfo 0.37.2",
@@ -8283,8 +8283,8 @@ name = "table_in_scrollable"
 version = "0.5.1"
 dependencies = [
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
 ]
 
 [[package]]
@@ -8384,9 +8384,9 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]
@@ -8743,8 +8743,8 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
  "gpui_platform",
+ "hearth-gpui",
 ]
 
 [[package]]
@@ -9984,10 +9984,10 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-wry",
  "gpui_platform",
  "gtk",
+ "hearth-gpui",
+ "hearth-gpui-webview",
  "lb-wry",
  "raw-window-handle",
 ]
@@ -10251,9 +10251,9 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "gpui",
- "gpui-component",
- "gpui-component-assets",
  "gpui_platform",
+ "hearth-gpui",
+ "hearth-gpui-assets",
 ]
 
 [[package]]

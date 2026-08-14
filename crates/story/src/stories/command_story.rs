@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, Styled, Window, px,
 };
-use gpui_component::{
+use hearth_gpui::{
     IconName, WindowExt as _,
     button::Button,
     command::{

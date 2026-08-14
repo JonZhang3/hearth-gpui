@@ -12,7 +12,7 @@ Settings 组件用于构建应用设置界面，支持页面分组、按标题/�
 ## 导入
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use hearth_gpui::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
 ```
 
 ## 用法
@@ -42,7 +42,7 @@ Settings
 ### 基础示例
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use hearth_gpui::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
 
 Settings::new("my-settings")
     .pages(vec![
@@ -87,7 +87,7 @@ Settings::new("app-settings")
 ### 分组样式
 
 ```rust
-use gpui_component::group_box::GroupBoxVariant;
+use hearth_gpui::group_box::GroupBoxVariant;
 
 Settings::new("my-settings")
     .with_group_variant(GroupBoxVariant::Outline)
@@ -228,13 +228,13 @@ SettingItem::new(
 ### Markdown 描述
 
 ```rust
-use gpui_component::text::markdown;
+use hearth_gpui::text::markdown;
 
 SettingItem::new(
     "Documentation",
     SettingField::element(...)
 )
-.description(markdown("Rust doc for the `gpui-component` crate."))
+.description(markdown("Rust doc for the `hearth-gpui` crate."))
 ```
 
 ### 禁用状态
@@ -367,7 +367,7 @@ SettingItem::new(
 ### NumberInput
 
 ```rust
-use gpui_component::setting::NumberFieldOptions;
+use hearth_gpui::setting::NumberFieldOptions;
 
 SettingItem::new(
     "Font Size",
@@ -408,7 +408,7 @@ SettingItem::new(
 如果某个字段逻辑较复杂并且需要复用，可以实现 [SettingFieldElement] trait：
 
 ```rust
-use gpui_component::setting::{SettingFieldElement, RenderOptions};
+use hearth_gpui::setting::{SettingFieldElement, RenderOptions};
 
 struct OpenURLSettingField {
     label: SharedString,
@@ -438,7 +438,7 @@ SettingItem::new(
     "GitHub Repository",
     SettingField::element(OpenURLSettingField {
         label: "Repository...".into(),
-        url: "https://github.com/longbridge/gpui-component".into(),
+        url: "https://github.com/JonZhang3/hearth-gpui".into(),
     })
 )
 ```
@@ -473,7 +473,7 @@ SettingItem::new(
 
 ```rust
 use gpui::{App, SharedString};
-use gpui_component::{
+use hearth_gpui::{
     Settings, SettingPage, SettingGroup, SettingItem, SettingField,
     setting::NumberFieldOptions,
     group_box::GroupBoxVariant,
@@ -555,12 +555,12 @@ Settings::new("app-settings")
     ])
 ```
 
-[Settings]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.Settings.html
-[SettingPage]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingPage.html
-[SettingGroup]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingGroup.html
-[SettingItem]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingItem.html
-[SettingField]: https://docs.rs/gpui-component/latest/gpui_component/setting/enum.SettingField.html
-[SettingFieldElement]: https://docs.rs/gpui-component/latest/gpui_component/setting/trait.SettingFieldElement.html
-[NumberFieldOptions]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.NumberFieldOptions.html
+[Settings]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.Settings.html
+[SettingPage]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingPage.html
+[SettingGroup]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingGroup.html
+[SettingItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.SettingItem.html
+[SettingField]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/enum.SettingField.html
+[SettingFieldElement]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/trait.SettingFieldElement.html
+[NumberFieldOptions]: https://docs.rs/hearth-gpui/latest/hearth_gpui/setting/struct.NumberFieldOptions.html
 [GroupBox]: ./group-box.md
-[Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html
+[Sizable]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.Sizable.html

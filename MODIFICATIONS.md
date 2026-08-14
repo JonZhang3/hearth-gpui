@@ -4,6 +4,14 @@ This repository is derived from the original
 [`longbridge/gpui-component`](https://github.com/longbridge/gpui-component)
 project and contains substantial modifications.
 
+## Subsequent Project Rename
+
+The derived project is distributed as **Hearth GPUI**. Its Rust packages,
+import namespaces, documentation links, examples, and project skills use the
+`hearth-gpui` / `hearth_gpui` naming family. References that identify the
+original project or its historical issues and pull requests retain the
+`gpui-component` name.
+
 Commit `4caf202357c787395710679bdcae8c4eca29ad8e` introduced the following
 project-wide changes:
 
@@ -280,11 +288,11 @@ content.
   `禁用节点`, `Context Menu`, `键盘行为` and 2 more; removed or replaced `用法`, `基础树`, `文件树与图标`, `动态加载`, `选择处理`
   and 7 more.
 - `docs/zh-CN/docs/theme.md` — Expanded theme documentation with `Color Theme 与 Style Preset`, `从扁平外观字段迁移`.
-- `skills/gpui-component/SKILL.md` — Expanded the Badge entry with variant and overlay APIs and removed the
+- `skills/hearth-gpui/SKILL.md` — Expanded the Badge entry with variant and overlay APIs and removed the
   legacy Tag entry.
-- `skills/gpui-component/references/style-guide.md` — Replaced legacy Alert status variants with the aligned
+- `skills/hearth-gpui/references/style-guide.md` — Replaced legacy Alert status variants with the aligned
   Default and Destructive variant example.
-- `skills/gpui-component/references/usage.md` — Migrated Form examples to stable field IDs and the FieldBody,
+- `skills/hearth-gpui/references/usage.md` — Migrated Form examples to stable field IDs and the FieldBody,
   FieldLabel, and FieldContent composition APIs.
 - `themes/hybrid.json` — Changed JSON theme/schema keys: removed `shadow`.
 - `themes/macos-classic.json` — Changed JSON theme/schema keys: removed `shadow`.
@@ -301,7 +309,7 @@ upstream file. They are recorded here with their introduced purpose.
 - `.agents/skills/align-shadcn-component/agents/openai.yaml` — Added Codex agent metadata for the shadcn
   component alignment skill.
 - `AGENTS.md` — Added documentation for Repository Instructions.
-- `crates/motion/Cargo.toml` — Added the manifest for the reusable `gpui-component-motion` crate.
+- `crates/motion/Cargo.toml` — Added the manifest for the reusable `hearth-gpui-motion` crate.
 - `crates/motion/src/lib.rs` — Added interpolation, transition, easing, reduced-motion, and motion-element
   primitives.
 - `crates/story/examples/shadcn_capture.rs` — Added the main deterministic shadcn component screenshot capture

@@ -15,7 +15,7 @@ Both components feature smooth transition animations when the value changes, a l
 ## Progress
 
 ```rust
-use gpui_component::progress::Progress;
+use hearth_gpui::progress::Progress;
 ```
 
 ### Usage
@@ -144,7 +144,7 @@ impl Render for MyView {
 A circular progress indicator that displays progress as an arc. Ideal for compact spaces, inline labels, or as a download/upload indicator.
 
 ```rust
-use gpui_component::progress::ProgressCircle;
+use hearth_gpui::progress::ProgressCircle;
 ```
 
 ### Usage

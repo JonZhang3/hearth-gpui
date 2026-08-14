@@ -11,7 +11,7 @@ decorative and non-interactive. The default orientation is horizontal.
 ## Import
 
 ```rust
-use gpui_component::separator::Separator;
+use hearth_gpui::separator::Separator;
 ```
 
 ## Horizontal
@@ -43,7 +43,7 @@ Orientation can also be selected explicitly with `Separator::new().orientation(A
 
 ## GPUI extensions
 
-Dashed lines, labels, and color overrides are retained as GPUI Component extensions:
+Dashed lines, labels, and color overrides are retained as Hearth GPUI extensions:
 
 ```rust
 Separator::horizontal_dashed()

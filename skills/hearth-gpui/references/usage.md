@@ -1,4 +1,4 @@
-# gpui-component Usage Guide
+# hearth-gpui Usage Guide
 
 **Contents:** [Setup](#setup) · [Component Types](#component-types) · [Common Components](#common-components) (Button, Input, Select, Checkbox, Icon, Dialog, Notification, Tabs, Tooltip, Form, List) · [Theming](#theming) · [Layout Helpers](#layout-helpers) · [Overlay Layers](#overlay-layers-dialogs-sheets-notifications) · [Shared Traits](#shared-traits)
 
@@ -10,8 +10,8 @@
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit"] }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
-gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" } # optional icons
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
+hearth-gpui-assets = { git = "https://github.com/JonZhang3/hearth-gpui" } # optional icons
 ```
 
 ### 2. Initialization
@@ -19,9 +19,9 @@ gpui-component-assets = { git = "https://github.com/longbridge/gpui-component" }
 ```rust
 fn main() {
     gpui_platform::application()
-        .with_assets(gpui_component_assets::Assets)
+        .with_assets(hearth_gpui_assets::Assets)
         .run(move |cx| {
-            gpui_component::init(cx); // MUST be first
+            hearth_gpui::init(cx); // MUST be first
 
             cx.spawn(async move |cx| {
                 cx.open_window(WindowOptions::default(), |window, cx| {
@@ -44,7 +44,7 @@ fn main() {
 Used directly in `render`, no stored state:
 
 ```rust
-use gpui_component::button::Button;
+use hearth_gpui::button::Button;
 
 impl Render for MyView {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -59,7 +59,7 @@ impl Render for MyView {
 Require an `Entity<State>` stored in your view:
 
 ```rust
-use gpui_component::input::{Input, InputState};
+use hearth_gpui::input::{Input, InputState};
 
 struct MyView {
     name: Entity<InputState>,
@@ -87,7 +87,7 @@ impl Render for MyView {
 ### Button
 
 ```rust
-use gpui_component::button::{Button, ButtonGroup};
+use hearth_gpui::button::{Button, ButtonGroup};
 
 // Variants
 Button::new("btn").label("Default")
@@ -121,7 +121,7 @@ ButtonGroup::new("group")
 ### Input
 
 ```rust
-use gpui_component::input::{Input, InputState};
+use hearth_gpui::input::{Input, InputState};
 
 // State setup (in new/init)
 let input = cx.new(|cx| InputState::new(window, cx)
@@ -155,7 +155,7 @@ cx.subscribe_in(&input, window, |view, state, event, window, cx| {
 ### Select
 
 ```rust
-use gpui_component::select::{Select, SelectState};
+use hearth_gpui::select::{Select, SelectState};
 
 // Simple string list
 let state = cx.new(|cx| {
@@ -173,7 +173,7 @@ let selected = state.read(cx).selected_item();
 ### Checkbox / Switch / Radio
 
 ```rust
-use gpui_component::{Checkbox, Switch};
+use hearth_gpui::{Checkbox, Switch};
 
 // Stateless (controlled)
 Checkbox::new("cb").checked(self.checked)
@@ -186,7 +186,7 @@ Switch::new("sw").checked(self.enabled)
 ### Icon
 
 ```rust
-use gpui_component::{Icon, IconName};
+use hearth_gpui::{Icon, IconName};
 
 Icon::new(IconName::Check)
 Icon::new(IconName::Search).small()
@@ -196,7 +196,7 @@ Icon::new(IconName::Plus).large().text_color(cx.theme().primary)
 ### Dialog
 
 ```rust
-use gpui_component::dialog::Dialog;
+use hearth_gpui::dialog::Dialog;
 
 // Open from window context
 window.open_modal(cx, |modal, _, cx| {
@@ -227,7 +227,7 @@ window.push_notification(
 ### Tabs
 
 ```rust
-use gpui_component::tab::{Tab, TabBar};
+use hearth_gpui::tab::{Tab, TabBar};
 
 TabBar::new("tabs")
     .child(Tab::new("tab1").child("Overview"))
@@ -251,7 +251,7 @@ Button::new("btn").icon(IconName::Trash).tooltip("Delete")
 ### Form
 
 ```rust
-use gpui_component::form::{field, h_form, v_form, FieldBody, FieldContent, FieldLabel};
+use hearth_gpui::form::{field, h_form, v_form, FieldBody, FieldContent, FieldLabel};
 
 // Vertical form
 v_form()
@@ -284,7 +284,7 @@ h_form()
 ### List (searchable, virtualized)
 
 ```rust
-use gpui_component::list::{List, ListState, ListDelegate, ListItem, ListEvent};
+use hearth_gpui::list::{List, ListState, ListDelegate, ListItem, ListEvent};
 
 // Implement ListDelegate for your data type, then:
 let list_state = cx.new(|cx| ListState::new(MyDelegate::new(), window, cx));
@@ -304,7 +304,7 @@ cx.subscribe(&list_state, |this, _, event, cx| {
 ## Theming
 
 ```rust
-use gpui_component::ActiveTheme as _;
+use hearth_gpui::ActiveTheme as _;
 
 // Access colors
 cx.theme().primary
@@ -325,7 +325,7 @@ div()
 ### Switch Theme
 
 ```rust
-use gpui_component::Theme;
+use hearth_gpui::Theme;
 
 // Toggle light/dark
 cx.update_global::<Theme, _>(|theme, cx| {
@@ -340,7 +340,7 @@ Theme::global_mut(cx).apply_config(&theme_config);
 
 ## Layout Helpers
 
-gpui-component extends GPUI with convenient layout methods:
+hearth-gpui extends GPUI with convenient layout methods:
 
 ```rust
 h_flex()    // div().flex().flex_row().items_center()
@@ -387,4 +387,4 @@ All components follow the builder pattern `Component::new("id").method().method(
 - `Styled`: any GPUI style methods (`.w()`, `.bg()`, `.p_2()`, etc.)
 
 For any component not covered here, fetch its doc from:
-`https://longbridge.github.io/gpui-component/docs/components/{name}.md`
+`https://jonzhang3.github.io/hearth-gpui/docs/components/{name}.md`

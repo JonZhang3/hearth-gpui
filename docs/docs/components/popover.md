@@ -10,7 +10,7 @@ Popover displays rich interactive content next to a trigger. The default surface
 ## Import
 
 ```rust
-use gpui_component::popover::{
+use hearth_gpui::popover::{
     Popover, PopoverAlign, PopoverDescription, PopoverHeader, PopoverSide, PopoverTitle,
     PopoverTrigger,
 };
@@ -22,7 +22,7 @@ The trigger must implement `PopoverTrigger`, which lets Popover place `aria-expa
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::{
+use hearth_gpui::{
     button::Button,
     popover::{Popover, PopoverDescription, PopoverHeader, PopoverTitle},
 };

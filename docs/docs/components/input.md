@@ -10,7 +10,7 @@ A flexible text input component with support for validation, masking, prefix/suf
 ## Import
 
 ```rust
-use gpui_component::input::{InputState, Input};
+use hearth_gpui::input::{InputState, Input};
 ```
 
 ## Usage
@@ -55,7 +55,7 @@ Input::new(&input)
 ### With Prefix and Suffix
 
 ```rust
-use gpui_component::{Icon, IconName};
+use hearth_gpui::{Icon, IconName};
 
 // With prefix icon
 Input::new(&input)
@@ -181,7 +181,7 @@ let input = cx.new(|cx|
 );
 
 // Number with thousands separator
-use gpui_component::input::MaskPattern;
+use hearth_gpui::input::MaskPattern;
 
 let input = cx.new(|cx|
     InputState::new(window, cx)

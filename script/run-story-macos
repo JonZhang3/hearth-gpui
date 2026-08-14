@@ -13,9 +13,9 @@
 set -euxo pipefail
 
 APP=/tmp/GPUIComponentStory.app
-BIN=gpui-component-story
+BIN=hearth-gpui-story
 
-cargo build -p gpui-component-story
+cargo build -p hearth-gpui-story
 
 mkdir -p "$APP/Contents/MacOS"
 cp "target/debug/$BIN" "$APP/Contents/MacOS/"
@@ -25,9 +25,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleExecutable</key><string>gpui-component-story</string>
-  <key>CFBundleIdentifier</key><string>com.longbridge.gpui-component-story</string>
-  <key>CFBundleName</key><string>GPUI Component Story</string>
+  <key>CFBundleExecutable</key><string>hearth-gpui-story</string>
+  <key>CFBundleIdentifier</key><string>com.longbridge.hearth-gpui-story</string>
+  <key>CFBundleName</key><string>Hearth GPUI Story</string>
   <key>CFBundleVersion</key><string>1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSPrincipalClass</key><string>NSApplication</string>

@@ -90,7 +90,7 @@ fn print_allocation_snapshot(name: &str, snapshot: AllocationSnapshot, printed: 
         snapshot.operations, snapshot.requested_bytes
     );
 }
-use gpui_component::{
+use hearth_gpui::{
     Disableable as _, Sizable as _, button::Button, checkbox::Checkbox, h_flex, popover::Popover,
     progress::Progress, radio::Radio, skeleton::Skeleton, spinner::Spinner, switch::Switch, v_flex,
 };
@@ -222,7 +222,7 @@ impl Render for LoadingSurfaceBench {
     }
 }
 
-/// Installs gpui-component globals and mounts a benchmark view directly in the
+/// Installs hearth-gpui globals and mounts a benchmark view directly in the
 /// headless window. Root is intentionally excluded because its macOS native
 /// accessibility bridge requires an application-bundle window.
 fn mount_bench_view<V: Render>(
@@ -231,7 +231,7 @@ fn mount_bench_view<V: Render>(
     build: impl FnOnce() -> V,
 ) -> gpui::Entity<V> {
     cx.update(|cx| {
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
         cx.set_reduce_motion(reduce_motion);
     });
     let mut window = cx.add_empty_window();
@@ -324,7 +324,7 @@ fn virtual_scroll_1000_rows_render(cx: &mut BenchAppContext) {
 
 #[gpui::bench]
 fn startup_surface_mount(cx: &mut BenchAppContext) {
-    cx.update(gpui_component::init);
+    cx.update(hearth_gpui::init);
     let window = cx.add_empty_window().window_handle();
     cx.bench_iter(|cx| {
         cx.update_window(window, |_, window, cx| {

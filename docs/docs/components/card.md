@@ -11,7 +11,7 @@ Card provides typed Header, Content, Footer, and Media slots so the selected siz
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::card::{
+use hearth_gpui::card::{
     Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardMedia,
     CardTitle,
 };
@@ -126,4 +126,4 @@ GPUI supports `container_query` for explicitly sized regions, so responsive cont
 
 Card backgrounds use the Color Theme's `card.background` and `card.foreground` roles. Themes that omit them fall back to `background` and `foreground`. Vega supplies the xs shadow, Nova supplies its compact tinted footer, and Maia supplies the larger radius and header gap through semantic Style Preset properties.
 
-[Card]: https://docs.rs/gpui-component/latest/gpui_component/card/struct.Card.html
+[Card]: https://docs.rs/hearth-gpui/latest/hearth_gpui/card/struct.Card.html

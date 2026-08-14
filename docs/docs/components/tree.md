@@ -10,7 +10,7 @@ description: A virtualized hierarchical view with selection, disclosure, and key
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IconName, Sizable as _, h_flex,
     list::ListItem,
     tree::{TreeItem, TreeState, tree},

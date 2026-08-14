@@ -10,7 +10,7 @@ description: 具备原生编辑能力并与 shadcn 对齐的可组合一次性�
 ## 导入
 
 ```rust
-use gpui_component::input::{
+use hearth_gpui::input::{
     InputEvent, OtpEvent, OtpInput, OtpInputGroup, OtpInputSeparator,
     OtpInputSlot, OtpState,
 };

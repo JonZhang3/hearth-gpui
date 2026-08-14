@@ -1,6 +1,6 @@
 [package]
-name = "gpui-component-macros"
-description = "Macros for GPUI Component."
+name = "hearth-gpui-macros"
+description = "Macros for Hearth GPUI."
 version = "0.5.1"
 license = "Apache-2.0"
 publish = true

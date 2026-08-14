@@ -10,7 +10,7 @@ description: Displays textual keyboard input and grouped shortcuts.
 ## Import
 
 ```rust
-use gpui_component::kbd::{Kbd, KbdGroup};
+use hearth_gpui::kbd::{Kbd, KbdGroup};
 ```
 
 ## Basic
@@ -67,7 +67,7 @@ On macOS, modifiers use symbols and omit separators. Windows and Linux use textu
 Icons should use the 12px `xsmall` size to match the shadcn Kbd baseline.
 
 ```rust
-use gpui_component::{Icon, IconName, Sizable as _};
+use hearth_gpui::{Icon, IconName, Sizable as _};
 
 Kbd::new()
     .child(Icon::new(IconName::ArrowLeft).xsmall())

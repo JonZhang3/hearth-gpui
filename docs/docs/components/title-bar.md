@@ -10,7 +10,7 @@ TitleBar provides a customizable window title bar that can replace the default O
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     badge::{Badge, BadgeVariants as _},
     TitleBar,
 };
@@ -169,7 +169,7 @@ The `TitleBarElement` provides window dragging functionality on Linux platforms.
 ### Application Title Bar
 
 ```rust
-use gpui_component::{TitleBar, button::Button, menu::AppMenuBar};
+use hearth_gpui::{TitleBar, button::Button, menu::AppMenuBar};
 
 struct AppTitleBar {
     app_menu_bar: Entity<AppMenuBar>,

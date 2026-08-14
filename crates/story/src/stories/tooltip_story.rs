@@ -9,7 +9,7 @@ use gpui::{
     actions, div, prelude::FluentBuilder as _,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Disableable as _, IconName, StyledExt as _,
     button::{Button, ButtonVariant, ButtonVariants, Toggle},
     checkbox::Checkbox,

@@ -12,7 +12,7 @@ Accordion 通过垂直排列的 trigger 展开内容。每个 item 必须声明�
 ## 导入
 
 ```rust
-use gpui_component::accordion::Accordion;
+use hearth_gpui::accordion::Accordion;
 ```
 
 ## 非受控单选 Accordion
@@ -102,5 +102,5 @@ Trigger 会向 AccessKit 提供 Button role、expanded 和 disabled 状态。自
 - `disabled(bool)` 禁用整个组。
 - `item(value, builder)` 使用必填稳定 value 添加 item。
 
-[Accordion]: https://docs.rs/gpui-component/latest/gpui_component/accordion/struct.Accordion.html
-[AccordionItem]: https://docs.rs/gpui-component/latest/gpui_component/accordion/struct.AccordionItem.html
+[Accordion]: https://docs.rs/hearth-gpui/latest/hearth_gpui/accordion/struct.Accordion.html
+[AccordionItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/accordion/struct.AccordionItem.html

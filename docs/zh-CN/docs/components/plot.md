@@ -12,7 +12,7 @@ description: 用于构建自定义图表和数据可视化的底层绘图库。
 ## 导入
 
 ```rust
-use gpui_component::plot::{
+use hearth_gpui::plot::{
     scale::{Scale, ScaleLinear, ScaleBand, ScalePoint, ScaleOrdinal},
     shape::{Bar, Stack, Line, Area, Pie, Arc},
     PlotAxis, AxisText

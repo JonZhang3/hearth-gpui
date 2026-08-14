@@ -13,7 +13,7 @@ A standalone, shadcn-aligned calendar for single and range selection. It support
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     calendar::{Calendar, CalendarState, CalendarEvent, Date, Matcher},
 };
 ```
@@ -414,6 +414,6 @@ Calendar::new(&availability_calendar)
 
 The Calendar component provides a foundation for any date-related UI requirements, from simple date pickers to complex scheduling interfaces.
 
-[Calendar]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.Calendar.html
-[CalendarState]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.CalendarState.html
-[RangeMatcher]: https://docs.rs/gpui-component/latest/gpui_component/calendar/struct.RangeMatcher.html
+[Calendar]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.Calendar.html
+[CalendarState]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.CalendarState.html
+[RangeMatcher]: https://docs.rs/hearth-gpui/latest/hearth_gpui/calendar/struct.RangeMatcher.html

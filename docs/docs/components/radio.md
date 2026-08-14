@@ -12,7 +12,7 @@ for standalone controlled rendering, but mutually exclusive choices should use `
 ## Import
 
 ```rust
-use gpui_component::radio::{Radio, RadioGroup, RadioGroupItem};
+use hearth_gpui::radio::{Radio, RadioGroup, RadioGroupItem};
 ```
 
 ## Basic usage
@@ -134,7 +134,7 @@ Disabled items are skipped. Pointer focus does not display the keyboard-only foc
 - Light-mode unchecked controls are transparent; dark mode uses the semantic input surface.
 - Checked, unchecked, invalid, and focus paint changes are immediate. The pinned shadcn source
   does not define an indicator or color transition for Radio Group.
-- `Sizable` remains a GPUI Component extension for exceptional compact or large compositions;
+- `Sizable` remains a Hearth GPUI extension for exceptional compact or large compositions;
   default size is the shadcn acceptance baseline.
 
 ## API

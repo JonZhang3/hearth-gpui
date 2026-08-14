@@ -10,7 +10,7 @@ Avatar follows the shadcn Vega geometry. Images and fallback content are clipped
 ## Import
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     IconName,
     avatar::{Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage},
 };
@@ -104,5 +104,5 @@ AvatarGroup::new()
 
 The group size is authoritative and is applied uniformly to every Avatar and count item.
 
-[Avatar]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.Avatar.html
-[AvatarGroup]: https://docs.rs/gpui-component/latest/gpui_component/avatar/struct.AvatarGroup.html
+[Avatar]: https://docs.rs/hearth-gpui/latest/hearth_gpui/avatar/struct.Avatar.html
+[AvatarGroup]: https://docs.rs/hearth-gpui/latest/hearth_gpui/avatar/struct.AvatarGroup.html

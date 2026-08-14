@@ -2,7 +2,7 @@
 // Changes:
 // - Removed the legacy `primary` button variant and used the aligned default variant.
 use gpui::*;
-use gpui_component::{button::*, *};
+use hearth_gpui::{button::*, *};
 
 pub struct Example;
 impl Render for Example {
@@ -24,8 +24,8 @@ impl Render for Example {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

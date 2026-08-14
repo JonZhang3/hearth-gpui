@@ -11,7 +11,7 @@ use gpui::{
     App, AppContext as _, Entity, Focusable, IntoElement, ParentElement as _, Render, Styled as _,
     Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     Disableable as _, IconName, Sizable as _,
     button::{Button, ButtonGroup, ButtonGroupSeparator, ButtonGroupText},
     h_flex,

@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use gpui::*;
-use gpui_component::{IconName, Root, v_flex};
+use hearth_gpui::{IconName, Root, v_flex};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -47,8 +47,8 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        // We must initialize gpui_component before using it.
-        gpui_component::init(cx);
+        // We must initialize hearth_gpui before using it.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

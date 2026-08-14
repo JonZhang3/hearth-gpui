@@ -12,7 +12,7 @@ moves from the trigger to the content.
 ## Import
 
 ```rust
-use gpui_component::hover_card::{HoverCard, HoverCardAlign, HoverCardSide};
+use hearth_gpui::hover_card::{HoverCard, HoverCardAlign, HoverCardSide};
 ```
 
 ## Usage
@@ -34,7 +34,7 @@ HoverCard::new("user-preview")
                     .gap_1()
                     .child(div().font_semibold().child("Jason Lee"))
                     .child(div().text_color(cx.theme().muted_foreground).child(
-                        "The author of GPUI Component."
+                        "The author of Hearth GPUI."
                     ))
             )
     )

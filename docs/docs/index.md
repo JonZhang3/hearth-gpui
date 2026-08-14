@@ -3,11 +3,11 @@ title: Introduction
 description: Rust GUI components for building fantastic cross-platform desktop application by using GPUI.
 ---
 
-# GPUI Component Introduction
+# Hearth GPUI Introduction
 
-GPUI Component is a Rust UI component library for building fantastic desktop applications using [GPUI](https://gpui.rs).
+Hearth GPUI is a Rust UI component library for building fantastic desktop applications using [GPUI](https://gpui.rs).
 
-GPUI Component is a comprehensive UI component library for building fantastic desktop applications using [GPUI](https://gpui.rs). It provides 60+ cross-platform components with modern design, theming support, and high performance.
+Hearth GPUI is a comprehensive UI component library for building fantastic desktop applications using [GPUI](https://gpui.rs). It provides 60+ cross-platform components with modern design, theming support, and high performance.
 
 ## Features
 
@@ -25,19 +25,19 @@ GPUI Component is a comprehensive UI component library for building fantastic de
 
 ## Quick Example
 
-Add `gpui` and `gpui-component` to your `Cargo.toml`:
+Add `gpui` and `hearth-gpui` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 gpui = { git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component" }
+hearth-gpui = { git = "https://github.com/JonZhang3/hearth-gpui" }
 ```
 
 Then create a simple "Hello, World!" application with a button:
 
 ```rust
 use gpui::*;
-use gpui_component::{button::*, *};
+use hearth_gpui::{button::*, *};
 
 pub struct HelloWorld;
 impl Render for HelloWorld {
@@ -60,8 +60,8 @@ impl Render for HelloWorld {
 
 fn main() {
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -78,9 +78,9 @@ fn main() {
 
 ## Community & Support
 
-- [GitHub Repository](https://github.com/longbridge/gpui-component)
-- [Issue Tracker](https://github.com/longbridge/gpui-component/issues)
-- [Contributing Guide](https://github.com/longbridge/gpui-component/blob/main/CONTRIBUTING.md)
+- [GitHub Repository](https://github.com/JonZhang3/hearth-gpui)
+- [Issue Tracker](https://github.com/JonZhang3/hearth-gpui/issues)
+- [Contributing Guide](https://github.com/JonZhang3/hearth-gpui/blob/main/CONTRIBUTING.md)
 
 ## License
 

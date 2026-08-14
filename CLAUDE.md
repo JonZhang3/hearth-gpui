@@ -4,11 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-GPUI Component is a UI component library for building desktop applications using [GPUI](https://gpui.rs). It provides 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design.
+Hearth GPUI is a UI component library for building desktop applications using [GPUI](https://gpui.rs). It provides 60+ cross-platform desktop UI components, inspired by macOS/Windows controls and combined with shadcn/ui design.
 
 This is a Rust workspace project with the following main crates:
 
-- `crates/ui` - Core UI component library (published as `gpui-component`)
+- `crates/ui` - Core UI component library (published as `hearth-gpui`)
 - `crates/story` - Gallery application for showcasing and testing components
 - `crates/story-web` - Web version of the story gallery (using WebAssembly)
 - `crates/macros` - Procedural macros (`IntoPlot` derive)
@@ -53,10 +53,10 @@ cargo machete
 cargo test --all
 
 # Run tests for a specific crate
-cargo test -p gpui-component
+cargo test -p hearth-gpui
 
 # Run doc tests
-cargo test -p gpui-component --doc
+cargo test -p hearth-gpui --doc
 ```
 
 ### Performance Profiling
@@ -73,14 +73,14 @@ samply record cargo run
 
 ### Component Initialization
 
-**Critical requirement**: You must call `gpui_component::init(cx)` at your application's entry point before using any GPUI Component features.
+**Critical requirement**: You must call `hearth_gpui::init(cx)` at your application's entry point before using any Hearth GPUI features.
 
 ```rust
 fn main() {
     let app = Application::new();
     app.run(move |cx| {
         // This must be called first
-        gpui_component::init(cx);
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {
@@ -211,8 +211,8 @@ CI runs full test suite on each platform.
 This project has custom skills for Claude Code, Codex, and downstream users:
 
 - **gpui** (`skills/`) - GPUI framework knowledge: actions/keybindings, async, context, custom elements, entity state, events, focus, global state, layout/styling, testing
-- **gpui-component** (`skills/`) - How to use gpui-component: setup, stateless/stateful patterns, common component APIs, theming
-- **gpui-component-dev** (`.claude/skills/`) - Contributing to gpui-component: creating new components, writing stories, writing documentation, writing PR descriptions
+- **hearth-gpui** (`skills/`) - How to use hearth-gpui: setup, stateless/stateful patterns, common component APIs, theming
+- **hearth-gpui-dev** (`.claude/skills/`) - Contributing to hearth-gpui: creating new components, writing stories, writing documentation, writing PR descriptions
 - **align-shadcn-component** (`.agents/skills/`) - Codex workflow for comparing an existing GPUI component with the pinned local shadcn/ui sources, producing a Vega alignment plan, then immediately implementing and verifying it unless the user requests planning only
 
 Each supported agent discovers the skills from its corresponding directory.

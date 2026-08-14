@@ -12,7 +12,7 @@ Focus Trap 是一个用于将键盘焦点限制在特定容器内的工具能力
 ## 导入
 
 ```rust
-use gpui_component::FocusTrapElement;
+use hearth_gpui::FocusTrapElement;
 ```
 
 ## 用法
@@ -118,8 +118,8 @@ Focus trap 系统主要由三部分组成：
 
 ## API 参考
 
-- [FocusTrapElement](https://docs.rs/gpui-component/latest/gpui_component/trait.FocusTrapElement.html)
-- [FocusTrapContainer](https://docs.rs/gpui-component/latest/gpui_component/struct.FocusTrapContainer.html)
+- [FocusTrapElement](https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.FocusTrapElement.html)
+- [FocusTrapContainer](https://docs.rs/hearth-gpui/latest/hearth_gpui/struct.FocusTrapContainer.html)
 
 ## 示例
 
@@ -239,7 +239,7 @@ impl Render for ModalView {
 - [Sheet](/docs/components/sheet)
 - [focus-trap-react](https://github.com/focus-trap/focus-trap-react)
 
-[Root]: https://docs.rs/gpui-component/latest/gpui_component/struct.Root.html
-[FocusTrapElement]: https://docs.rs/gpui-component/latest/gpui_component/trait.FocusTrapElement.html
+[Root]: https://docs.rs/hearth-gpui/latest/hearth_gpui/struct.Root.html
+[FocusTrapElement]: https://docs.rs/hearth-gpui/latest/hearth_gpui/trait.FocusTrapElement.html
 [Dialog]: /docs/components/dialog
 [Sheet]: /docs/components/sheet

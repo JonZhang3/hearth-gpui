@@ -1844,7 +1844,7 @@ impl Element for TextElement {
         // #### text
         //
         // Hello 世界，this is GPUI component.
-        // The GPUI Component is a collection of UI components for
+        // The Hearth GPUI is a collection of UI components for
         // GPUI framework, including Button, Input, Checkbox, Radio,
         // Dropdown, Tab, and more...
         //

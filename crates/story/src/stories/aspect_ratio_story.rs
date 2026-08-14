@@ -2,7 +2,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, Styled as _, Window, div, px,
 };
-use gpui_component::{ActiveTheme as _, aspect_ratio::AspectRatio, dock::PanelControl, h_flex};
+use hearth_gpui::{ActiveTheme as _, aspect_ratio::AspectRatio, dock::PanelControl, h_flex};
 
 use crate::section;
 

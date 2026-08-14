@@ -5,12 +5,12 @@ description: 用于切换选中与未选中状态的复选框组件。
 
 # Checkbox
 
-Checkbox 是一个与 shadcn 对齐的二元及混合状态选择组件。默认尺寸遵循 Vega，同时保留 GPUI Component 扩展尺寸。
+Checkbox 是一个与 shadcn 对齐的二元及混合状态选择组件。默认尺寸遵循 Vega，同时保留 Hearth GPUI 扩展尺寸。
 
 ## 导入
 
 ```rust
-use gpui_component::checkbox::Checkbox;
+use hearth_gpui::checkbox::Checkbox;
 ```
 
 ## 用法
@@ -57,7 +57,7 @@ Checkbox::new("cb").label("Medium")
 Checkbox::new("cb-lg").large().label("Large")
 ```
 
-默认 Checkbox 为 16px，Indicator 为 14px，与 shadcn 一致。其他尺寸是 GPUI Component 的扩展能力。
+默认 Checkbox 为 16px，Indicator 为 14px，与 shadcn 一致。其他尺寸是 Hearth GPUI 的扩展能力。
 
 ### 禁用状态
 
@@ -163,4 +163,4 @@ Checkbox::new("invalid").label("必须接受条款").invalid(true)
 
 动效同样由当前 Style Preset 决定：Vega 和 Maia 过渡 Focus 或 Invalid Ring，Nova 过渡控件颜色。Indicator 按照 shadcn 的 `transition-none` 立即切换；Reduced Motion 下直接显示最终状态。
 
-[Checkbox]: https://docs.rs/gpui-component/latest/gpui_component/checkbox/struct.Checkbox.html
+[Checkbox]: https://docs.rs/hearth-gpui/latest/hearth_gpui/checkbox/struct.Checkbox.html

@@ -1,5 +1,5 @@
 use gpui::{App, Entity, Menu, MenuItem, SharedString};
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, GlobalState, Theme, ThemeMode, ThemeRegistry, menu::AppMenuBar,
 };
 
@@ -79,26 +79,23 @@ fn build_menus(title: impl Into<SharedString>, cx: &App) -> Vec<Menu> {
         Menu {
             name: "Edit".into(),
             items: vec![
-                MenuItem::action("Undo", gpui_component::input::Undo),
-                MenuItem::action("Redo", gpui_component::input::Redo),
+                MenuItem::action("Undo", hearth_gpui::input::Undo),
+                MenuItem::action("Redo", hearth_gpui::input::Redo),
                 MenuItem::separator(),
-                MenuItem::action("Cut", gpui_component::input::Cut),
-                MenuItem::action("Copy", gpui_component::input::Copy),
-                MenuItem::action("Paste", gpui_component::input::Paste),
+                MenuItem::action("Cut", hearth_gpui::input::Cut),
+                MenuItem::action("Copy", hearth_gpui::input::Copy),
+                MenuItem::action("Paste", hearth_gpui::input::Paste),
                 MenuItem::separator(),
-                MenuItem::action("Delete", gpui_component::input::Delete),
+                MenuItem::action("Delete", hearth_gpui::input::Delete),
                 MenuItem::action(
                     "Delete Previous Word",
-                    gpui_component::input::DeleteToPreviousWordStart,
+                    hearth_gpui::input::DeleteToPreviousWordStart,
                 ),
-                MenuItem::action(
-                    "Delete Next Word",
-                    gpui_component::input::DeleteToNextWordEnd,
-                ),
+                MenuItem::action("Delete Next Word", hearth_gpui::input::DeleteToNextWordEnd),
                 MenuItem::separator(),
-                MenuItem::action("Find", gpui_component::input::Search),
+                MenuItem::action("Find", hearth_gpui::input::Search),
                 MenuItem::separator(),
-                MenuItem::action("Select All", gpui_component::input::SelectAll),
+                MenuItem::action("Select All", hearth_gpui::input::SelectAll),
             ],
             disabled: false,
         },

@@ -9,7 +9,7 @@ use gpui::{
     Styled, Window, prelude::FluentBuilder as _, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     IconName, Sizable as _,
     breadcrumb::{
         Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage,

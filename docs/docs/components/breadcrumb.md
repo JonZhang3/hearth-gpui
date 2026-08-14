@@ -11,7 +11,7 @@ Breadcrumb uses explicit Link, Page, Separator, and Ellipsis elements so navigat
 
 ```rust
 use gpui::ParentElement as _;
-use gpui_component::{
+use hearth_gpui::{
     IconName, Sizable as _,
     breadcrumb::{
         Breadcrumb, BreadcrumbEllipsis, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage,

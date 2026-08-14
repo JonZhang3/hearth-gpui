@@ -40,7 +40,7 @@ Toggle::new("medium").label("Default");
 Toggle::new("large").large().label("Large");
 ```
 
-`XSmall` 是 GPUI Component 扩展，不属于 shadcn Toggle API。
+`XSmall` 是 Hearth GPUI 扩展，不属于 shadcn Toggle API。
 
 ## 状态
 

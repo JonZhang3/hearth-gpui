@@ -12,7 +12,7 @@ The active Style Preset owns spacing and appearance. Vega and Nova render a plai
 ## Import
 
 ```rust
-use gpui_component::accordion::Accordion;
+use hearth_gpui::accordion::Accordion;
 ```
 
 ## Uncontrolled single Accordion
@@ -102,5 +102,5 @@ Triggers expose button role, expanded state, and disabled state to AccessKit. Us
 - `disabled(bool)` disables the group.
 - `item(value, builder)` adds an item with a required stable value.
 
-[Accordion]: https://docs.rs/gpui-component/latest/gpui_component/accordion/struct.Accordion.html
-[AccordionItem]: https://docs.rs/gpui-component/latest/gpui_component/accordion/struct.AccordionItem.html
+[Accordion]: https://docs.rs/hearth-gpui/latest/hearth_gpui/accordion/struct.Accordion.html
+[AccordionItem]: https://docs.rs/hearth-gpui/latest/hearth_gpui/accordion/struct.AccordionItem.html

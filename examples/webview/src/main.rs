@@ -1,10 +1,10 @@
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme as _, Root, h_flex,
     input::{Input, InputEvent, InputState},
     v_flex,
 };
-use gpui_wry::WebView;
+use hearth_gpui_webview::WebView;
 
 pub struct Example {
     focus_handle: FocusHandle,
@@ -52,7 +52,7 @@ impl Example {
         });
 
         let address_input = cx.new(|cx| {
-            InputState::new(window, cx).default_value("https://longbridge.github.io/gpui-component")
+            InputState::new(window, cx).default_value("https://jonzhang3.github.io/hearth-gpui")
         });
 
         let url = address_input.read(cx).value().clone();
@@ -136,8 +136,8 @@ fn main() {
     }
 
     gpui_platform::application().run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
+        // This must be called before using any Hearth GPUI features.
+        hearth_gpui::init(cx);
 
         cx.spawn(async move |cx| {
             cx.open_window(WindowOptions::default(), |window, cx| {

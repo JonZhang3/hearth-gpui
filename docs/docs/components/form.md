@@ -10,7 +10,7 @@ description: Composable form-field primitives with GPUI-native grid layout and v
 ## Import
 
 ```rust
-use gpui_component::form::{
+use hearth_gpui::form::{
     field, v_form, FieldBody, FieldContent, FieldDescription, FieldError,
     FieldGroup, FieldLabel, FieldLegend, FieldSet,
 };

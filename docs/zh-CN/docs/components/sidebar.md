@@ -12,7 +12,7 @@ Sidebar 菜单几何会跟随当前 Style Preset。菜单项支持键盘激活�
 ## 导入
 
 ```rust
-use gpui_component::sidebar::{
+use hearth_gpui::sidebar::{
     Sidebar, SidebarHeader, SidebarFooter, SidebarGroup,
     SidebarMenu, SidebarMenuItem, SidebarToggleButton
 };
@@ -23,7 +23,7 @@ use gpui_component::sidebar::{
 ### 基础 Sidebar
 
 ```rust
-use gpui_component::{sidebar::*, Side};
+use hearth_gpui::{sidebar::*, Side};
 
 Sidebar::new()
     .header(
@@ -110,7 +110,7 @@ Sidebar::new()
 ### Badge 与后缀
 
 ```rust
-use gpui_component::{
+use hearth_gpui::{
     badge::{Badge, BadgeVariants as _},
     switch::Switch,
 };
@@ -137,7 +137,7 @@ Sidebar::new()
 ### 右键菜单
 
 ```rust
-use gpui_component::menu::PopupMenu;
+use hearth_gpui::menu::PopupMenu;
 
 SidebarMenuItem::new("Project Files")
     .icon(IconName::Folder)

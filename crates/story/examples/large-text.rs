@@ -3,14 +3,14 @@
 // - Removed the unused `ButtonVariants` import after the aligned button API migration.
 // - Reformatted the example without changing its editor or go-to-line behavior.
 use gpui::*;
-use gpui_component::{
+use hearth_gpui::{
     ActiveTheme, Selectable, Sizable, WindowExt,
     button::Button,
     h_flex,
     input::{self, Input, InputEvent, InputState, TabSize},
     v_flex,
 };
-use gpui_component_assets::Assets;
+use hearth_gpui_assets::Assets;
 
 pub struct Example {
     editor: Entity<InputState>,
@@ -160,9 +160,9 @@ fn main() {
     let app = gpui_platform::application().with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component_story::init(cx);
+        hearth_gpui_story::init(cx);
         cx.activate(true);
 
-        gpui_component_story::create_new_window("Large Text Editor", Example::view, cx);
+        hearth_gpui_story::create_new_window("Large Text Editor", Example::view, cx);
     });
 }

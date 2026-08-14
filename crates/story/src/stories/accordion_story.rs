@@ -11,7 +11,7 @@ use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _,
     Render, SharedString, Styled as _, Window,
 };
-use gpui_component::{
+use hearth_gpui::{
     IconName, accordion::Accordion, checkbox::Checkbox, h_flex, switch::Switch, v_flex,
 };
 

@@ -10,7 +10,7 @@ use gpui::{
     ParentElement as _, Render, SharedString, Styled as _, Window, px,
 };
 
-use gpui_component::{
+use hearth_gpui::{
     Disableable, IconName, Sizable,
     button::{
         Toggle, ToggleGroup, ToggleGroupItem, ToggleGroupMode, ToggleGroupSelection, ToggleVariants,
