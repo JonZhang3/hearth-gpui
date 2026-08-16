@@ -40,6 +40,7 @@ mod input_story;
 mod kbd_story;
 mod label_story;
 mod list_story;
+mod markdown_story;
 mod menu_story;
 mod native_menu_story;
 mod native_select_story;
@@ -109,6 +110,7 @@ pub use input_story::InputStory;
 pub use kbd_story::KbdStory;
 pub use label_story::LabelStory;
 pub use list_story::ListStory;
+pub use markdown_story::MarkdownStory;
 pub use menu_story::MenuStory;
 pub use native_menu_story::NativeMenuStory;
 pub use native_select_story::NativeSelectStory;
@@ -184,6 +186,11 @@ pub trait Story: Render + Sized {
 
     fn paddings() -> Pixels {
         px(16.)
+    }
+
+    /// Whether StoryContainer should own vertical scrolling for this story.
+    fn container_scrollable() -> bool {
+        true
     }
 
     fn new_view(window: &mut Window, cx: &mut App) -> Entity<impl Render>;

@@ -23,9 +23,11 @@ use crate::{
     input::{InputEdit, Point, RopeExt as _},
     scroll::horizontal_scroll_area,
     text::{
-        CodeBlockActionsFn, MarkdownExtensions, MarkdownNode,
+        CodeBlockActionsFn, MarkdownBlockKind, MarkdownBlockRenderContext, MarkdownBlockRenderers,
+        MarkdownElementKind, MarkdownExtensions, MarkdownHeadingLevel, MarkdownInlineKind,
+        MarkdownNode, MarkdownStyle, MarkdownTextStyle,
         document::NodeRenderOptions,
-        inline::{Inline, InlineState},
+        inline::{Inline, InlineLink, InlineState},
         inline_flow::{InlineFlow, InlineFlowItem},
     },
     tooltip::Tooltip,
@@ -285,6 +287,7 @@ pub struct TextMark {
     pub strikethrough: bool,
     pub underline: bool,
     pub code: bool,
+    pub footnote_reference: bool,
     /// Highlight (`<mark>`) the text with this background color.
     ///
     /// `None` means the text is not highlighted.
@@ -335,6 +338,7 @@ impl TextMark {
         self.strikethrough |= other.strikethrough;
         self.underline |= other.underline;
         self.code |= other.code;
+        self.footnote_reference |= other.footnote_reference;
         if other.highlight.is_some() {
             self.highlight = other.highlight;
         }
@@ -771,12 +775,21 @@ impl CodeBlock {
                     .text_size(cx.theme().mono_font_size)
                     .relative()
                     .refine_style(&style.code_block)
-                    .child(Inline::new(
-                        "code",
-                        self.state.clone(),
-                        vec![],
-                        self.styles(&cx.theme().highlight_theme),
-                    ))
+                    .when_some(
+                        node_cx
+                            .markdown_style
+                            .element_style(MarkdownElementKind::CodeBlock),
+                        |this, style| this.refine_style(style),
+                    )
+                    .child({
+                        let mut styles = self.styles(node_cx.syntax_theme(cx));
+                        let mut semantic = HighlightStyle::default();
+                        node_cx.refine_inline(MarkdownInlineKind::CodeBlockText, &mut semantic);
+                        if semantic != HighlightStyle::default() {
+                            styles.push((0..self.code().len(), semantic));
+                        }
+                        Inline::new("code", self.state.clone(), vec![], styles)
+                    })
                     .when_some(node_cx.code_block_actions.clone(), |this, actions| {
                         this.child(
                             div()
@@ -786,6 +799,12 @@ impl CodeBlock {
                                 .right_2()
                                 .bg(cx.theme().tokens.muted)
                                 .rounded(cx.theme().style.radii.md)
+                                .when_some(
+                                    node_cx
+                                        .markdown_style
+                                        .element_style(MarkdownElementKind::CodeBlockActions),
+                                    |this, style| this.refine_style(style),
+                                )
                                 .child(actions(&self, window, cx)),
                         )
                     }),
@@ -804,11 +823,161 @@ pub(crate) struct NodeContext {
     pub(crate) style: TextViewStyle,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     pub(crate) markdown_extensions: Arc<MarkdownExtensions>,
+    pub(crate) markdown_style: Arc<MarkdownStyle>,
+    pub(crate) markdown_block_renderers: Arc<MarkdownBlockRenderers>,
+    pub(crate) source: SharedString,
 }
 
 impl NodeContext {
     pub(super) fn add_ref(&mut self, identifier: SharedString, link: LinkMark) {
         self.link_refs.insert(identifier, link);
+    }
+
+    fn refine_inline(&self, kind: MarkdownInlineKind, style: &mut HighlightStyle) {
+        if let Some(refinement) = self.markdown_style.inline_style(kind) {
+            refinement.refine(style);
+        }
+    }
+
+    fn link_hover_style(&self) -> Option<MarkdownTextStyle> {
+        Some(
+            self.markdown_style
+                .inline_style(MarkdownInlineKind::LinkHover)?
+                .clone(),
+        )
+    }
+
+    fn syntax_theme<'a>(&'a self, cx: &'a App) -> &'a Arc<HighlightTheme> {
+        if let Some(theme) = self.markdown_style.syntax_theme_ref() {
+            return theme;
+        }
+        // `TextViewStyle::default` clones this exact static Arc. Treat that
+        // identity as "inherit ActiveTheme" so existing dark-mode behavior is
+        // unchanged, while a caller-provided Arc becomes a local override.
+        if !Arc::ptr_eq(
+            &self.style.highlight_theme,
+            &HighlightTheme::default_light(),
+        ) {
+            return &self.style.highlight_theme;
+        }
+        &cx.theme().highlight_theme
+    }
+}
+
+/// Append deterministic, non-overlapping highlights and links for one inline text node.
+///
+/// Semantic refinements are resolved before converting the result into GPUI highlight ranges.
+/// This preserves selector precedence and explicit removals such as `no_underline()` without
+/// relying on the unordered overlap behavior of `gpui::combine_highlights`.
+fn append_resolved_inline_styles(
+    inline_node: &InlineNode,
+    offset: usize,
+    node_cx: &NodeContext,
+    accent: Hsla,
+    link_color: Hsla,
+    links: &mut Vec<InlineLink>,
+    highlights: &mut Vec<(Range<usize>, HighlightStyle)>,
+) {
+    let text_len = inline_node.text.len();
+    if text_len == 0 {
+        return;
+    }
+
+    for (range, mark) in &inline_node.marks {
+        let Some(mut link_mark) = mark.link.clone() else {
+            continue;
+        };
+        if let Some(identifier) = link_mark.identifier.as_ref()
+            && let Some(resolved) = node_cx.link_refs.get(identifier)
+        {
+            link_mark = resolved.clone();
+        }
+        links.push(InlineLink {
+            id: links.len(),
+            range: (offset + range.start)..(offset + range.end),
+            mark: link_mark,
+        });
+    }
+
+    // Mark boundaries define the smallest ranges on which the active semantic set is stable.
+    let mut boundaries = vec![0, text_len];
+    for (range, _) in &inline_node.marks {
+        boundaries.push(range.start.min(text_len));
+        boundaries.push(range.end.min(text_len));
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
+
+    for segment in boundaries.windows(2) {
+        let local_range = segment[0]..segment[1];
+        if local_range.is_empty() {
+            continue;
+        }
+
+        let mut mark = TextMark::default();
+        for (range, active_mark) in &inline_node.marks {
+            if range.start <= local_range.start && range.end >= local_range.end {
+                mark.merge(active_mark.clone());
+            }
+        }
+
+        let mut style = HighlightStyle::default();
+        node_cx.refine_inline(MarkdownInlineKind::Plain, &mut style);
+        if mark.bold {
+            style.font_weight = Some(FontWeight::BOLD);
+            node_cx.refine_inline(MarkdownInlineKind::Strong, &mut style);
+        }
+        if mark.italic {
+            style.font_style = Some(FontStyle::Italic);
+            node_cx.refine_inline(MarkdownInlineKind::Emphasis, &mut style);
+        }
+        if mark.strikethrough {
+            style.strikethrough = Some(gpui::StrikethroughStyle {
+                thickness: gpui::px(1.),
+                ..Default::default()
+            });
+            node_cx.refine_inline(MarkdownInlineKind::Strikethrough, &mut style);
+        }
+        if mark.underline {
+            style.underline = Some(gpui::UnderlineStyle {
+                thickness: gpui::px(1.),
+                ..Default::default()
+            });
+            node_cx.refine_inline(MarkdownInlineKind::Underline, &mut style);
+        }
+        if mark.code {
+            style.background_color = Some(accent);
+            node_cx.refine_inline(MarkdownInlineKind::InlineCode, &mut style);
+        }
+        if mark.footnote_reference {
+            node_cx.refine_inline(MarkdownInlineKind::FootnoteReference, &mut style);
+        }
+        if let Some(color) = mark.highlight {
+            style.background_color = Some(color);
+            node_cx.refine_inline(MarkdownInlineKind::Mark, &mut style);
+        }
+        if mark.link.is_some() {
+            style.color = Some(link_color);
+            style.underline = Some(gpui::UnderlineStyle {
+                thickness: gpui::px(1.),
+                ..Default::default()
+            });
+            node_cx.refine_inline(MarkdownInlineKind::Link, &mut style);
+        }
+
+        if style == HighlightStyle::default() {
+            continue;
+        }
+
+        let resolved_range = (offset + local_range.start)..(offset + local_range.end);
+        if let Some((last_range, last_style)) = highlights.last_mut()
+            && last_range.end == resolved_range.start
+            && *last_style == style
+        {
+            last_range.end = resolved_range.end;
+        } else {
+            highlights.push((resolved_range, style));
+        }
     }
 }
 
@@ -837,7 +1006,7 @@ impl Paragraph {
 
         let mut text = String::new();
         let mut highlights: Vec<(Range<usize>, HighlightStyle)> = vec![];
-        let mut links: Vec<(Range<usize>, LinkMark)> = vec![];
+        let mut links: Vec<InlineLink> = vec![];
         let mut offset = 0;
 
         let mut ix = 0;
@@ -857,6 +1026,7 @@ impl Paragraph {
                             links.clone(),
                             highlights.clone(),
                         )
+                        .link_hover_style(node_cx.link_hover_style())
                         .into_any_element(),
                     );
                 }
@@ -865,6 +1035,12 @@ impl Paragraph {
                         .id(ix)
                         .object_fit(ObjectFit::Contain)
                         .max_w(relative(1.))
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::Image),
+                            |this, style| this.refine_style(style),
+                        )
                         .when_some(image.width, |this, width| this.w(width))
                         .when_some(image.link.clone(), |this, link| {
                             let title = image.title();
@@ -886,57 +1062,15 @@ impl Paragraph {
                 highlights.clear();
                 offset = 0;
             } else {
-                let mut node_highlights = vec![];
-                for (range, style) in &inline_node.marks {
-                    let inner_range = (offset + range.start)..(offset + range.end);
-
-                    let mut highlight = HighlightStyle::default();
-                    if style.bold {
-                        highlight.font_weight = Some(FontWeight::BOLD);
-                    }
-                    if style.italic {
-                        highlight.font_style = Some(FontStyle::Italic);
-                    }
-                    if style.strikethrough {
-                        highlight.strikethrough = Some(gpui::StrikethroughStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-                    }
-                    if style.underline {
-                        highlight.underline = Some(gpui::UnderlineStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-                    }
-                    if style.code {
-                        highlight.background_color = Some(cx.theme().accent);
-                    }
-                    if let Some(color) = style.highlight {
-                        highlight.background_color = Some(color);
-                    }
-
-                    if let Some(mut link_mark) = style.link.clone() {
-                        highlight.color = Some(cx.theme().link);
-                        highlight.underline = Some(gpui::UnderlineStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-
-                        // convert link references, replace link
-                        if let Some(identifier) = link_mark.identifier.as_ref() {
-                            if let Some(mark) = node_cx.link_refs.get(identifier) {
-                                link_mark = mark.clone();
-                            }
-                        }
-
-                        links.push((inner_range.clone(), link_mark));
-                    }
-
-                    node_highlights.push((inner_range, highlight));
-                }
-
-                highlights = gpui::combine_highlights(highlights, node_highlights).collect();
+                append_resolved_inline_styles(
+                    inline_node,
+                    offset,
+                    node_cx,
+                    cx.theme().accent,
+                    cx.theme().link,
+                    &mut links,
+                    &mut highlights,
+                );
                 offset += text_len;
             }
             ix += 1;
@@ -947,8 +1081,11 @@ impl Paragraph {
             if let Ok(mut state) = self.state.lock() {
                 state.set_text(text.into());
             }
-            child_nodes
-                .push(Inline::new(ix, self.state.clone(), links, highlights).into_any_element());
+            child_nodes.push(
+                Inline::new(ix, self.state.clone(), links, highlights)
+                    .link_hover_style(node_cx.link_hover_style())
+                    .into_any_element(),
+            );
         }
 
         div()
@@ -967,7 +1104,7 @@ impl Paragraph {
         let mut items = Vec::new();
         let mut text = String::new();
         let mut highlights: Vec<(Range<usize>, HighlightStyle)> = vec![];
-        let mut links: Vec<(Range<usize>, LinkMark)> = vec![];
+        let mut links: Vec<InlineLink> = vec![];
         let mut offset = 0;
 
         for inline_node in &self.children {
@@ -984,6 +1121,7 @@ impl Paragraph {
                         text: text.clone().into(),
                         links: links.clone(),
                         highlights: highlights.clone(),
+                        link_hover_style: node_cx.link_hover_style(),
                     });
                 }
 
@@ -993,6 +1131,13 @@ impl Paragraph {
                     title: image.title(),
                     width: image.width,
                     height: image.height,
+                    style: Box::new(
+                        node_cx
+                            .markdown_style
+                            .element_style(MarkdownElementKind::Image)
+                            .cloned()
+                            .unwrap_or_default(),
+                    ),
                 });
 
                 text.clear();
@@ -1000,56 +1145,15 @@ impl Paragraph {
                 highlights.clear();
                 offset = 0;
             } else {
-                let mut node_highlights = vec![];
-                for (range, style) in &inline_node.marks {
-                    let inner_range = (offset + range.start)..(offset + range.end);
-
-                    let mut highlight = HighlightStyle::default();
-                    if style.bold {
-                        highlight.font_weight = Some(FontWeight::BOLD);
-                    }
-                    if style.italic {
-                        highlight.font_style = Some(FontStyle::Italic);
-                    }
-                    if style.strikethrough {
-                        highlight.strikethrough = Some(gpui::StrikethroughStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-                    }
-                    if style.underline {
-                        highlight.underline = Some(gpui::UnderlineStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-                    }
-                    if style.code {
-                        highlight.background_color = Some(cx.theme().accent);
-                    }
-                    if let Some(color) = style.highlight {
-                        highlight.background_color = Some(color);
-                    }
-
-                    if let Some(mut link_mark) = style.link.clone() {
-                        highlight.color = Some(cx.theme().link);
-                        highlight.underline = Some(gpui::UnderlineStyle {
-                            thickness: gpui::px(1.),
-                            ..Default::default()
-                        });
-
-                        if let Some(identifier) = link_mark.identifier.as_ref()
-                            && let Some(mark) = node_cx.link_refs.get(identifier)
-                        {
-                            link_mark = mark.clone();
-                        }
-
-                        links.push((inner_range.clone(), link_mark));
-                    }
-
-                    node_highlights.push((inner_range, highlight));
-                }
-
-                highlights = gpui::combine_highlights(highlights, node_highlights).collect();
+                append_resolved_inline_styles(
+                    inline_node,
+                    offset,
+                    node_cx,
+                    cx.theme().accent,
+                    cx.theme().link,
+                    &mut links,
+                    &mut highlights,
+                );
                 offset += text_len;
             }
         }
@@ -1063,6 +1167,7 @@ impl Paragraph {
                 text: text.into(),
                 links,
                 highlights,
+                link_hover_style: node_cx.link_hover_style(),
             });
         }
 
@@ -1263,6 +1368,7 @@ impl BlockNode {
         ix: usize,
         options: NodeRenderOptions,
         checked: Option<bool>,
+        node_cx: &NodeContext,
         cx: &mut App,
     ) -> Div {
         h_flex()
@@ -1273,7 +1379,16 @@ impl BlockNode {
             .items_start()
             .content_start()
             .when(!options.todo && checked.is_none(), |this| {
-                this.child(list_item_prefix(ix, options.ordered, options.depth))
+                this.child(
+                    div()
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::ListMarker),
+                            |this, style| this.refine_style(style),
+                        )
+                        .child(list_item_prefix(ix, options.ordered, options.depth)),
+                )
             })
             .when_some(checked, |this, checked| {
                 // Todo list checkbox
@@ -1289,6 +1404,12 @@ impl BlockNode {
                         .border_1()
                         .border_color(cx.theme().primary)
                         .text_color(cx.theme().primary_foreground)
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::TaskCheckbox),
+                            |this, style| this.refine_style(style),
+                        )
                         .when(checked, |this| {
                             this.bg(cx.theme().tokens.primary)
                                 .child(Icon::new(IconName::Check).size_2().text_xs())
@@ -1306,7 +1427,7 @@ impl BlockNode {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        match item {
+        let default = match item {
             BlockNode::ListItem {
                 children,
                 spread,
@@ -1316,6 +1437,12 @@ impl BlockNode {
                 .id(("li", options.ix))
                 .w_full()
                 .min_w_0()
+                .when_some(
+                    node_cx
+                        .markdown_style
+                        .element_style(MarkdownElementKind::ListItem),
+                    |this, style| this.refine_style(style),
+                )
                 .when(*spread, |this| this.child(div()))
                 .children({
                     let mut items: Vec<Div> = Vec::with_capacity(children.len());
@@ -1357,7 +1484,7 @@ impl BlockNode {
                                 }
 
                                 items.push(Self::render_list_item_row(
-                                    text, ix, options, *checked, cx,
+                                    text, ix, options, *checked, node_cx, cx,
                                 ));
                             }
                             BlockNode::List { .. } => {
@@ -1394,7 +1521,7 @@ impl BlockNode {
 
                                 if child_ix == 0 {
                                     items.push(Self::render_list_item_row(
-                                        block, ix, options, *checked, cx,
+                                        block, ix, options, *checked, node_cx, cx,
                                     ));
                                 } else {
                                     // Indent continuation blocks to align with a
@@ -1420,7 +1547,8 @@ impl BlockNode {
                 })
                 .into_any_element(),
             _ => div().into_any_element(),
-        }
+        };
+        item.apply_renderer(default, options, node_cx, window, cx)
     }
 
     /// Render a Markdown table. Dispatches to a horizontally scrollable layout
@@ -1601,6 +1729,14 @@ impl BlockNode {
                             this.border_r_1().border_color(cx.theme().border)
                         })
                         .refine_style(&style.table_cell)
+                        .when_some(
+                            node_cx.markdown_style.element_style(if row_ix == 0 {
+                                MarkdownElementKind::TableHeaderCell
+                            } else {
+                                MarkdownElementKind::TableCell
+                            }),
+                            |this, style| this.refine_style(style),
+                        )
                         .child(cell.children.render(node_cx, window, cx)),
                 );
             }
@@ -1612,6 +1748,14 @@ impl BlockNode {
                     .border_color(cx.theme().border)
                     .flex()
                     .flex_row()
+                    .when_some(
+                        node_cx.markdown_style.element_style(if row_ix == 0 {
+                            MarkdownElementKind::TableHeaderRow
+                        } else {
+                            MarkdownElementKind::TableBodyRow
+                        }),
+                        |this, style| this.refine_style(style),
+                    )
                     .children(cells),
             );
         }
@@ -1639,6 +1783,12 @@ impl BlockNode {
                         .border_1()
                         .border_color(cx.theme().border)
                         .rounded(cx.theme().style.radii.md)
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::Table),
+                            |this, style| this.refine_style(style),
+                        )
                         .children(rows),
                 ),
             )
@@ -1685,6 +1835,14 @@ impl BlockNode {
                             this.border_r_1().border_color(cx.theme().border)
                         })
                         .refine_style(&style.table_cell)
+                        .when_some(
+                            node_cx.markdown_style.element_style(if row_ix == 0 {
+                                MarkdownElementKind::TableHeaderCell
+                            } else {
+                                MarkdownElementKind::TableCell
+                            }),
+                            |this, style| this.refine_style(style),
+                        )
                         .child(cell.children.render(node_cx, window, cx)),
                 );
             }
@@ -1697,6 +1855,14 @@ impl BlockNode {
                     .border_color(cx.theme().border)
                     .flex()
                     .flex_row()
+                    .when_some(
+                        node_cx.markdown_style.element_style(if row_ix == 0 {
+                            MarkdownElementKind::TableHeaderRow
+                        } else {
+                            MarkdownElementKind::TableBodyRow
+                        }),
+                        |this, style| this.refine_style(style),
+                    )
                     .children(cells),
             );
         }
@@ -1713,12 +1879,91 @@ impl BlockNode {
                     .rounded(cx.theme().style.radii.md)
                     .overflow_hidden()
                     .children(rows)
-                    .refine_style(&style.table),
+                    .refine_style(&style.table)
+                    .when_some(
+                        node_cx
+                            .markdown_style
+                            .element_style(MarkdownElementKind::Table),
+                        |this, style| this.refine_style(style),
+                    ),
             )
             .into_any_element()
     }
 
     pub(crate) fn render_block(
+        &self,
+        options: NodeRenderOptions,
+        node_cx: &NodeContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let default = self.render_block_default(options, node_cx, window, cx);
+        self.apply_renderer(default, options, node_cx, window, cx)
+    }
+
+    fn apply_renderer(
+        &self,
+        default: AnyElement,
+        _options: NodeRenderOptions,
+        node_cx: &NodeContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let Some(kind) = self.renderer_kind() else {
+            return default;
+        };
+        let Some(renderer) = node_cx.markdown_block_renderers.get(&kind) else {
+            return default;
+        };
+
+        let span = self.span();
+        let source_range = span.map(|span| span.start..span.end);
+        let source = source_range
+            .as_ref()
+            .and_then(|range| node_cx.source.get(range.clone()))
+            .unwrap_or_default()
+            .to_string()
+            .into();
+        let (heading_level, code_language, task_checked) = match self {
+            Self::Heading { level, .. } => {
+                (Some(MarkdownHeadingLevel::from_depth(*level)), None, None)
+            }
+            Self::CodeBlock(code) => (None, code.lang(), None),
+            Self::ListItem { checked, .. } => (None, None, *checked),
+            _ => (None, None, None),
+        };
+        let context = MarkdownBlockRenderContext {
+            kind,
+            source_range,
+            source,
+            text: self.text().trim_end().to_string().into(),
+            heading_level,
+            code_language,
+            task_checked,
+            default,
+        };
+        renderer(context, window, cx)
+    }
+
+    fn renderer_kind(&self) -> Option<MarkdownBlockKind> {
+        match self {
+            Self::Paragraph(_) => Some(MarkdownBlockKind::Paragraph),
+            Self::Heading { .. } => Some(MarkdownBlockKind::Heading),
+            Self::Blockquote { .. } => Some(MarkdownBlockKind::Blockquote),
+            Self::List { ordered: true, .. } => Some(MarkdownBlockKind::OrderedList),
+            Self::List { ordered: false, .. } => Some(MarkdownBlockKind::UnorderedList),
+            Self::ListItem {
+                checked: Some(_), ..
+            } => Some(MarkdownBlockKind::TaskListItem),
+            Self::ListItem { .. } => Some(MarkdownBlockKind::ListItem),
+            Self::CodeBlock(_) => Some(MarkdownBlockKind::CodeBlock),
+            Self::Table(_) => Some(MarkdownBlockKind::Table),
+            Self::HorizontalRule { .. } => Some(MarkdownBlockKind::HorizontalRule),
+            _ => None,
+        }
+    }
+
+    fn render_block_default(
         &self,
         options: NodeRenderOptions,
         node_cx: &NodeContext,
@@ -1742,6 +1987,12 @@ impl BlockNode {
             BlockNode::Paragraph(paragraph) => div()
                 .id(("p", ix))
                 .pb(mb)
+                .when_some(
+                    node_cx
+                        .markdown_style
+                        .element_style(MarkdownElementKind::Paragraph),
+                    |this, style| this.refine_style(style),
+                )
                 .child(paragraph.render(node_cx, window, cx))
                 .into_any_element(),
             BlockNode::Heading {
@@ -1768,6 +2019,14 @@ impl BlockNode {
                     .whitespace_normal()
                     .text_size(text_size)
                     .font_weight(font_weight)
+                    .when_some(
+                        node_cx
+                            .markdown_style
+                            .element_style(MarkdownElementKind::Heading(
+                                MarkdownHeadingLevel::from_depth(*level),
+                            )),
+                        |this, style| this.refine_style(style),
+                    )
                     .child(children.render(node_cx, window, cx))
                     .into_any_element()
             }
@@ -1782,6 +2041,12 @@ impl BlockNode {
                         .border_l_3()
                         .border_color(cx.theme().secondary_active)
                         .px_4()
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::Blockquote),
+                            |this, style| this.refine_style(style),
+                        )
                         .children({
                             let children_len = children.len();
                             children.into_iter().enumerate().map(move |(index, c)| {
@@ -1798,6 +2063,14 @@ impl BlockNode {
                 .w_full()
                 .min_w_0()
                 .pb(mb)
+                .when_some(
+                    node_cx.markdown_style.element_style(if *ordered {
+                        MarkdownElementKind::OrderedList
+                    } else {
+                        MarkdownElementKind::UnorderedList
+                    }),
+                    |this, style| this.refine_style(style),
+                )
                 .children({
                     let mut items = Vec::with_capacity(children.len());
                     let mut item_index = 0;
@@ -1838,7 +2111,18 @@ impl BlockNode {
             }
             BlockNode::HorizontalRule { .. } => div()
                 .pb(mb)
-                .child(div().id("horizontal-rule").bg(cx.theme().border).h(px(2.)))
+                .child(
+                    div()
+                        .id("horizontal-rule")
+                        .bg(cx.theme().border)
+                        .h(px(2.))
+                        .when_some(
+                            node_cx
+                                .markdown_style
+                                .element_style(MarkdownElementKind::HorizontalRule),
+                            |this, style| this.refine_style(style),
+                        ),
+                )
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),
             BlockNode::Unknown { .. } | BlockNode::Definition { .. } => div().into_any_element(),
@@ -1856,6 +2140,7 @@ impl BlockNode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::hsla;
 
     #[cfg(feature = "tree-sitter")]
     use crate::{
@@ -1880,6 +2165,69 @@ mod tests {
         let second = CodeBlock::new("let value = 2;".into(), Some("rust".into()), None::<Span>);
 
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn semantic_inline_styles_resolve_precedence_and_explicit_removals() {
+        let plain_color = hsla(0.1, 0.7, 0.4, 1.);
+        let link_color = hsla(0.6, 0.8, 0.5, 1.);
+        let background = hsla(0.2, 0.3, 0.8, 1.);
+        let markdown_style = MarkdownStyle::default()
+            .inline(
+                MarkdownInlineKind::Plain,
+                MarkdownTextStyle::default()
+                    .color(plain_color)
+                    .background(background)
+                    .underline(gpui::UnderlineStyle {
+                        thickness: px(1.),
+                        ..Default::default()
+                    }),
+            )
+            .inline(
+                MarkdownInlineKind::Link,
+                MarkdownTextStyle::default()
+                    .color(link_color)
+                    .no_background()
+                    .no_underline(),
+            );
+        let node_cx = NodeContext {
+            markdown_style: Arc::new(markdown_style),
+            ..Default::default()
+        };
+        let inline_node = InlineNode::new("plain link").marks(vec![
+            (0..10, TextMark::default()),
+            (
+                6..10,
+                TextMark::default().link(LinkMark {
+                    url: "https://example.com".into(),
+                    ..Default::default()
+                }),
+            ),
+        ]);
+        let mut links = Vec::new();
+        let mut highlights = Vec::new();
+
+        append_resolved_inline_styles(
+            &inline_node,
+            0,
+            &node_cx,
+            background,
+            plain_color,
+            &mut links,
+            &mut highlights,
+        );
+
+        assert_eq!(highlights.len(), 2);
+        assert_eq!(highlights[0].0, 0..6);
+        assert_eq!(highlights[0].1.color, Some(plain_color));
+        assert_eq!(highlights[0].1.background_color, Some(background));
+        assert!(highlights[0].1.underline.is_some());
+        assert_eq!(highlights[1].0, 6..10);
+        assert_eq!(highlights[1].1.color, Some(link_color));
+        assert_eq!(highlights[1].1.background_color, None);
+        assert_eq!(highlights[1].1.underline, None);
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].range, 6..10);
     }
 
     #[cfg(feature = "tree-sitter")]

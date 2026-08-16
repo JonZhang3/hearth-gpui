@@ -42,6 +42,78 @@ TextView::markdown("preview", markdown_source)
 TextView::html("html-preview", "<strong>Hello</strong>")
 ```
 
+## Semantic Markdown Styles
+
+`MarkdownStyle` provides per-view styling for Markdown semantics without changing the parser. Inline styles can replace inherited values or explicitly clear them, while element styles accept the complete GPUI `StyleRefinement` API.
+
+```rust
+use gpui::{hsla, px, Styled as _};
+use hearth_gpui::text::{
+    markdown, MarkdownElementKind, MarkdownInlineKind, MarkdownStyle,
+    MarkdownTextStyle,
+};
+
+let style = MarkdownStyle::default()
+    .inline(
+        MarkdownInlineKind::Link,
+        MarkdownTextStyle::default()
+            .color(hsla(0.58, 0.75, 0.55, 1.0))
+            .no_underline(),
+    )
+    .inline(
+        MarkdownInlineKind::LinkHover,
+        MarkdownTextStyle::default().background(hsla(0.58, 0.4, 0.5, 0.14)),
+    )
+    .element(
+        MarkdownElementKind::CodeBlock,
+        gpui::StyleRefinement::default()
+            .p_3()
+            .rounded(px(8.0))
+            .bg(hsla(0.62, 0.12, 0.16, 1.0)),
+    );
+
+markdown(source).markdown_style(style)
+```
+
+Element selectors cover the document, paragraphs, each heading level, blockquotes, lists and markers, task checkboxes, code blocks and actions, tables and cells, images, and horizontal rules. Inline selectors cover plain text, emphasis variants, inline and block code text, links and link hover, marks, and footnote references. `syntax_theme(...)` overrides code syntax highlighting for only this view.
+
+Style precedence is: active `Theme`, `TextViewStyle`, `MarkdownStyle`, transient interaction state such as link hover, then an optional block renderer.
+
+## Built-in Block Renderers
+
+Use `.markdown_builtin_renderer(...)` when styling is not enough and a built-in block needs custom composition. Wrapping `context.into_default()` retains selection, links, code actions, and other framework-managed behavior.
+
+```rust
+use hearth_gpui::text::MarkdownBlockKind;
+
+markdown(source).markdown_builtin_renderer(
+    MarkdownBlockKind::CodeBlock,
+    |context, _window, _cx| {
+        let language = context.code_language().unwrap_or("text").to_string();
+        gpui::div()
+            .child(gpui::div().child(language))
+            .child(context.into_default())
+    },
+)
+```
+
+Replacing the default element completely transfers interaction and accessibility responsibility to the custom renderer. Inline content supports complete semantic text styling, but not arbitrary inline element replacement.
+
+## Streaming Markdown
+
+Keep one `TextViewState`, append each LLM delta with `push_str`, and call `finish_streaming` when the stream completes:
+
+```rust
+let state = cx.new(|cx| TextViewState::markdown("", cx));
+
+state.update(cx, |state, cx| state.push_str(delta, cx));
+state.update(cx, |state, cx| state.finish_streaming(cx));
+
+TextView::new(&state).selectable(true)
+```
+
+Append parsing runs in the background, coalesces queued deltas, preserves the last valid rendered document on a transient parse failure, and performs a canonical full parse after 100 ms of inactivity. `finish_streaming` requests that canonical parse immediately. Reference-style links remain correct when their definitions arrive in later chunks.
+
 ## Markdown Plugins
 
 Use `.plugin(...)` to support custom Markdown formats. A plugin owns both parsing and rendering, so callers only need to attach it to the `TextView`:

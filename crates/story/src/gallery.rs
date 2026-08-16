@@ -82,6 +82,7 @@ impl Gallery {
                     StoryContainer::panel::<KbdStory>(window, cx),
                     StoryContainer::panel::<LabelStory>(window, cx),
                     StoryContainer::panel::<ListStory>(window, cx),
+                    StoryContainer::panel::<MarkdownStory>(window, cx),
                     StoryContainer::panel::<MenuStory>(window, cx),
                     StoryContainer::panel::<NativeMenuStory>(window, cx),
                     StoryContainer::panel::<NativeSelectStory>(window, cx),

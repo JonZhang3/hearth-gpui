@@ -268,7 +268,7 @@ pub fn init(cx: &mut App) {
         };
 
         let view = cx.new(|cx| {
-            let (title, description, closable, zoomable, story, on_active) =
+            let (title, description, closable, zoomable, container_scrollable, story, on_active) =
                 story_state.to_story(window, cx);
             let mut container = StoryContainer::new(window, cx)
                 .story(story, story_state.story_klass)
@@ -287,6 +287,7 @@ pub fn init(cx: &mut App) {
             container.description = description.into();
             container.closable = closable;
             container.zoomable = zoomable;
+            container.container_scrollable = container_scrollable;
             container
         });
         Box::new(view)
@@ -396,6 +397,7 @@ pub struct StoryContainer {
     closable: bool,
     zoomable: Option<PanelControl>,
     paddings: Pixels,
+    container_scrollable: bool,
     on_active: Option<fn(AnyView, bool, &mut Window, &mut App)>,
 }
 
@@ -422,6 +424,7 @@ impl StoryContainer {
             closable: true,
             zoomable: Some(PanelControl::default()),
             paddings: px(16.),
+            container_scrollable: true,
             on_active: None,
         }
     }
@@ -443,6 +446,7 @@ impl StoryContainer {
             story.description = description.into();
             story.title_bg = S::title_bg();
             story.paddings = S::paddings();
+            story.container_scrollable = S::container_scrollable();
             story
         });
 
@@ -496,6 +500,7 @@ impl StoryState {
         &'static str,
         bool,
         Option<PanelControl>,
+        bool,
         AnyView,
         fn(AnyView, bool, &mut Window, &mut App),
     ) {
@@ -506,6 +511,7 @@ impl StoryState {
                     $klass::description(),
                     $klass::closable(),
                     $klass::zoomable(),
+                    $klass::container_scrollable(),
                     $klass::view(window, cx).into(),
                     $klass::on_active_any,
                 )
@@ -524,6 +530,7 @@ impl StoryState {
             "ImageStory" => story!(ImageStory),
             "InputStory" => story!(InputStory),
             "ListStory" => story!(ListStory),
+            "MarkdownStory" => story!(MarkdownStory),
             "DialogStory" => story!(DialogStory),
             "EmptyStory" => story!(EmptyStory),
             "SeparatorStory" => story!(SeparatorStory),
@@ -642,14 +649,26 @@ impl Focusable for StoryContainer {
 }
 impl Render for StoryContainer {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
+        let content = div()
+            .size_full()
+            .p(self.paddings)
+            .when_some(self.story.clone(), |this, story| this.child(story));
+        let container = div()
             .id("story-container")
             .size_full()
-            .overflow_y_scrollbar()
-            .track_focus(&self.focus_handle)
-            .when_some(self.story.clone(), |this, story| {
-                this.child(div().size_full().p(self.paddings).child(story))
-            })
+            .track_focus(&self.focus_handle);
+
+        if self.container_scrollable {
+            container
+                .overflow_y_scrollbar()
+                .child(content)
+                .into_any_element()
+        } else {
+            container
+                .overflow_hidden()
+                .child(content)
+                .into_any_element()
+        }
     }
 }
 

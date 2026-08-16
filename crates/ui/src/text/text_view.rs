@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -13,11 +13,91 @@ use crate::text::TextViewFormat;
 use crate::text::markdown_ext::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
 use crate::text::node::CodeBlock;
 use crate::text::state::TextViewState;
-use crate::{global_state::GlobalState, text::TextViewStyle};
+use crate::{
+    global_state::GlobalState,
+    text::{MarkdownHeadingLevel, MarkdownStyle, TextViewStyle},
+};
 
 /// Type for code block actions generator function.
 pub(crate) type CodeBlockActionsFn =
     dyn Fn(&CodeBlock, &mut Window, &mut App) -> AnyElement + Send + Sync;
+
+/// A built-in Markdown block that can use a custom renderer.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum MarkdownBlockKind {
+    Paragraph,
+    Heading,
+    Blockquote,
+    OrderedList,
+    UnorderedList,
+    ListItem,
+    TaskListItem,
+    CodeBlock,
+    Table,
+    HorizontalRule,
+}
+
+/// Context supplied to a custom built-in Markdown block renderer.
+pub struct MarkdownBlockRenderContext {
+    pub(crate) kind: MarkdownBlockKind,
+    pub(crate) source_range: Option<Range<usize>>,
+    pub(crate) source: SharedString,
+    pub(crate) text: SharedString,
+    pub(crate) heading_level: Option<MarkdownHeadingLevel>,
+    pub(crate) code_language: Option<SharedString>,
+    pub(crate) task_checked: Option<bool>,
+    pub(crate) default: AnyElement,
+}
+
+impl MarkdownBlockRenderContext {
+    /// Return the semantic block kind.
+    pub fn kind(&self) -> MarkdownBlockKind {
+        self.kind
+    }
+
+    /// Return the byte range in the complete Markdown source, when available.
+    pub fn source_range(&self) -> Option<Range<usize>> {
+        self.source_range.clone()
+    }
+
+    /// Return this block's original Markdown source.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// Return this block's plain-text representation.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Return the heading level when this is a heading.
+    pub fn heading_level(&self) -> Option<MarkdownHeadingLevel> {
+        self.heading_level
+    }
+
+    /// Return the fenced code language when this is a code block.
+    pub fn code_language(&self) -> Option<&str> {
+        self.code_language.as_deref()
+    }
+
+    /// Return the task state when this is a task-list item.
+    pub fn task_checked(&self) -> Option<bool> {
+        self.task_checked
+    }
+
+    /// Consume the context and return the framework-managed default element.
+    ///
+    /// Wrapping this element preserves text selection, links, syntax
+    /// highlighting, code actions, and the default nested rendering.
+    pub fn into_default(self) -> AnyElement {
+        self.default
+    }
+}
+
+pub(crate) type MarkdownBlockRendererFn =
+    dyn Fn(MarkdownBlockRenderContext, &mut Window, &mut App) -> AnyElement + Send + Sync;
+pub(crate) type MarkdownBlockRenderers = HashMap<MarkdownBlockKind, Arc<MarkdownBlockRendererFn>>;
 
 /// A text view that can render Markdown or HTML.
 ///
@@ -30,7 +110,6 @@ pub(crate) type CodeBlockActionsFn =
 ///
 /// ## Not Goals
 ///
-/// - Customization of the complex style (some simple styles will be supported)
 /// - As a Markdown editor or viewer (If you want to like this, you must fork your version).
 /// - As a HTML viewer, we not support CSS, we only support basic HTML tags for used to as a content reader.
 ///
@@ -47,6 +126,8 @@ pub struct TextView {
     scrollable: bool,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     markdown_extensions: Arc<MarkdownExtensions>,
+    markdown_style: Arc<MarkdownStyle>,
+    markdown_block_renderers: Arc<MarkdownBlockRenderers>,
 }
 
 /// A plugin that can configure a [`TextView`].
@@ -86,6 +167,8 @@ impl TextView {
             scrollable: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
+            markdown_style: Arc::default(),
+            markdown_block_renderers: Arc::default(),
         }
     }
 
@@ -102,6 +185,8 @@ impl TextView {
             scrollable: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
+            markdown_style: Arc::default(),
+            markdown_block_renderers: Arc::default(),
         }
     }
 
@@ -118,12 +203,38 @@ impl TextView {
             scrollable: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
+            markdown_style: Arc::default(),
+            markdown_block_renderers: Arc::default(),
         }
     }
 
     /// Set [`TextViewStyle`].
     pub fn style(mut self, style: TextViewStyle) -> Self {
         self.text_view_style = style;
+        self
+    }
+
+    /// Apply semantic Markdown styling without changing parsing behavior.
+    pub fn markdown_style(mut self, style: MarkdownStyle) -> Self {
+        self.markdown_style = Arc::new(style);
+        self
+    }
+
+    /// Override one built-in Markdown block renderer.
+    ///
+    /// The renderer can wrap [`MarkdownBlockRenderContext::into_default`] to
+    /// preserve framework-managed interactions, or replace it completely and
+    /// own those interactions itself. Registering the same kind again replaces
+    /// the previous renderer.
+    pub fn markdown_builtin_renderer<F, E>(mut self, kind: MarkdownBlockKind, renderer: F) -> Self
+    where
+        F: Fn(MarkdownBlockRenderContext, &mut Window, &mut App) -> E + Send + Sync + 'static,
+        E: IntoElement,
+    {
+        Arc::make_mut(&mut self.markdown_block_renderers).insert(
+            kind,
+            Arc::new(move |context, window, cx| renderer(context, window, cx).into_any_element()),
+        );
         self
     }
 
@@ -278,6 +389,8 @@ impl Element for TextView {
 
         state.update(cx, |state, cx| {
             state.code_block_actions = self.code_block_actions.clone();
+            state.markdown_style = self.markdown_style.clone();
+            state.markdown_block_renderers = self.markdown_block_renderers.clone();
             state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
             state.scrollable = self.scrollable;
@@ -355,8 +468,10 @@ impl Element for TextView {
 
 #[cfg(test)]
 mod tests {
-    use super::{TextView, TextViewPlugin};
-    use crate::text::TextViewState;
+    use super::{MarkdownBlockKind, TextView, TextViewPlugin};
+    use crate::text::{
+        MarkdownElementKind, MarkdownInlineKind, MarkdownStyle, MarkdownTextStyle, TextViewState,
+    };
     use gpui::{
         AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, Modifiers,
         MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render, Styled as _,
@@ -519,6 +634,39 @@ mod tests {
         let view = TextView::markdown("plugin-test", "").plugin(DummyTextViewPlugin);
 
         assert!(view.selectable);
+    }
+
+    #[test]
+    fn markdown_presentation_builders_register_styles_and_renderers() {
+        let style = MarkdownStyle::default()
+            .inline(
+                MarkdownInlineKind::Link,
+                MarkdownTextStyle::default().no_underline(),
+            )
+            .element(
+                MarkdownElementKind::CodeBlock,
+                gpui::StyleRefinement::default(),
+            );
+        let view = TextView::markdown("presentation-test", "[link](https://example.com)")
+            .markdown_style(style)
+            .markdown_builtin_renderer(MarkdownBlockKind::CodeBlock, |context, _, _| {
+                context.into_default()
+            });
+
+        assert!(
+            view.markdown_style
+                .inline_style(MarkdownInlineKind::Link)
+                .is_some()
+        );
+        assert!(
+            view.markdown_style
+                .element_style(MarkdownElementKind::CodeBlock)
+                .is_some()
+        );
+        assert!(
+            view.markdown_block_renderers
+                .contains_key(&MarkdownBlockKind::CodeBlock)
+        );
     }
 
     #[gpui::test]

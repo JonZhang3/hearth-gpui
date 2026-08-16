@@ -261,6 +261,7 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
                 0..prefix.len(),
                 TextMark {
                     italic: true,
+                    footnote_reference: true,
                     ..Default::default()
                 },
             )]));

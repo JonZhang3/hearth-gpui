@@ -14,8 +14,17 @@ use gpui::{
 
 use crate::{
     ActiveTheme, WindowExt as _, global_state::GlobalState, input::Selection,
-    text::TextViewMultiClickKind, text::node::LinkMark, text::selection::word_range_at,
+    text::MarkdownTextStyle, text::TextViewMultiClickKind, text::node::LinkMark,
+    text::selection::word_range_at,
 };
+
+/// A link range with an identity that remains stable when InlineFlow wraps it.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct InlineLink {
+    pub(super) id: usize,
+    pub(super) range: Range<usize>,
+    pub(super) mark: LinkMark,
+}
 
 /// A inline element used to render a inline text and support selectable.
 ///
@@ -23,17 +32,20 @@ use crate::{
 pub(super) struct Inline {
     id: ElementId,
     text: SharedString,
-    links: Rc<Vec<(Range<usize>, LinkMark)>>,
+    links: Rc<Vec<InlineLink>>,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
+    link_hover_style: Option<MarkdownTextStyle>,
     styled_text: StyledText,
 
     state: Arc<Mutex<InlineState>>,
+    hover_state: Arc<Mutex<InlineState>>,
+    hover_owner: usize,
 }
 
 /// The inline text state, used RefCell to keep the selection state.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct InlineState {
-    hovered_index: Option<usize>,
+    hovered_link: Option<(usize, usize)>,
     /// The text that actually rendering, matched with selection.
     pub(super) text: SharedString,
     pub(super) selection: Option<Selection>,
@@ -44,13 +56,31 @@ impl InlineState {
     pub(crate) fn set_text(&mut self, text: SharedString) {
         self.text = text;
     }
+
+    /// Update hover ownership without allowing unrelated wrapped fragments to clear it.
+    fn update_hover(&mut self, updated: Option<usize>, owner: usize) -> bool {
+        if updated.is_none()
+            && self
+                .hovered_link
+                .is_some_and(|(_, current_owner)| current_owner != owner)
+        {
+            return false;
+        }
+
+        let updated = updated.map(|link| (link, owner));
+        if self.hovered_link == updated {
+            return false;
+        }
+        self.hovered_link = updated;
+        true
+    }
 }
 
 impl Inline {
     pub(super) fn new(
         id: impl Into<ElementId>,
         state: Arc<Mutex<InlineState>>,
-        links: Vec<(Range<usize>, LinkMark)>,
+        links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
     ) -> Self {
         let text = state
@@ -62,26 +92,55 @@ impl Inline {
             id: id.into(),
             links: Rc::new(links),
             highlights,
+            link_hover_style: None,
             text: text.clone(),
             styled_text: StyledText::new(text),
+            hover_state: state.clone(),
             state,
+            hover_owner: 0,
         }
+    }
+
+    /// Set the style applied while the pointer is over a link range.
+    pub(super) fn link_hover_style(mut self, style: Option<MarkdownTextStyle>) -> Self {
+        self.link_hover_style = style;
+        self
+    }
+
+    /// Use persistent hover state while retaining fragment-local selection state.
+    pub(super) fn hover_state(mut self, state: Arc<Mutex<InlineState>>, owner: usize) -> Self {
+        self.hover_state = state;
+        self.hover_owner = owner;
+        self
     }
 
     /// Get link at given mouse position.
     fn link_for_position(
         layout: &TextLayout,
-        links: &Vec<(Range<usize>, LinkMark)>,
+        links: &[InlineLink],
         position: Point<Pixels>,
     ) -> Option<LinkMark> {
         let offset = layout.index_for_position(position).ok()?;
-        for (range, link) in links.iter() {
-            if range.contains(&offset) {
-                return Some(link.clone());
+        for link in links {
+            if link.range.contains(&offset) {
+                return Some(link.mark.clone());
             }
         }
 
         None
+    }
+
+    /// Return the stable identity of the link at the given mouse position.
+    fn link_id_for_position(
+        layout: &TextLayout,
+        links: &[InlineLink],
+        position: Point<Pixels>,
+    ) -> Option<usize> {
+        let offset = layout.index_for_position(position).ok()?;
+        links
+            .iter()
+            .find(|link| link.range.contains(&offset))
+            .map(|link| link.id)
     }
 
     /// Paint selected bounds for debug.
@@ -339,20 +398,32 @@ impl Element for Inline {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let text_style = window.text_style();
+        let mut highlights =
+            gpui::combine_highlights(Vec::new(), self.highlights.clone()).collect::<Vec<_>>();
+        if let Some(hover_style) = &self.link_hover_style
+            && let Some((hovered_link, _)) = self
+                .hover_state
+                .lock()
+                .ok()
+                .and_then(|state| state.hovered_link)
+        {
+            for link in self.links.iter().filter(|link| link.id == hovered_link) {
+                highlights = refine_highlights_in_range(highlights, &link.range, hover_style);
+            }
+        }
 
         let mut runs = Vec::new();
         let mut ix = 0;
-        for (range, highlight) in self.highlights.iter() {
+        for (range, highlight) in highlights {
             if ix < range.start {
                 runs.push(text_style.clone().to_run(range.start - ix));
             }
-            runs.push(text_style.clone().highlight(*highlight).to_run(range.len()));
+            runs.push(text_style.clone().highlight(highlight).to_run(range.len()));
             ix = range.end;
         }
         if ix < self.text.len() {
             runs.push(text_style.to_run(self.text.len() - ix));
         }
-
         self.styled_text = StyledText::new(self.text.clone()).with_runs(runs);
         let (layout_id, _) =
             self.styled_text
@@ -482,17 +553,23 @@ impl Element for Inline {
         window.on_mouse_event({
             let hitbox = hitbox.clone();
             let text_layout = text_layout.clone();
-            let mut hovered_index = state.hovered_index;
+            let links = self.links.clone();
+            let hover_state = self.hover_state.clone();
+            let hover_owner = self.hover_owner;
             move |event: &MouseMoveEvent, phase, window, cx| {
-                if !phase.bubble() || !hitbox.is_hovered(window) {
+                if !phase.bubble() {
                     return;
                 }
 
-                let current = hovered_index;
-                let updated = text_layout.index_for_position(event.position).ok();
-                //  notify update when hovering over different links
-                if current != updated {
-                    hovered_index = updated;
+                let updated = hitbox
+                    .is_hovered(window)
+                    .then(|| Self::link_id_for_position(&text_layout, &links, event.position))
+                    .flatten();
+                let changed = hover_state
+                    .lock()
+                    .map(|mut state| state.update_hover(updated, hover_owner))
+                    .unwrap_or(false);
+                if changed {
                     cx.notify(current_view);
                 }
             }
@@ -528,6 +605,41 @@ impl Element for Inline {
             });
         }
     }
+}
+
+/// Apply a highest-priority semantic refinement to already-combined highlights.
+///
+/// Applying the tri-state refinement after `combine_highlights` preserves
+/// explicit removals such as `no_underline()` and `no_background()`.
+fn refine_highlights_in_range(
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+    target: &Range<usize>,
+    refinement: &MarkdownTextStyle,
+) -> Vec<(Range<usize>, HighlightStyle)> {
+    let mut resolved = Vec::with_capacity(highlights.len() + 2);
+
+    for (range, style) in highlights {
+        let overlap_start = range.start.max(target.start);
+        let overlap_end = range.end.min(target.end);
+        if overlap_start >= overlap_end {
+            resolved.push((range, style));
+            continue;
+        }
+
+        if range.start < overlap_start {
+            resolved.push((range.start..overlap_start, style));
+        }
+
+        let mut hovered = style;
+        refinement.refine(&mut hovered);
+        resolved.push((overlap_start..overlap_end, hovered));
+
+        if overlap_end < range.end {
+            resolved.push((overlap_end..range.end, style));
+        }
+    }
+
+    resolved
 }
 
 fn selection_for_multi_click(
@@ -597,8 +709,54 @@ fn point_in_text_selection(
 
 #[cfg(test)]
 mod tests {
-    use super::point_in_text_selection;
-    use gpui::{point, px};
+    use super::{InlineState, point_in_text_selection, refine_highlights_in_range};
+    use crate::text::MarkdownTextStyle;
+    use gpui::{FontWeight, HighlightStyle, UnderlineStyle, hsla, point, px};
+
+    #[test]
+    fn hover_refinement_clears_link_styles_after_highlight_combination() {
+        let background = hsla(0.5, 0.5, 0.5, 1.);
+        let underline = UnderlineStyle {
+            thickness: px(1.),
+            ..Default::default()
+        };
+        let highlights = vec![(
+            0..10,
+            HighlightStyle {
+                background_color: Some(background),
+                underline: Some(underline),
+                font_weight: Some(FontWeight::BOLD),
+                ..Default::default()
+            },
+        )];
+
+        let resolved = refine_highlights_in_range(
+            highlights,
+            &(2..8),
+            &MarkdownTextStyle::default().no_background().no_underline(),
+        );
+
+        assert_eq!(resolved.len(), 3);
+        assert_eq!(resolved[0].0, 0..2);
+        assert_eq!(resolved[0].1.background_color, Some(background));
+        assert_eq!(resolved[1].0, 2..8);
+        assert_eq!(resolved[1].1.background_color, None);
+        assert_eq!(resolved[1].1.underline, None);
+        assert_eq!(resolved[1].1.font_weight, Some(FontWeight::BOLD));
+        assert_eq!(resolved[2].0, 8..10);
+        assert_eq!(resolved[2].1.underline, Some(underline));
+    }
+
+    #[test]
+    fn unrelated_wrapped_fragment_cannot_clear_active_hover() {
+        let mut state = InlineState::default();
+
+        assert!(state.update_hover(Some(7), 1));
+        assert!(!state.update_hover(None, 2));
+        assert_eq!(state.hovered_link, Some((7, 1)));
+        assert!(state.update_hover(None, 1));
+        assert_eq!(state.hovered_link, None);
+    }
 
     #[test]
     fn test_point_in_text_selection() {

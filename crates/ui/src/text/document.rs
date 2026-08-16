@@ -1,9 +1,15 @@
 use gpui::{
     App, InteractiveElement as _, IntoElement, ListState, ParentElement as _, SharedString,
-    Styled as _, Window, div,
+    Styled as _, Window, div, prelude::FluentBuilder as _,
 };
 
-use crate::text::node::{BlockNode, NodeContext};
+use crate::{
+    StyledExt as _,
+    text::{
+        MarkdownElementKind,
+        node::{BlockNode, NodeContext},
+    },
+};
 
 /// The parsed document AST.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -81,6 +87,12 @@ impl ParsedDocument {
             let blocks_len = self.blocks.len();
             return div()
                 .id("document")
+                .when_some(
+                    node_cx
+                        .markdown_style
+                        .element_style(MarkdownElementKind::Document),
+                    |this, style| this.refine_style(style),
+                )
                 .children(self.blocks.iter().enumerate().map(move |(ix, node)| {
                     let is_last = ix + 1 == blocks_len;
                     node.render_block(
@@ -107,27 +119,36 @@ impl ParsedDocument {
             list_state.reset(blocks.len());
         }
 
-        div().id("document").size_full().child(
-            gpui::list(list_state, {
-                let node_cx = node_cx.clone();
-                let blocks = blocks.clone();
-                move |ix, window, cx| {
-                    let is_last = ix + 1 == blocks.len();
-                    blocks[ix]
-                        .render_block(
-                            NodeRenderOptions {
-                                ix,
-                                is_last,
-                                ..options
-                            },
-                            &node_cx,
-                            window,
-                            cx,
-                        )
-                        .into_any_element()
-                }
-            })
-            .size_full(),
-        )
+        div()
+            .id("document")
+            .size_full()
+            .when_some(
+                node_cx
+                    .markdown_style
+                    .element_style(MarkdownElementKind::Document),
+                |this, style| this.refine_style(style),
+            )
+            .child(
+                gpui::list(list_state, {
+                    let node_cx = node_cx.clone();
+                    let blocks = blocks.clone();
+                    move |ix, window, cx| {
+                        let is_last = ix + 1 == blocks.len();
+                        blocks[ix]
+                            .render_block(
+                                NodeRenderOptions {
+                                    ix,
+                                    is_last,
+                                    ..options
+                                },
+                                &node_cx,
+                                window,
+                                cx,
+                            )
+                            .into_any_element()
+                    }
+                })
+                .size_full(),
+            )
     }
 }
