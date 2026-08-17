@@ -231,6 +231,10 @@ indoc = "2"
 name = "shadcn_alignment"
 harness = false
 
+[[bench]]
+name = "streaming_markdown"
+harness = false
+
 [lints]
 workspace = true
 

@@ -112,7 +112,29 @@ state.update(cx, |state, cx| state.finish_streaming(cx));
 TextView::new(&state).selectable(true)
 ```
 
-Append parsing runs in the background, coalesces queued deltas, preserves the last valid rendered document on a transient parse failure, and performs a canonical full parse after 100 ms of inactivity. `finish_streaming` requests that canonical parse immediately. Reference-style links remain correct when their definitions arrive in later chunks.
+Append parsing runs in the background, coalesces queued deltas, preserves the last valid rendered document on a transient parse failure, and performs a canonical full parse after 100 ms of inactivity. While appending, the display-only tail closes incomplete emphasis, inline code, strikethrough, and links to avoid visible marker and wrapping jumps. Synthetic closers never enter the canonical source, selection, copy output, or settled AST; incomplete links are styled but not clickable, while incomplete images remain literal text until their destination is complete. Fenced code blocks are never mended. `finish_streaming` requests the canonical parse immediately. Reference-style links remain correct when their definitions arrive in later chunks.
+
+Use `StreamingTextPacer` when providers emit deltas too quickly or in very large chunks:
+
+```rust
+use hearth_gpui::text::StreamingTextPacer;
+
+let mut pacer = StreamingTextPacer::new();
+pacer.push_str(provider_delta);
+
+while let Some(chunk) = pacer.take_chunk() {
+    state.update(cx, |state, cx| state.push_str(&chunk, cx));
+    // Wait pacer.frame_interval() before taking the next chunk.
+}
+
+let remaining = pacer.drain();
+state.update(cx, |state, cx| {
+    state.push_str(&remaining, cx);
+    state.finish_streaming(cx);
+});
+```
+
+The pacer avoids splitting graphemes already present in its current buffer, stops a frame at a newline, and adapts its chunk size to backlog. A provider may still divide one grapheme across separate deltas, so an intermediate frame can be incomplete; concatenated output and the final settled render preserve the original Unicode sequence. The pacer owns no task or timer. Automatic scroll following remains the host scroll container's responsibility: remember whether the reader is near the bottom, wait until the new content has been laid out, then apply the latest `max_offset`. Pause following when the reader scrolls upward and restore it when they return to the bottom.
 
 ## Markdown Plugins
 

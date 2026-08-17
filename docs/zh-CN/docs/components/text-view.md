@@ -112,7 +112,29 @@ state.update(cx, |state, cx| state.finish_streaming(cx));
 TextView::new(&state).selectable(true)
 ```
 
-追加解析在后台执行，会合并排队的 delta；临时解析失败时保留最后一份有效文档；空闲 100 ms 后执行 canonical full parse。`finish_streaming` 会立即请求该 canonical parse。引用式链接的 definition 即使在后续 chunk 才到达，也能得到正确结果。
+追加解析在后台执行，会合并排队的 delta；临时解析失败时保留最后一份有效文档；空闲 100 ms 后执行 canonical full parse。追加期间，display-only tail 会临时闭合未完成的 emphasis、inline code、strikethrough 和 link，减少 marker 出现、消失及换行跳变。合成闭合符不会进入 canonical source、selection、复制内容或最终 AST；未完成的 link 保留样式但不可点击，未完成的 image 则保持普通文本，直到 destination 完整。fenced code block 不执行补全。`finish_streaming` 会立即请求 canonical parse。引用式链接的 definition 即使在后续 chunk 才到达，也能得到正确结果。
+
+当 provider 输出过快或单个 delta 很大时，使用 `StreamingTextPacer`：
+
+```rust
+use hearth_gpui::text::StreamingTextPacer;
+
+let mut pacer = StreamingTextPacer::new();
+pacer.push_str(provider_delta);
+
+while let Some(chunk) = pacer.take_chunk() {
+    state.update(cx, |state, cx| state.push_str(&chunk, cx));
+    // 获取下一个 chunk 前等待 pacer.frame_interval()。
+}
+
+let remaining = pacer.drain();
+state.update(cx, |state, cx| {
+    state.push_str(&remaining, cx);
+    state.finish_streaming(cx);
+});
+```
+
+Pacer 不会拆分当前 buffer 中已经识别出的 grapheme，遇到换行会提前结束当前帧，并根据 backlog 自适应 chunk 大小。Provider 仍可能把同一个 grapheme 拆到不同 delta，因此中间帧可能暂时不完整；所有输出拼接后的 Unicode 序列和最终 settled render 保持准确。Pacer 不持有 task 或 timer。自动滚动跟随仍由宿主 scroll container 负责：记录用户是否位于底部附近，等待新内容完成布局后再应用最新 `max_offset`；用户向上滚动时暂停跟随，回到底部后恢复。
 
 ## Markdown 插件
 

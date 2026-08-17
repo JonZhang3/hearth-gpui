@@ -1,13 +1,11 @@
-use std::time::Duration;
-
 use gpui::*;
 use hearth_gpui::{
-    ActiveTheme as _,
+    ActiveTheme as _, ElementExt as _,
     button::Button,
     h_flex,
     text::{
         MarkdownBlockKind, MarkdownElementKind, MarkdownInlineKind, MarkdownStyle,
-        MarkdownTextStyle, TextView, TextViewState,
+        MarkdownTextStyle, StreamingTextPacer, TextView, TextViewState,
     },
     v_flex,
 };
@@ -31,6 +29,8 @@ pub struct MarkdownStory {
     markdown_state: Entity<TextViewState>,
     scroll_handle: ScrollHandle,
     replay_id: usize,
+    following: bool,
+    pending_follow: bool,
     _subscriptions: Vec<Subscription>,
     _update_task: Task<()>,
 }
@@ -66,37 +66,79 @@ impl MarkdownStory {
         let markdown_state =
             cx.new(|cx| TextViewState::markdown("# Streaming Markdown Parse\n\n", cx));
         let _subscriptions = vec![cx.observe(&markdown_state, |this, _, cx| {
-            this.follow_stream_if_near_bottom(cx);
+            this.mark_stream_content_changed(cx);
         })];
 
         Self {
             markdown_state,
             scroll_handle: ScrollHandle::new(),
             replay_id: 0,
+            following: true,
+            pending_follow: true,
             _subscriptions,
             _update_task: Task::ready(()),
         }
     }
 
-    /// Requests bottom alignment after parsed Markdown has updated the content layout.
-    fn follow_stream_if_near_bottom(&mut self, cx: &mut Context<Self>) {
-        let offset = self.scroll_handle.offset();
-        let max_offset = self.scroll_handle.max_offset();
-        if !is_near_bottom(offset.y, max_offset.y) {
+    /// Mark a follow request without reading the previous frame's content height.
+    fn mark_stream_content_changed(&mut self, cx: &mut Context<Self>) {
+        self.pending_follow |= self.following;
+        cx.notify();
+    }
+
+    /// Apply a pending follow after the scroll container has measured its new content.
+    fn apply_pending_follow(&mut self, cx: &mut Context<Self>) {
+        if !self.following || !self.pending_follow {
             return;
         }
+        let max_offset = self.scroll_handle.max_offset();
+        let offset = self.scroll_handle.offset();
+        self.scroll_handle
+            .set_offset(point(offset.x, -max_offset.y));
+        self.pending_follow = false;
+        cx.notify();
+    }
 
-        self.scroll_handle.scroll_to_bottom();
+    /// Handle scroll intent before GPUI applies the wheel delta to the scroll handle.
+    fn on_stream_scroll_wheel(
+        &mut self,
+        event: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let delta_y = event.delta.pixel_delta(window.line_height()).y;
+        if delta_y > px(0.) {
+            // Any upward intent must win over a pending stream-follow request.
+            self.following = false;
+            self.pending_follow = false;
+            cx.notify();
+        } else if delta_y < px(0.) {
+            cx.on_next_frame(window, |this, _, cx| {
+                this.sync_follow_mode(cx);
+            });
+        }
+    }
+
+    /// Re-evaluate whether downward scrolling has returned the viewport near the bottom.
+    fn sync_follow_mode(&mut self, cx: &mut Context<Self>) {
+        self.following = is_near_bottom(
+            self.scroll_handle.offset().y,
+            self.scroll_handle.max_offset().y,
+        );
+        if self.following {
+            self.pending_follow = true;
+        }
         cx.notify();
     }
 
     /// Restores bottom-follow mode when the user explicitly starts a new replay.
-    fn reset_replay_scroll(&self) {
+    fn reset_replay_scroll(&mut self) {
+        self.following = true;
+        self.pending_follow = true;
         let offset = self.scroll_handle.offset();
         let max_offset = self.scroll_handle.max_offset();
         self.scroll_handle
             .set_offset(point(offset.x, -max_offset.y));
-        self.scroll_handle.scroll_to_bottom();
     }
 
     /// Applies semantic inline styles and refines the built-in code-block renderer.
@@ -176,12 +218,14 @@ impl MarkdownStory {
         });
 
         self._update_task = cx.spawn(async move |weak_self, cx| {
-            let chars: Vec<char> = STREAM_EXAMPLE.chars().collect();
-            let mut current = 0;
+            let mut pacer = StreamingTextPacer::new();
+            pacer.push_str(
+                "Streaming repairs **strong text**, `inline code`, and [pending links](https://example.com/path) before their closers arrive.\n\n",
+            );
+            pacer.push_str(STREAM_EXAMPLE);
+            let frame_interval = pacer.frame_interval();
 
-            while current < chars.len() {
-                let chunk_size = (5 + rand::random::<usize>() % 15).min(chars.len() - current);
-                let chunk: String = chars[current..current + chunk_size].iter().collect();
+            while let Some(chunk) = pacer.take_chunk() {
                 let should_continue = weak_self
                     .update(cx, |this, cx| {
                         if replay_id != this.replay_id {
@@ -198,9 +242,8 @@ impl MarkdownStory {
                     return;
                 }
 
-                current += chunk_size;
                 cx.background_executor()
-                    .timer(Duration::from_millis(50))
+                    .timer(frame_interval)
                     .await;
             }
 
@@ -327,7 +370,7 @@ impl Render for MarkdownStory {
                                             .text_xs()
                                             .text_color(cx.theme().muted_foreground)
                                             .child(
-                                                "Replay appends randomized chunks and calls finish_streaming at completion.",
+                                                "Replay paces buffered text chunks, repairs incomplete inline tails, and settles canonically.",
                                             ),
                                     ),
                             )
@@ -339,6 +382,17 @@ impl Render for MarkdownStory {
                                     .track_scroll(&self.scroll_handle)
                                     .overflow_y_scroll()
                                     .pr_2()
+                                    .on_scroll_wheel(cx.listener(|this, event, window, cx| {
+                                        this.on_stream_scroll_wheel(event, window, cx);
+                                    }))
+                                    .on_prepaint({
+                                        let story = cx.entity();
+                                        move |_, _, cx| {
+                                            story.update(cx, |this, cx| {
+                                                this.apply_pending_follow(cx);
+                                            });
+                                        }
+                                    })
                                     .child(Self::styled_markdown(
                                         TextView::new(&self.markdown_state).selectable(true),
                                         cx,
@@ -359,8 +413,8 @@ mod tests {
     #[cfg(feature = "visual-test")]
     use gpui::{
         Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _, Render,
-        StatefulInteractiveElement as _, Styled as _, TestAppContext, VisualTestContext, Window,
-        div,
+        ScrollDelta, ScrollWheelEvent, StatefulInteractiveElement as _, Styled as _,
+        TestAppContext, VisualTestContext, Window, div, point,
     };
     #[cfg(feature = "visual-test")]
     use std::time::Duration;
@@ -425,6 +479,7 @@ mod tests {
             story.replay(cx);
         });
         let mut saw_overflow = false;
+        let mut checked_pause_and_resume = false;
         for chunk_ix in 0..2_000 {
             cx.executor().advance_clock(Duration::from_millis(50));
             cx.run_until_parked();
@@ -444,9 +499,66 @@ mod tests {
                     max_offset,
                     "streaming pane stopped following after chunk {chunk_ix}"
                 );
+
+                if !checked_pause_and_resume && max_offset > px(50.) {
+                    cx.simulate_event(ScrollWheelEvent {
+                        position: scroll_handle.bounds().center(),
+                        delta: ScrollDelta::Pixels(point(px(0.), px(8.))),
+                        ..Default::default()
+                    });
+                    cx.run_until_parked();
+                    cx.update(|window, cx| {
+                        _ = window.draw(cx);
+                    });
+                    assert!(!cx.update(|_, cx| story.read(cx).following));
+                    assert_eq!(
+                        scroll_handle.max_offset().y + scroll_handle.offset().y,
+                        px(8.),
+                        "a small upward wheel gesture should move away from the bottom"
+                    );
+
+                    cx.executor().advance_clock(Duration::from_millis(50));
+                    cx.run_until_parked();
+                    cx.update(|window, cx| {
+                        _ = window.draw(cx);
+                    });
+                    let paused_max = scroll_handle.max_offset().y;
+                    assert_ne!(
+                        -scroll_handle.offset().y,
+                        paused_max,
+                        "user scrolling upward should pause automatic following"
+                    );
+
+                    scroll_handle.set_offset(point(px(0.), -paused_max));
+                    story.update(cx, |story, cx| story.sync_follow_mode(cx));
+                    cx.update(|window, cx| {
+                        _ = window.draw(cx);
+                    });
+                    assert!(cx.update(|_, cx| story.read(cx).following));
+                    assert_eq!(-scroll_handle.offset().y, scroll_handle.max_offset().y);
+                    checked_pause_and_resume = true;
+                }
             }
             if replay_finished {
                 assert!(saw_overflow);
+                assert!(checked_pause_and_resume);
+
+                // Completed output must release bottom-follow on the first small upward gesture too.
+                cx.simulate_event(ScrollWheelEvent {
+                    position: scroll_handle.bounds().center(),
+                    delta: ScrollDelta::Pixels(point(px(0.), px(8.))),
+                    ..Default::default()
+                });
+                cx.run_until_parked();
+                cx.update(|window, cx| {
+                    _ = window.draw(cx);
+                });
+                assert!(!cx.update(|_, cx| story.read(cx).following));
+                assert_eq!(
+                    scroll_handle.max_offset().y + scroll_handle.offset().y,
+                    px(8.),
+                    "completed output should not snap a small upward gesture back to the bottom"
+                );
                 return;
             }
         }

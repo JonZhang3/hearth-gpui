@@ -5,8 +5,8 @@ use std::{
 
 use gpui::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, DefiniteLength, Element, ElementId,
-    GlobalElementId, HighlightStyle, InspectorElementId, InteractiveElement as _, IntoElement,
-    LayoutId, Length, LineFragment as WrapLineFragment, ObjectFit, Pixels, ShapedLine,
+    GlobalElementId, HighlightStyle, ImageSource, InspectorElementId, InteractiveElement as _,
+    IntoElement, LayoutId, Length, LineFragment as WrapLineFragment, ObjectFit, Pixels, ShapedLine,
     SharedString, SharedUri, Size, StatefulInteractiveElement as _, StyleRefinement, Styled,
     StyledImage as _, TextRun, TextStyle, WhiteSpace, Window, img, point,
     prelude::FluentBuilder as _, px, relative, size,
@@ -21,6 +21,11 @@ use super::{
 use crate::text::MarkdownTextStyle;
 
 const IMAGE_LEN: usize = 1;
+
+/// Classify absolute Markdown image URLs as remote resources and relative paths as embedded assets.
+fn markdown_image_source(url: &SharedUri) -> ImageSource {
+    url.as_ref().into()
+}
 
 pub(super) struct InlineFlow {
     id: ElementId,
@@ -134,23 +139,27 @@ impl InlineFlow {
         base_size: Size<Pixels>,
         style: &StyleRefinement,
     ) -> AnyElement {
-        img(url.clone())
+        img(markdown_image_source(url))
             .id(ix)
             .object_fit(ObjectFit::Contain)
             .max_w(relative(1.))
             .w(base_size.width)
             .h(base_size.height)
             .refine_style(style)
-            .when_some(link.clone(), |this, link| {
-                let title = title.to_string();
-                this.cursor_pointer()
-                    .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
-                    .on_click(move |_, window, cx| {
-                        window.end_text_selection(cx);
-                        cx.stop_propagation();
-                        cx.open_url(&link.url);
-                    })
-            })
+            .when_some(
+                link.clone()
+                    .filter(|link| link.url.as_ref() != crate::text::streaming::PENDING_LINK_URL),
+                |this, link| {
+                    let title = title.to_string();
+                    this.cursor_pointer()
+                        .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
+                        .on_click(move |_, window, cx| {
+                            window.end_text_selection(cx);
+                            cx.stop_propagation();
+                            cx.open_url(&link.url);
+                        })
+                },
+            )
             .into_any_element()
     }
 
@@ -648,7 +657,7 @@ fn intrinsic_image_size(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<Size<Pixels>> {
-    let mut element = img(url.clone())
+    let mut element = img(markdown_image_source(url))
         .id(ix)
         .object_fit(ObjectFit::Contain)
         .max_w(relative(1.))
@@ -789,7 +798,9 @@ fn slice_links(links: &[InlineLink], start: usize, end: usize) -> Vec<InlineLink
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{AppContext as _, Context, Render, TestAppContext, VisualTestContext, div, point};
+    use gpui::{
+        AppContext as _, Context, Render, Resource, TestAppContext, VisualTestContext, div, point,
+    };
 
     struct InlineFlowTestRoot;
 
@@ -801,6 +812,22 @@ mod tests {
 
     struct ImageMeasureProbe {
         style: StyleRefinement,
+    }
+
+    #[test]
+    fn markdown_image_source_preserves_embedded_and_remote_resource_kinds() {
+        let embedded: SharedUri = "icons/heart.svg".into();
+        assert!(matches!(
+            markdown_image_source(&embedded),
+            ImageSource::Resource(Resource::Embedded(path)) if path.as_ref() == "icons/heart.svg"
+        ));
+
+        let remote: SharedUri = "https://example.com/image.svg".into();
+        assert!(matches!(
+            markdown_image_source(&remote),
+            ImageSource::Resource(Resource::Uri(uri))
+                if uri.as_ref() == "https://example.com/image.svg"
+        ));
     }
 
     impl IntoElement for ImageMeasureProbe {

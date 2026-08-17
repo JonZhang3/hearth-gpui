@@ -18,6 +18,7 @@ use crate::{
         document::ParsedDocument,
         format,
         node::{self, NodeContext},
+        streaming::close_hanging_markdown,
     },
     v_flex,
 };
@@ -613,11 +614,19 @@ impl UpdateFuture {
     /// Parse one update while keeping received source separate from valid AST state.
     fn parse_update(&mut self, options: &UpdateOptions) -> Result<ParsedContent, SharedString> {
         self.update_source(options);
-        let result = parse_content(self.format, self.content.clone(), &self.source, options);
-        if let Ok(content) = &result {
-            self.content = content.clone();
+        let canonical = parse_content(self.format, self.content.clone(), &self.source, options)?;
+        self.content = canonical.clone();
+
+        if options.kind == UpdateKind::Append {
+            Ok(streaming_display_content(
+                self.format,
+                canonical,
+                &self.source,
+                options,
+            ))
+        } else {
+            Ok(canonical)
         }
-        result
     }
 
     /// Advance the source baseline independently from the last valid parsed AST.
@@ -635,6 +644,65 @@ impl UpdateFuture {
             }
         }
     }
+}
+
+/// Build a display-only replacement for the unstable Markdown tail.
+///
+/// The canonical AST remains the worker baseline. Synthetic closing markers
+/// are parsed only for presentation and never become part of the retained
+/// source, selection ranges, or the final settled document.
+fn streaming_display_content(
+    format: TextViewFormat,
+    canonical: ParsedContent,
+    complete_source: &str,
+    options: &UpdateOptions,
+) -> ParsedContent {
+    if format != TextViewFormat::Markdown {
+        return canonical;
+    }
+    let Some(last_block) = canonical.document.blocks.last() else {
+        return canonical;
+    };
+    if last_block.is_code_block() {
+        return canonical;
+    }
+    let Some(span) = last_block.span() else {
+        return canonical;
+    };
+    let Some(tail) = complete_source.get(span.start..) else {
+        return canonical;
+    };
+    let Some(repair) = close_hanging_markdown(tail) else {
+        return canonical;
+    };
+
+    let mut display_node_cx = NodeContext {
+        offset: span.start,
+        link_refs: canonical.node_cx.link_refs.clone(),
+        markdown_extensions: options.markdown_extensions.clone(),
+        ..NodeContext::default()
+    };
+    let Ok(mut display_tail) = format::markdown::parse(&repair.markdown, &mut display_node_cx)
+    else {
+        return canonical;
+    };
+    if let Some(synthetic_suffix) = repair.synthetic_text_suffix
+        && !display_tail
+            .blocks
+            .last_mut()
+            .is_some_and(|block| block.remove_trailing_synthetic_char(synthetic_suffix))
+    {
+        return canonical;
+    }
+    for block in &mut display_tail.blocks {
+        block.clamp_spans(complete_source.len());
+    }
+
+    let mut display = canonical.clone();
+    display.document.blocks.pop();
+    display.document.blocks.extend(display_tail.blocks);
+    display.document.source = complete_source.to_string().into();
+    display
 }
 
 #[derive(Clone)]
@@ -709,6 +777,7 @@ fn parse_content(
     // Reference definitions affect parsing outside the unstable tail. Once a
     // document contains one, suffix-only parsing is not semantically safe.
     let requires_full_parse = !content.node_cx.link_refs.is_empty();
+    let mut previous_tail = None;
     let mut source = if append && requires_full_parse {
         complete_source.to_string()
     } else {
@@ -720,6 +789,7 @@ fn parse_content(
         && let Some(last_block) = content.document.blocks.pop()
         && let Some(span) = last_block.span()
     {
+        previous_tail = Some(last_block);
         node_cx.offset = span.start;
         source.push_str(&complete_source[span.start..]);
     } else if source.is_empty() {
@@ -730,6 +800,12 @@ fn parse_content(
         TextViewFormat::Markdown => format::markdown::parse(&source, &mut node_cx),
         TextViewFormat::Html => format::html::parse(&source, &mut node_cx),
     }?;
+
+    if let Some(previous_tail) = previous_tail.as_ref()
+        && let Some(current_tail) = new_document.blocks.first_mut()
+    {
+        current_tail.reuse_runtime_state_from(previous_tail);
+    }
 
     // A newly appended definition can retroactively turn earlier plain text
     // into reference links, so reparse the canonical source before publishing.
@@ -939,6 +1015,185 @@ mod tests {
 
         assert_eq!(future.source, "{value}");
         assert_eq!(completed.document.source.as_ref(), "{value}");
+    }
+
+    #[test]
+    fn streaming_display_mends_inline_tail_without_changing_canonical_source() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let options = UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: "**bold".to_string(),
+            kind: UpdateKind::Append,
+            markdown_extensions: extensions,
+        };
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            "**bold",
+            &options,
+        )
+        .unwrap();
+        let display = streaming_display_content(
+            TextViewFormat::Markdown,
+            canonical.clone(),
+            "**bold",
+            &options,
+        );
+
+        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        assert!(paragraph.children[0].marks[0].1.bold);
+        assert_eq!(display.document.source.as_ref(), "**bold");
+        assert_ne!(display.document, canonical.document);
+    }
+
+    #[test]
+    fn streaming_display_styles_pending_link_but_keeps_it_noncanonical() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let source = "[docs](https://exa";
+        let options = UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: source.to_string(),
+            kind: UpdateKind::Append,
+            markdown_extensions: extensions,
+        };
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            source,
+            &options,
+        )
+        .unwrap();
+        let display =
+            streaming_display_content(TextViewFormat::Markdown, canonical, source, &options);
+
+        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let pending = paragraph.children[0].marks[0]
+            .1
+            .link
+            .as_ref()
+            .expect("pending link should retain link semantics");
+        assert_eq!(
+            pending.url.as_ref(),
+            crate::text::streaming::PENDING_LINK_URL
+        );
+        assert_eq!(display.document.source.as_ref(), source);
+        assert!(
+            display.document.blocks[0]
+                .span()
+                .is_some_and(|span| span.end <= source.len())
+        );
+    }
+
+    #[test]
+    fn streaming_display_keeps_incomplete_images_as_literal_text() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let source = "![alt](https://exa";
+        let options = UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: source.to_string(),
+            kind: UpdateKind::Append,
+            markdown_extensions: extensions,
+        };
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            source,
+            &options,
+        )
+        .unwrap();
+        let display = streaming_display_content(
+            TextViewFormat::Markdown,
+            canonical.clone(),
+            source,
+            &options,
+        );
+
+        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+            panic!("expected literal image syntax to remain a paragraph");
+        };
+        assert!(paragraph.children.iter().all(|child| child.image.is_none()));
+        assert_eq!(display.document, canonical.document);
+        assert!(display.document.text().contains(source));
+    }
+
+    #[test]
+    fn streaming_display_removes_only_the_synthetic_setext_guard() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let source = "heading\n---";
+        let options = UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: source.to_string(),
+            kind: UpdateKind::Append,
+            markdown_extensions: extensions.clone(),
+        };
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            source,
+            &options,
+        )
+        .unwrap();
+        let display =
+            streaming_display_content(TextViewFormat::Markdown, canonical, source, &options);
+
+        assert!(matches!(
+            display.document.blocks[0],
+            node::BlockNode::Paragraph(_)
+        ));
+        assert_eq!(display.document.text(), "heading\n---\n");
+        assert!(!display.document.text().contains('\u{200B}'));
+        assert_eq!(display.document.source.as_ref(), source);
+
+        let user_source = "heading\n---\u{200B}";
+        let canonical_user_content = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            user_source,
+            &UpdateOptions {
+                revision: 2,
+                epoch: 1,
+                pending_text: user_source.to_string(),
+                kind: UpdateKind::Append,
+                markdown_extensions: extensions,
+            },
+        )
+        .unwrap();
+        assert!(canonical_user_content.document.text().contains('\u{200B}'));
+    }
+
+    #[test]
+    fn streaming_display_does_not_mend_code_blocks() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let source = "```rust\nlet value = **raw";
+        let options = UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: source.to_string(),
+            kind: UpdateKind::Append,
+            markdown_extensions: extensions,
+        };
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            source,
+            &options,
+        )
+        .unwrap();
+        let display = streaming_display_content(
+            TextViewFormat::Markdown,
+            canonical.clone(),
+            source,
+            &options,
+        );
+        assert_eq!(display.document, canonical.document);
     }
 
     #[test]

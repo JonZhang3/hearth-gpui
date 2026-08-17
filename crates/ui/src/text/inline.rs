@@ -597,6 +597,9 @@ impl Element for Inline {
                     if let Some(link) =
                         Self::link_for_position(&text_layout, &links, event.position)
                     {
+                        if link.url.as_ref() == crate::text::streaming::PENDING_LINK_URL {
+                            return;
+                        }
                         window.end_text_selection(cx);
                         cx.stop_propagation();
                         cx.open_url(&link.url);

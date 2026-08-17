@@ -2,7 +2,6 @@
 // Changes:
 // - Migrated text-node rendering to semantic typography metrics.
 use std::{
-    cell::RefCell,
     collections::HashMap,
     ops::Range,
     sync::{Arc, Mutex},
@@ -20,7 +19,7 @@ use ropey::Rope;
 use crate::{
     ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
-    input::{InputEdit, Point, RopeExt as _},
+    input::{InputEdit, RopeExt as _},
     scroll::horizontal_scroll_area,
     text::{
         CodeBlockActionsFn, MarkdownBlockKind, MarkdownBlockRenderContext, MarkdownBlockRenderers,
@@ -35,11 +34,6 @@ use crate::{
 };
 
 use super::{TextViewStyle, utils::list_item_prefix};
-
-thread_local! {
-    static CODE_BLOCK_HIGHLIGHTERS: RefCell<HashMap<SharedString, SyntaxHighlighter>> =
-        RefCell::new(HashMap::new());
-}
 
 /// The block-level nodes.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +94,96 @@ enum BlockTextKind {
 }
 
 impl BlockNode {
+    pub(crate) fn is_code_block(&self) -> bool {
+        matches!(self, Self::CodeBlock(_))
+    }
+
+    /// Clamp display-only synthetic spans to the canonical source boundary.
+    pub(crate) fn clamp_spans(&mut self, source_len: usize) {
+        fn clamp(span: &mut Option<Span>, source_len: usize) {
+            if let Some(span) = span {
+                span.start = span.start.min(source_len);
+                span.end = span.end.min(source_len).max(span.start);
+            }
+        }
+
+        match self {
+            Self::Root { children, span }
+            | Self::Blockquote { children, span }
+            | Self::List { children, span, .. }
+            | Self::ListItem { children, span, .. } => {
+                clamp(span, source_len);
+                for child in children {
+                    child.clamp_spans(source_len);
+                }
+            }
+            Self::Paragraph(paragraph) => clamp(&mut paragraph.span, source_len),
+            Self::Heading { children, span, .. } => {
+                clamp(span, source_len);
+                clamp(&mut children.span, source_len);
+            }
+            Self::CodeBlock(code) => clamp(&mut code.span, source_len),
+            Self::Custom(node) => {
+                let mut span = node.span;
+                clamp(&mut span, source_len);
+                node.set_span(span);
+            }
+            Self::Table(table) => {
+                clamp(&mut table.span, source_len);
+                for row in &mut table.children {
+                    for cell in &mut row.children {
+                        clamp(&mut cell.children.span, source_len);
+                    }
+                }
+            }
+            Self::Break { span, .. }
+            | Self::HorizontalRule { span }
+            | Self::Definition { span, .. } => clamp(span, source_len),
+            Self::Unknown => {}
+        }
+    }
+
+    /// Remove one synthetic trailing character from the final textual leaf.
+    ///
+    /// Streaming display repairs use this after parsing so a character that
+    /// affected Markdown classification never enters rendering or selection.
+    pub(crate) fn remove_trailing_synthetic_char(&mut self, expected: char) -> bool {
+        match self {
+            Self::Root { children, .. }
+            | Self::Blockquote { children, .. }
+            | Self::List { children, .. }
+            | Self::ListItem { children, .. } => children
+                .last_mut()
+                .is_some_and(|child| child.remove_trailing_synthetic_char(expected)),
+            Self::Paragraph(paragraph)
+            | Self::Heading {
+                children: paragraph,
+                ..
+            } => paragraph.remove_trailing_synthetic_char(expected),
+            Self::Table(table) => table.children.last_mut().is_some_and(|row| {
+                row.children
+                    .last_mut()
+                    .is_some_and(|cell| cell.children.remove_trailing_synthetic_char(expected))
+            }),
+            Self::CodeBlock(_)
+            | Self::Custom(_)
+            | Self::Break { .. }
+            | Self::HorizontalRule { .. }
+            | Self::Definition { .. }
+            | Self::Unknown => false,
+        }
+    }
+
+    /// Reuse append-only runtime state that is not represented in the AST.
+    pub(crate) fn reuse_runtime_state_from(&mut self, previous: &Self) {
+        if let (Self::CodeBlock(current), Self::CodeBlock(previous)) = (self, previous)
+            && current.lang == previous.lang
+            && current.code().starts_with(previous.code().as_ref())
+        {
+            current.styles = previous.styles.clone();
+        }
+    }
+
     pub(super) fn is_list_item(&self) -> bool {
         matches!(self, Self::ListItem { .. })
     }
@@ -280,6 +364,12 @@ pub struct LinkMark {
     pub title: Option<SharedString>,
 }
 
+impl LinkMark {
+    fn is_pending(&self) -> bool {
+        self.url.as_ref() == crate::text::streaming::PENDING_LINK_URL
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TextMark {
     pub bold: bool,
@@ -445,6 +535,7 @@ pub(crate) struct Paragraph {
     pub(super) link_refs: HashMap<SharedString, SharedString>,
 
     pub(crate) state: Arc<Mutex<InlineState>>,
+    pub(crate) render_cache: Arc<Mutex<Option<CachedParagraphRender>>>,
 }
 
 impl PartialEq for Paragraph {
@@ -462,6 +553,7 @@ impl Paragraph {
             children: vec![InlineNode::new(&text)],
             link_refs: HashMap::new(),
             state: Arc::new(Mutex::new(InlineState::default())),
+            render_cache: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -554,6 +646,32 @@ pub(crate) struct TableCell {
 }
 
 impl Paragraph {
+    /// Remove one expected suffix from the last textual inline node.
+    fn remove_trailing_synthetic_char(&mut self, expected: char) -> bool {
+        let Some(index) = self.children.iter().rposition(|node| !node.text.is_empty()) else {
+            return false;
+        };
+        let node = &mut self.children[index];
+        let Some(text) = node.text.strip_suffix(expected) else {
+            return false;
+        };
+
+        let text_len = text.len();
+        node.text = text.to_string().into();
+        for (range, _) in &mut node.marks {
+            range.start = range.start.min(text_len);
+            range.end = range.end.min(text_len).max(range.start);
+        }
+        node.marks.retain(|(range, _)| !range.is_empty());
+        if node.text.is_empty() && node.image.is_none() {
+            self.children.remove(index);
+        }
+        if let Ok(mut cache) = self.render_cache.lock() {
+            *cache = None;
+        }
+        true
+    }
+
     pub(crate) fn take(&mut self) -> Paragraph {
         std::mem::replace(
             self,
@@ -562,6 +680,7 @@ impl Paragraph {
                 children: vec![],
                 link_refs: Default::default(),
                 state: Arc::new(Mutex::new(InlineState::default())),
+                render_cache: Arc::new(Mutex::new(None)),
             },
         )
     }
@@ -609,11 +728,40 @@ impl Paragraph {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, PartialEq)]
+struct ParagraphRenderKey {
+    inline_styles: Vec<(MarkdownInlineKind, MarkdownTextStyle)>,
+    link_refs: HashMap<SharedString, LinkMark>,
+    accent: Hsla,
+    link: Hsla,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CachedParagraphRender {
+    key: ParagraphRenderKey,
+    text: SharedString,
+    links: Vec<InlineLink>,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
+}
+
+#[derive(Clone)]
 struct CachedCodeBlockStyles {
     /// The active theme used to compute `styles`.
     highlight_theme: Arc<HighlightTheme>,
+    source: SharedString,
+    highlighter: Arc<Mutex<SyntaxHighlighter>>,
     styles: Vec<(Range<usize>, HighlightStyle)>,
+}
+
+impl std::fmt::Debug for CachedCodeBlockStyles {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CachedCodeBlockStyles")
+            .field("highlight_theme", &self.highlight_theme.name)
+            .field("source_len", &self.source.len())
+            .field("styles", &self.styles)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -674,51 +822,66 @@ impl CodeBlock {
             return Vec::new();
         };
 
-        // Pointer identity is the common render-path fast check. If an
-        // equivalent theme is reallocated, adopt its Arc while preserving the
-        // computed styles so subsequent renders also use the fast path.
+        let code = self.code();
+        let desired_language = LanguageRegistry::singleton()
+            .language(lang)
+            .map(|config| config.name)
+            .unwrap_or_else(|| SharedString::from("text"));
+        // Pointer identity is the common render-path fast check. Equivalent
+        // reallocated themes are adopted without reparsing source text.
         if let Some(cached) = styles.as_mut() {
-            if Arc::ptr_eq(&cached.highlight_theme, highlight_theme) {
+            let language_matches = cached
+                .highlighter
+                .lock()
+                .is_ok_and(|highlighter| highlighter.language() == &desired_language);
+            if language_matches
+                && cached.source == code
+                && Arc::ptr_eq(&cached.highlight_theme, highlight_theme)
+            {
                 return cached.styles.clone();
             }
 
-            if cached.highlight_theme.as_ref() == highlight_theme.as_ref() {
+            if language_matches
+                && cached.source == code
+                && cached.highlight_theme.as_ref() == highlight_theme.as_ref()
+            {
                 cached.highlight_theme = highlight_theme.clone();
                 return cached.styles.clone();
             }
         }
 
-        let code = self.code();
-        let computed_styles = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
-            let mut cache = cache.borrow_mut();
-            let highlighter = cache
-                .entry(lang.clone())
-                .or_insert_with(|| SyntaxHighlighter::new(lang));
-
+        let highlighter = styles
+            .as_ref()
+            .map(|cached| cached.highlighter.clone())
+            .unwrap_or_else(|| Arc::new(Mutex::new(SyntaxHighlighter::new(lang))));
+        let code_rope = Rope::from_str(code.as_str());
+        let computed_styles = if let Ok(mut highlighter) = highlighter.lock() {
             if let Some(config) = LanguageRegistry::singleton().language(lang)
                 && highlighter.language() != &config.name
             {
                 *highlighter = SyntaxHighlighter::new(lang);
             }
 
-            let old_end_byte = highlighter.text().len();
-            let old_end_position = highlighter.text().offset_to_point(old_end_byte);
-            let code_rope = Rope::from_str(code.as_str());
-
+            let old_text = highlighter.text();
+            let old_end_byte = old_text.len();
+            let prefix_len = common_prefix_len(old_text, code.as_ref());
             let edit = InputEdit {
-                start_byte: 0,
+                start_byte: prefix_len,
                 old_end_byte,
                 new_end_byte: code.len(),
-                start_position: Point::new(0, 0),
-                old_end_position,
+                start_position: old_text.offset_to_point(prefix_len),
+                old_end_position: old_text.offset_to_point(old_end_byte),
                 new_end_position: code_rope.offset_to_point(code.len()),
             };
-
             highlighter.update(Some(edit), &code_rope, None);
             highlighter.styles(&(0..code.len()), highlight_theme)
-        });
+        } else {
+            Vec::new()
+        };
         *styles = Some(CachedCodeBlockStyles {
             highlight_theme: highlight_theme.clone(),
+            source: code,
+            highlighter,
             styles: computed_styles.clone(),
         });
         computed_styles
@@ -811,6 +974,21 @@ impl CodeBlock {
             )
             .into_any_element()
     }
+}
+
+/// Return the longest shared UTF-8 boundary between cached and current code.
+fn common_prefix_len(previous: &Rope, current: &str) -> usize {
+    let previous = previous.to_string();
+    let mut prefix = previous
+        .as_bytes()
+        .iter()
+        .zip(current.as_bytes())
+        .take_while(|(left, right)| left == right)
+        .count();
+    while prefix > 0 && (!previous.is_char_boundary(prefix) || !current.is_char_boundary(prefix)) {
+        prefix -= 1;
+    }
+    prefix
 }
 
 /// A context for rendering nodes, contains link references.
@@ -1002,6 +1180,31 @@ impl Paragraph {
             .into_any_element();
         }
 
+        if !children.iter().any(|child| child.image.is_some()) {
+            let key = ParagraphRenderKey {
+                inline_styles: node_cx.markdown_style.inline_snapshot(),
+                link_refs: node_cx.link_refs.clone(),
+                accent: cx.theme().accent,
+                link: cx.theme().link,
+            };
+            let cached = self.cached_render(key, node_cx);
+            if let Ok(mut state) = self.state.lock() {
+                state.set_text(cached.text.clone());
+            }
+            return div()
+                .id(span.unwrap_or_default())
+                .child(
+                    Inline::new(
+                        children.len(),
+                        self.state.clone(),
+                        cached.links.clone(),
+                        cached.highlights.clone(),
+                    )
+                    .link_hover_style(node_cx.link_hover_style()),
+                )
+                .into_any_element();
+        }
+
         let mut child_nodes: Vec<AnyElement> = vec![];
 
         let mut text = String::new();
@@ -1042,18 +1245,21 @@ impl Paragraph {
                             |this, style| this.refine_style(style),
                         )
                         .when_some(image.width, |this, width| this.w(width))
-                        .when_some(image.link.clone(), |this, link| {
-                            let title = image.title();
-                            this.cursor_pointer()
-                                .tooltip(move |window, cx| {
-                                    Tooltip::new(title.clone()).build(window, cx)
-                                })
-                                .on_click(move |_, window, cx| {
-                                    window.end_text_selection(cx);
-                                    cx.stop_propagation();
-                                    cx.open_url(&link.url);
-                                })
-                        })
+                        .when_some(
+                            image.link.clone().filter(|link| !link.is_pending()),
+                            |this, link| {
+                                let title = image.title();
+                                this.cursor_pointer()
+                                    .tooltip(move |window, cx| {
+                                        Tooltip::new(title.clone()).build(window, cx)
+                                    })
+                                    .on_click(move |_, window, cx| {
+                                        window.end_text_selection(cx);
+                                        cx.stop_propagation();
+                                        cx.open_url(&link.url);
+                                    })
+                            },
+                        )
                         .into_any_element(),
                 );
 
@@ -1092,6 +1298,48 @@ impl Paragraph {
             .id(span.unwrap_or_default())
             .children(child_nodes)
             .into_any_element()
+    }
+
+    /// Reuse flattened text and semantic ranges while the paragraph and inline style inputs match.
+    fn cached_render(
+        &self,
+        key: ParagraphRenderKey,
+        node_cx: &NodeContext,
+    ) -> CachedParagraphRender {
+        if let Ok(cache) = self.render_cache.lock()
+            && let Some(cached) = cache.as_ref()
+            && cached.key == key
+        {
+            return cached.clone();
+        }
+
+        let mut text = String::new();
+        let mut links = Vec::new();
+        let mut highlights = Vec::new();
+        let mut offset = 0;
+        for inline_node in &self.children {
+            text.push_str(&inline_node.text);
+            append_resolved_inline_styles(
+                inline_node,
+                offset,
+                node_cx,
+                key.accent,
+                key.link,
+                &mut links,
+                &mut highlights,
+            );
+            offset += inline_node.text.len();
+        }
+        let cached = CachedParagraphRender {
+            key,
+            text: text.into(),
+            links,
+            highlights,
+        };
+        if let Ok(mut cache) = self.render_cache.lock() {
+            *cache = Some(cached.clone());
+        }
+        cached
     }
 
     fn should_render_inline_flow(&self) -> bool {
@@ -2159,6 +2407,13 @@ mod tests {
             .and_then(|styles| styles.as_ref().map(|styles| styles.highlight_theme.clone()))
     }
 
+    #[cfg(feature = "tree-sitter")]
+    fn cached_highlighter_language(block: &CodeBlock) -> Option<SharedString> {
+        let cache = block.styles.lock().ok()?;
+        let highlighter = cache.as_ref()?.highlighter.lock().ok()?;
+        Some(highlighter.language().clone())
+    }
+
     #[test]
     fn code_block_equality_includes_code_content() {
         let first = CodeBlock::new("let value = 1;".into(), Some("rust".into()), None::<Span>);
@@ -2230,27 +2485,50 @@ mod tests {
         assert_eq!(links[0].range, 6..10);
     }
 
+    #[test]
+    fn paragraph_render_cache_reuses_matching_inputs_and_invalidates_style_changes() {
+        let paragraph = Paragraph::new("cached paragraph".to_string());
+        let node_cx = NodeContext::default();
+        let key = ParagraphRenderKey {
+            inline_styles: Vec::new(),
+            link_refs: HashMap::new(),
+            accent: hsla(0.1, 0.2, 0.3, 1.),
+            link: hsla(0.4, 0.5, 0.6, 1.),
+        };
+        let first = paragraph.cached_render(key.clone(), &node_cx);
+        assert_eq!(first.text.as_ref(), "cached paragraph");
+
+        paragraph
+            .render_cache
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .text = "cache hit".into();
+        assert_eq!(
+            paragraph.cached_render(key.clone(), &node_cx).text.as_ref(),
+            "cache hit"
+        );
+
+        let changed = ParagraphRenderKey {
+            accent: hsla(0.7, 0.2, 0.3, 1.),
+            ..key
+        };
+        assert_eq!(
+            paragraph.cached_render(changed, &node_cx).text.as_ref(),
+            "cached paragraph"
+        );
+    }
+
     #[cfg(feature = "tree-sitter")]
     #[test]
     fn code_block_highlighter_cache_refreshes_after_language_registration() {
         let lang = SharedString::from("json-cache-test");
         let theme = HighlightTheme::default_light();
 
-        CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
-            cache.borrow_mut().remove(&lang);
-        });
-
-        let unknown_block =
-            CodeBlock::new("{\"value\": 1}".into(), Some(lang.clone()), None::<Span>);
-        _ = unknown_block.styles(&theme);
-
-        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
-            cache
-                .borrow()
-                .get(&lang)
-                .map(|highlighter| highlighter.language().clone())
-        });
-        assert_eq!(cached_language.as_deref(), Some("text"));
+        let block = CodeBlock::new("{\"value\": 1}".into(), Some(lang.clone()), None::<Span>);
+        _ = block.styles(&theme);
+        assert_eq!(cached_highlighter_language(&block).as_deref(), Some("text"));
 
         LanguageRegistry::singleton().register(
             lang.as_ref(),
@@ -2268,17 +2546,11 @@ mod tests {
             ),
         );
 
-        let registered_block =
-            CodeBlock::new("{\"value\": 2}".into(), Some(lang.clone()), None::<Span>);
-        _ = registered_block.styles(&theme);
-
-        let cached_language = CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
-            cache
-                .borrow()
-                .get(&lang)
-                .map(|highlighter| highlighter.language().clone())
-        });
-        assert_eq!(cached_language.as_deref(), Some(lang.as_ref()));
+        _ = block.styles(&theme);
+        assert_eq!(
+            cached_highlighter_language(&block).as_deref(),
+            Some(lang.as_ref())
+        );
     }
 
     #[cfg(feature = "tree-sitter")]
@@ -2297,9 +2569,6 @@ mod tests {
             "the test themes must use different number colors"
         );
 
-        CODE_BLOCK_HIGHLIGHTERS.with(|cache| {
-            cache.borrow_mut().remove(&lang);
-        });
         LanguageRegistry::singleton().register(
             lang.as_ref(),
             &crate::highlighter::LanguageConfig::new(

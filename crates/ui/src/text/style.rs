@@ -314,6 +314,29 @@ impl MarkdownStyle {
     pub(crate) fn syntax_theme_ref(&self) -> Option<&Arc<HighlightTheme>> {
         self.syntax_theme.as_ref()
     }
+
+    /// Capture the inline-only portion used by paragraph render caches.
+    pub(crate) fn inline_snapshot(&self) -> Vec<(MarkdownInlineKind, MarkdownTextStyle)> {
+        const KINDS: &[MarkdownInlineKind] = &[
+            MarkdownInlineKind::Plain,
+            MarkdownInlineKind::Strong,
+            MarkdownInlineKind::Emphasis,
+            MarkdownInlineKind::Strikethrough,
+            MarkdownInlineKind::Underline,
+            MarkdownInlineKind::InlineCode,
+            MarkdownInlineKind::Link,
+            MarkdownInlineKind::Mark,
+            MarkdownInlineKind::FootnoteReference,
+        ];
+        KINDS
+            .iter()
+            .filter_map(|kind| {
+                self.inline_style(*kind)
+                    .cloned()
+                    .map(|style| (*kind, style))
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
