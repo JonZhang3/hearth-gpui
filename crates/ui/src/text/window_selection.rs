@@ -252,30 +252,6 @@ impl Root {
             root.selectable_text_views
                 .retain(|_, (view, _, _)| view.upgrade().is_some());
             root.selectable_text_views.insert(id, (weak, hitbox, scope));
-            root.selectable_text_inlines.remove(&id);
-        });
-    }
-
-    /// Register Inline text bounds for a selectable TextView.
-    /// Called from Inline's paint on every frame.
-    pub(crate) fn register_selectable_text_inline(
-        state: &Entity<TextViewState>,
-        text_bounds: Vec<Bounds<Pixels>>,
-        window: &mut Window,
-        cx: &mut App,
-    ) {
-        if text_bounds.is_empty() {
-            return;
-        }
-        let Some(root) = window.root::<Root>().flatten() else {
-            return;
-        };
-        let id = state.entity_id();
-        root.update(cx, |root, _| {
-            root.selectable_text_inlines
-                .entry(id)
-                .or_default()
-                .extend(text_bounds);
         });
     }
 
@@ -372,8 +348,6 @@ impl Root {
             }
             true
         });
-        self.selectable_text_inlines
-            .retain(|id, _| self.selectable_text_views.contains_key(id));
     }
 
     /// Clear the window selection when a view it is anchored to has been
@@ -554,7 +528,10 @@ impl Root {
             if *view_scope != scope {
                 continue;
             }
-            if view.upgrade().is_none() {
+            let Some(entity) = view.upgrade() else {
+                continue;
+            };
+            if !entity.read(cx).is_selectable() {
                 continue;
             }
             if !hitbox.is_hovered(window) {
@@ -570,10 +547,7 @@ impl Root {
             best.and_then(|(view, _)| view.upgrade().map(|entity| (view, entity)))
         {
             let state = entity.read(cx);
-            let inside_text = self
-                .selectable_text_inlines
-                .get(&state.entity_id)
-                .is_some_and(|bounds| bounds.iter().any(|bounds| bounds.contains(&position)));
+            let inside_text = state.selection_geometry_contains(position);
             return SelectionEndpoint {
                 point: position - state.bounds().origin - state.scroll_offset(),
                 view: Some(view),
@@ -599,6 +573,9 @@ impl Root {
             let Some(entity) = view.upgrade() else {
                 continue;
             };
+            if !entity.read(cx).is_selectable() {
+                continue;
+            }
             let top = entity.read(cx).bounds().top();
             if top <= position.y {
                 if predecessor.as_ref().map_or(true, |(_, t)| top > *t) {

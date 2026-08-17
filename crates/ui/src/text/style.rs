@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
 use gpui::{
-    FontStyle, FontWeight, HighlightStyle, Hsla, Pixels, Rems, StrikethroughStyle, StyleRefinement,
-    UnderlineStyle, px, rems,
+    FontStyle, FontWeight, HighlightStyle, Hsla, Pixels, Rems, SharedString, StrikethroughStyle,
+    StyleRefinement, UnderlineStyle, px, rems,
 };
 
 use crate::highlighter::HighlightTheme;
@@ -185,7 +185,29 @@ pub struct MarkdownTextStyle {
     strikethrough: Option<Option<StrikethroughStyle>>,
     fade_out: Option<f32>,
     padding_x: Option<Pixels>,
+    padding_y: Option<Pixels>,
+    margin_x: Option<Pixels>,
+    margin_y: Option<Pixels>,
     corner_radius: Option<Pixels>,
+    border_width: Option<Pixels>,
+    border_color: Option<Hsla>,
+    font_family: Option<SharedString>,
+    font_size: Option<Pixels>,
+    line_height: Option<Pixels>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct InlineBoxMetrics {
+    pub(crate) padding_x: Pixels,
+    pub(crate) padding_y: Pixels,
+    pub(crate) margin_x: Pixels,
+    pub(crate) margin_y: Pixels,
+    pub(crate) corner_radius: Pixels,
+    pub(crate) border_width: Pixels,
+    pub(crate) border_color: Option<Hsla>,
+    pub(crate) font_family: Option<SharedString>,
+    pub(crate) font_size: Option<Pixels>,
+    pub(crate) line_height: Option<Pixels>,
 }
 
 impl MarkdownTextStyle {
@@ -204,6 +226,24 @@ impl MarkdownTextStyle {
     /// Set the font style.
     pub fn font_style(mut self, style: FontStyle) -> Self {
         self.font_style = Some(style);
+        self
+    }
+
+    /// Set the font family for an atomic inline semantic box.
+    pub fn font_family(mut self, family: impl Into<SharedString>) -> Self {
+        self.font_family = Some(family.into());
+        self
+    }
+
+    /// Set the font size for an atomic inline semantic box.
+    pub fn font_size(mut self, size: Pixels) -> Self {
+        self.font_size = Some(size);
+        self
+    }
+
+    /// Set the line height for an atomic inline semantic box.
+    pub fn line_height(mut self, height: Pixels) -> Self {
+        self.line_height = Some(height);
         self
     }
 
@@ -255,17 +295,59 @@ impl MarkdownTextStyle {
         self
     }
 
+    /// Set vertical padding for an inline semantic box.
+    pub fn padding_y(mut self, padding: Pixels) -> Self {
+        self.padding_y = Some(padding);
+        self
+    }
+
+    /// Set horizontal margin for an inline semantic box.
+    pub fn margin_x(mut self, margin: Pixels) -> Self {
+        self.margin_x = Some(margin);
+        self
+    }
+
+    /// Set vertical margin for an inline semantic box.
+    pub fn margin_y(mut self, margin: Pixels) -> Self {
+        self.margin_y = Some(margin);
+        self
+    }
+
     /// Set the corner radius for an inline semantic box.
     pub fn corner_radius(mut self, radius: Pixels) -> Self {
         self.corner_radius = Some(radius);
         self
     }
 
-    pub(crate) fn inline_box_metrics(&self) -> Option<(Pixels, Pixels)> {
-        (self.padding_x.is_some() || self.corner_radius.is_some()).then_some((
-            self.padding_x.unwrap_or_default(),
-            self.corner_radius.unwrap_or_default(),
-        ))
+    /// Set border width and color for an inline semantic box.
+    pub fn border(mut self, width: Pixels, color: Hsla) -> Self {
+        self.border_width = Some(width);
+        self.border_color = Some(color);
+        self
+    }
+
+    pub(crate) fn inline_box_metrics(&self) -> Option<InlineBoxMetrics> {
+        (self.padding_x.is_some()
+            || self.padding_y.is_some()
+            || self.margin_x.is_some()
+            || self.margin_y.is_some()
+            || self.corner_radius.is_some()
+            || self.border_width.is_some()
+            || self.font_family.is_some()
+            || self.font_size.is_some()
+            || self.line_height.is_some())
+        .then_some(InlineBoxMetrics {
+            padding_x: self.padding_x.unwrap_or_default(),
+            padding_y: self.padding_y.unwrap_or_default(),
+            margin_x: self.margin_x.unwrap_or_default(),
+            margin_y: self.margin_y.unwrap_or_default(),
+            corner_radius: self.corner_radius.unwrap_or_default(),
+            border_width: self.border_width.unwrap_or_default(),
+            border_color: self.border_color,
+            font_family: self.font_family.clone(),
+            font_size: self.font_size,
+            line_height: self.line_height,
+        })
     }
 
     pub(crate) fn refine(&self, style: &mut HighlightStyle) {
@@ -277,6 +359,28 @@ impl MarkdownTextStyle {
         }
         if let Some(font_style) = self.font_style {
             style.font_style = Some(font_style);
+        }
+        if let Some(background) = self.background_color {
+            style.background_color = background;
+        }
+        if let Some(underline) = self.underline {
+            style.underline = underline;
+        }
+        if let Some(strikethrough) = self.strikethrough {
+            style.strikethrough = strikethrough;
+        }
+        if let Some(fade_out) = self.fade_out {
+            style.fade_out = Some(fade_out);
+        }
+    }
+
+    /// Apply properties that cannot change glyph geometry or line wrapping.
+    ///
+    /// Hover must remain paint-only so moving the pointer never changes a
+    /// paragraph's measured height or pushes adjacent text onto another line.
+    pub(crate) fn refine_paint(&self, style: &mut HighlightStyle) {
+        if let Some(color) = self.color {
+            style.color = Some(color);
         }
         if let Some(background) = self.background_color {
             style.background_color = background;
@@ -391,8 +495,25 @@ mod tests {
     fn markdown_text_style_exposes_inline_box_metrics() {
         let style = MarkdownTextStyle::default()
             .padding_x(px(4.))
+            .padding_y(px(2.))
+            .margin_x(px(1.))
+            .font_family("Mono")
+            .font_size(px(13.))
+            .line_height(px(18.))
             .corner_radius(px(6.));
 
-        assert_eq!(style.inline_box_metrics(), Some((px(4.), px(6.))));
+        assert_eq!(
+            style.inline_box_metrics(),
+            Some(InlineBoxMetrics {
+                padding_x: px(4.),
+                padding_y: px(2.),
+                margin_x: px(1.),
+                corner_radius: px(6.),
+                font_family: Some("Mono".into()),
+                font_size: Some(px(13.)),
+                line_height: Some(px(18.)),
+                ..Default::default()
+            })
+        );
     }
 }

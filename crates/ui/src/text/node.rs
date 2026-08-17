@@ -9,7 +9,7 @@ use std::{
 
 use gpui::{
     AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement,
+    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, Role,
     ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
     WhiteSpace, Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
 };
@@ -17,18 +17,18 @@ use markdown::mdast;
 use ropey::Rope;
 
 use crate::{
-    ActiveTheme as _, Icon, IconName, StyledExt, WindowExt as _, h_flex,
+    ActiveTheme as _, Icon, IconName, StyledExt, h_flex,
     highlighter::{HighlightTheme, LanguageRegistry, SyntaxHighlighter},
     input::{InputEdit, RopeExt as _},
     scroll::horizontal_scroll_area,
     text::{
         CodeBlockActionsFn, MarkdownBlockKind, MarkdownBlockRenderContext, MarkdownBlockRenderers,
         MarkdownElementKind, MarkdownExtensions, MarkdownHeadingLevel, MarkdownInlineKind,
-        MarkdownNode, MarkdownStyle, MarkdownTextStyle,
+        MarkdownLinkHandler, MarkdownNode, MarkdownStyle, MarkdownTextStyle,
         document::NodeRenderOptions,
         inline::{Inline, InlineLink, InlineState},
         inline_flow::InlineBoxStyle,
-        inline_flow::{InlineFlow, InlineFlowItem},
+        inline_flow::{InlineFlow, InlineFlowItem, InlineFlowLayoutCache},
     },
     tooltip::Tooltip,
     v_flex,
@@ -177,11 +177,80 @@ impl BlockNode {
 
     /// Reuse append-only runtime state that is not represented in the AST.
     pub(crate) fn reuse_runtime_state_from(&mut self, previous: &Self) {
-        if let (Self::CodeBlock(current), Self::CodeBlock(previous)) = (self, previous)
-            && current.lang == previous.lang
-            && current.code().starts_with(previous.code().as_ref())
-        {
-            current.styles = previous.styles.clone();
+        match (self, previous) {
+            (Self::Paragraph(current), Self::Paragraph(previous)) => {
+                current.reuse_runtime_state_from(previous);
+            }
+            (
+                Self::Heading {
+                    level: current_level,
+                    children: current,
+                    ..
+                },
+                Self::Heading {
+                    level: previous_level,
+                    children: previous,
+                    ..
+                },
+            ) if current_level == previous_level => {
+                current.reuse_runtime_state_from(previous);
+            }
+            (
+                Self::Root {
+                    children: current, ..
+                }
+                | Self::Blockquote {
+                    children: current, ..
+                },
+                Self::Root {
+                    children: previous, ..
+                }
+                | Self::Blockquote {
+                    children: previous, ..
+                },
+            ) => reuse_child_runtime_state(current, previous),
+            (
+                Self::List {
+                    children: current,
+                    ordered: current_ordered,
+                    ..
+                },
+                Self::List {
+                    children: previous,
+                    ordered: previous_ordered,
+                    ..
+                },
+            ) if current_ordered == previous_ordered => {
+                reuse_child_runtime_state(current, previous);
+            }
+            (
+                Self::ListItem {
+                    children: current, ..
+                },
+                Self::ListItem {
+                    children: previous, ..
+                },
+            ) => reuse_child_runtime_state(current, previous),
+            (Self::Table(current), Self::Table(previous)) => {
+                for (current_row, previous_row) in
+                    current.children.iter_mut().zip(&previous.children)
+                {
+                    for (current_cell, previous_cell) in
+                        current_row.children.iter_mut().zip(&previous_row.children)
+                    {
+                        current_cell
+                            .children
+                            .reuse_runtime_state_from(&previous_cell.children);
+                    }
+                }
+            }
+            (Self::CodeBlock(current), Self::CodeBlock(previous))
+                if current.lang == previous.lang
+                    && current.code().starts_with(previous.code().as_ref()) =>
+            {
+                current.styles = previous.styles.clone();
+            }
+            _ => {}
         }
     }
 
@@ -365,12 +434,6 @@ pub struct LinkMark {
     pub title: Option<SharedString>,
 }
 
-impl LinkMark {
-    fn is_pending(&self) -> bool {
-        self.url.as_ref() == crate::text::streaming::PENDING_LINK_URL
-    }
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct TextMark {
     pub bold: bool,
@@ -488,6 +551,7 @@ pub(crate) struct InlineNode {
     /// The text content.
     pub(crate) text: SharedString,
     pub(crate) image: Option<ImageNode>,
+    pub(crate) custom: Option<MarkdownNode>,
     /// The text styles, each tuple contains the range of the text and the style.
     pub(crate) marks: Vec<(Range<usize>, TextMark)>,
 
@@ -496,7 +560,10 @@ pub(crate) struct InlineNode {
 
 impl PartialEq for InlineNode {
     fn eq(&self, other: &Self) -> bool {
-        self.text == other.text && self.image == other.image && self.marks == other.marks
+        self.text == other.text
+            && self.image == other.image
+            && self.custom == other.custom
+            && self.marks == other.marks
     }
 }
 
@@ -505,6 +572,7 @@ impl InlineNode {
         Self {
             text: text.into(),
             image: None,
+            custom: None,
             marks: vec![],
             state: Arc::new(Mutex::new(InlineState::default())),
         }
@@ -513,6 +581,13 @@ impl InlineNode {
     pub(crate) fn image(image: ImageNode) -> Self {
         let mut this = Self::new("");
         this.image = Some(image);
+        this
+    }
+
+    pub(crate) fn custom(node: MarkdownNode) -> Self {
+        let text = node.as_text().to_string();
+        let mut this = Self::new(text);
+        this.custom = Some(node);
         this
     }
 
@@ -537,6 +612,7 @@ pub(crate) struct Paragraph {
 
     pub(crate) state: Arc<Mutex<InlineState>>,
     pub(crate) render_cache: Arc<Mutex<Option<CachedParagraphRender>>>,
+    pub(crate) inline_flow_layout_cache: InlineFlowLayoutCache,
 }
 
 impl PartialEq for Paragraph {
@@ -548,6 +624,23 @@ impl PartialEq for Paragraph {
 }
 
 impl Paragraph {
+    /// Preserve paragraph selection, link hover, and compatible inline states.
+    fn reuse_runtime_state_from(&mut self, previous: &Self) {
+        self.state = previous.state.clone();
+        for (current, previous) in self.children.iter_mut().zip(&previous.children) {
+            let compatible = current.image == previous.image
+                && (current.text.starts_with(previous.text.as_ref())
+                    || previous.text.starts_with(current.text.as_ref()));
+            if compatible {
+                current.state = previous.state.clone();
+            }
+        }
+        if self == previous {
+            self.render_cache = previous.render_cache.clone();
+            self.inline_flow_layout_cache = previous.inline_flow_layout_cache.clone();
+        }
+    }
+
     pub(crate) fn new(text: String) -> Self {
         Self {
             span: None,
@@ -555,6 +648,7 @@ impl Paragraph {
             link_refs: HashMap::new(),
             state: Arc::new(Mutex::new(InlineState::default())),
             render_cache: Arc::new(Mutex::new(None)),
+            inline_flow_layout_cache: InlineFlowLayoutCache::default(),
         }
     }
 
@@ -600,6 +694,13 @@ impl Paragraph {
         if let Ok(mut state) = self.state.lock() {
             state.selection = None;
         }
+    }
+}
+
+/// Reuse runtime state for structurally corresponding nested blocks.
+fn reuse_child_runtime_state(current: &mut [BlockNode], previous: &[BlockNode]) {
+    for (current, previous) in current.iter_mut().zip(previous) {
+        current.reuse_runtime_state_from(previous);
     }
 }
 
@@ -682,6 +783,7 @@ impl Paragraph {
                 link_refs: Default::default(),
                 state: Arc::new(Mutex::new(InlineState::default())),
                 render_cache: Arc::new(Mutex::new(None)),
+                inline_flow_layout_cache: InlineFlowLayoutCache::default(),
             },
         )
     }
@@ -1005,6 +1107,7 @@ pub(crate) struct NodeContext {
     pub(crate) markdown_style: Arc<MarkdownStyle>,
     pub(crate) markdown_block_renderers: Arc<MarkdownBlockRenderers>,
     pub(crate) source: SharedString,
+    pub(crate) link_handler: MarkdownLinkHandler,
 }
 
 impl NodeContext {
@@ -1026,21 +1129,27 @@ impl NodeContext {
         ))
     }
 
-    /// Resolve layout and paint properties for an inline code box.
-    fn inline_code_box_style(&self, accent: Hsla) -> Option<InlineBoxStyle> {
-        let refinement = self
-            .markdown_style
-            .inline_style(MarkdownInlineKind::InlineCode)?;
-        let (padding_x, corner_radius) = refinement.inline_box_metrics()?;
+    /// Resolve layout and paint properties for one atomic inline semantic box.
+    fn inline_box_style(&self, kind: MarkdownInlineKind, accent: Hsla) -> Option<InlineBoxStyle> {
+        let refinement = self.markdown_style.inline_style(kind)?;
+        let metrics = refinement.inline_box_metrics()?;
         let mut style = HighlightStyle {
-            background_color: Some(accent),
+            background_color: (kind == MarkdownInlineKind::InlineCode).then_some(accent),
             ..Default::default()
         };
         refinement.refine(&mut style);
         Some(InlineBoxStyle {
             background: style.background_color,
-            padding_x,
-            corner_radius,
+            padding_x: metrics.padding_x,
+            padding_y: metrics.padding_y,
+            margin_x: metrics.margin_x,
+            margin_y: metrics.margin_y,
+            corner_radius: metrics.corner_radius,
+            border_width: metrics.border_width,
+            border_color: metrics.border_color,
+            font_family: metrics.font_family,
+            font_size: metrics.font_size,
+            line_height: metrics.line_height,
         })
     }
 
@@ -1187,19 +1296,22 @@ impl PartialEq for NodeContext {
 }
 
 impl Paragraph {
-    fn render(&self, node_cx: &NodeContext, _window: &mut Window, cx: &mut App) -> AnyElement {
+    fn render(&self, node_cx: &NodeContext, window: &mut Window, cx: &mut App) -> AnyElement {
         let span = self.span;
         let children = &self.children;
 
         if self.should_render_inline_flow(node_cx, cx) {
             if let Ok(mut state) = self.state.lock() {
-                state.set_text(self.text().into());
+                state.set_text(self.display_text(node_cx).into());
             }
             return InlineFlow::new(
                 span.unwrap_or_default(),
-                self.inline_flow_items(node_cx, cx),
+                self.inline_flow_items(node_cx, window, cx),
             )
             .selection_state(self.state.clone())
+            .link_handler(node_cx.link_handler.clone())
+            .layout_cache(self.inline_flow_layout_cache.clone())
+            .semantic_styles(node_cx.markdown_style.inline_snapshot())
             .into_any_element();
         }
 
@@ -1214,17 +1326,42 @@ impl Paragraph {
             if let Ok(mut state) = self.state.lock() {
                 state.set_text(cached.text.clone());
             }
-            return div()
-                .id(span.unwrap_or_default())
-                .child(
-                    Inline::new(
-                        children.len(),
-                        self.state.clone(),
-                        cached.links.clone(),
-                        cached.highlights.clone(),
-                    )
-                    .link_hover_style(node_cx.link_hover_style()),
-                )
+            let paragraph_id: ElementId = span.unwrap_or_default().into();
+            let inline = Inline::new(
+                children.len(),
+                self.state.clone(),
+                cached.links.clone(),
+                cached.highlights.clone(),
+            )
+            .link_hover_style(node_cx.link_hover_style())
+            .link_handler(node_cx.link_handler.clone());
+            let paragraph = div().id(paragraph_id.clone()).child(inline);
+            let keyboard_link = cached
+                .links
+                .first()
+                .filter(|link| node_cx.link_handler.policy.allows_link(&link.mark.url))
+                .cloned();
+            return paragraph
+                .when_some(keyboard_link, |paragraph, link| {
+                    let focus_handle = window
+                        .use_keyed_state(paragraph_id, cx, |_, cx| cx.focus_handle())
+                        .read(cx)
+                        .clone();
+                    let handler = node_cx.link_handler.clone();
+                    let url = link.mark.url.clone();
+                    paragraph
+                        .role(Role::Link)
+                        .aria_label(cached.text.clone())
+                        .track_focus(&focus_handle.tab_stop(true))
+                        .on_key_down(move |event, window, cx| {
+                            if !event.keystroke.modifiers.modified()
+                                && event.keystroke.key == "enter"
+                            {
+                                window.prevent_default();
+                                handler.activate(&url, window, cx);
+                            }
+                        })
+                })
                 .into_any_element();
         }
 
@@ -1253,38 +1390,50 @@ impl Paragraph {
                             highlights.clone(),
                         )
                         .link_hover_style(node_cx.link_hover_style())
+                        .link_handler(node_cx.link_handler.clone())
                         .into_any_element(),
                     );
                 }
-                child_nodes.push(
-                    img(image.url.clone())
-                        .id(ix)
-                        .object_fit(ObjectFit::Contain)
-                        .max_w(relative(1.))
-                        .when_some(
-                            node_cx
-                                .markdown_style
-                                .element_style(MarkdownElementKind::Image),
-                            |this, style| this.refine_style(style),
-                        )
-                        .when_some(image.width, |this, width| this.w(width))
-                        .when_some(
-                            image.link.clone().filter(|link| !link.is_pending()),
-                            |this, link| {
-                                let title = image.title();
-                                this.cursor_pointer()
-                                    .tooltip(move |window, cx| {
-                                        Tooltip::new(title.clone()).build(window, cx)
-                                    })
-                                    .on_click(move |_, window, cx| {
-                                        window.end_text_selection(cx);
-                                        cx.stop_propagation();
-                                        cx.open_url(&link.url);
-                                    })
-                            },
-                        )
-                        .into_any_element(),
-                );
+                if !node_cx.link_handler.policy.allows_image(&image.url) {
+                    child_nodes.push(
+                        div()
+                            .child(image.alt.clone().unwrap_or_default())
+                            .into_any_element(),
+                    );
+                } else {
+                    let link_handler = node_cx.link_handler.clone();
+                    child_nodes.push(
+                        img(image.url.clone())
+                            .id(ix)
+                            .object_fit(ObjectFit::Contain)
+                            .max_w(relative(1.))
+                            .when_some(
+                                node_cx
+                                    .markdown_style
+                                    .element_style(MarkdownElementKind::Image),
+                                |this, style| this.refine_style(style),
+                            )
+                            .when_some(image.width, |this, width| this.w(width))
+                            .when_some(
+                                image
+                                    .link
+                                    .clone()
+                                    .filter(|link| link_handler.policy.allows_link(&link.url)),
+                                |this, link| {
+                                    let title = image.title();
+                                    let link_handler = link_handler.clone();
+                                    this.cursor_pointer()
+                                        .tooltip(move |window, cx| {
+                                            Tooltip::new(title.clone()).build(window, cx)
+                                        })
+                                        .on_click(move |_, window, cx| {
+                                            link_handler.activate(&link.url, window, cx);
+                                        })
+                                },
+                            )
+                            .into_any_element(),
+                    );
+                }
 
                 text.clear();
                 links.clear();
@@ -1313,6 +1462,7 @@ impl Paragraph {
             child_nodes.push(
                 Inline::new(ix, self.state.clone(), links, highlights)
                     .link_hover_style(node_cx.link_hover_style())
+                    .link_handler(node_cx.link_handler.clone())
                     .into_any_element(),
             );
         }
@@ -1368,18 +1518,62 @@ impl Paragraph {
     fn should_render_inline_flow(&self, node_cx: &NodeContext, cx: &App) -> bool {
         let has_image = self.children.iter().any(|child| child.image.is_some());
         let has_text = self.children.iter().any(|child| !child.text.is_empty());
-        let has_inline_code_box = node_cx.inline_code_box_style(cx.theme().accent).is_some()
-            && self.children.iter().any(inline_node_is_code);
-        (has_image && has_text) || has_inline_code_box
+        let has_semantic_box = self.children.iter().any(|child| {
+            inline_node_kind(child)
+                .and_then(|kind| node_cx.inline_box_style(kind, cx.theme().accent))
+                .is_some()
+        });
+        let has_custom = self.children.iter().any(|child| child.custom.is_some());
+        (has_image && has_text) || has_semantic_box || has_custom
     }
 
-    fn inline_flow_items(&self, node_cx: &NodeContext, cx: &mut App) -> Vec<InlineFlowItem> {
+    fn inline_flow_items(
+        &self,
+        node_cx: &NodeContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Vec<InlineFlowItem> {
         let mut items = Vec::new();
         let link_hover_style = node_cx.link_hover_style();
         let mut paragraph_offset = 0;
+        let mut next_link_id = 0;
 
         for inline_node in &self.children {
+            if let Some(custom) = &inline_node.custom {
+                let element = node_cx
+                    .markdown_extensions
+                    .render_inline(custom, window, cx)
+                    .unwrap_or_else(|| {
+                        div().child(custom.as_text().to_string()).into_any_element()
+                    });
+                let text: SharedString = custom.as_text().to_string().into();
+                paragraph_offset += text.len();
+                items.push(InlineFlowItem::Custom {
+                    element: Some(element),
+                    text,
+                });
+                continue;
+            }
             if let Some(image) = &inline_node.image {
+                if !node_cx.link_handler.policy.allows_image(&image.url) {
+                    let alt = image.alt.clone().unwrap_or_default();
+                    if let Ok(mut state) = inline_node.state.lock() {
+                        state.set_text(alt.clone());
+                        state.selection = None;
+                    }
+                    let end = paragraph_offset + alt.len();
+                    items.push(InlineFlowItem::Text {
+                        state: inline_node.state.clone(),
+                        paragraph_range: paragraph_offset..end,
+                        text: alt,
+                        links: Vec::new(),
+                        highlights: Vec::new(),
+                        link_hover_style: link_hover_style.clone(),
+                        box_style: None,
+                    });
+                    paragraph_offset = end;
+                    continue;
+                }
                 items.push(InlineFlowItem::Image {
                     url: image.url.clone(),
                     link: image.link.clone(),
@@ -1414,9 +1608,12 @@ impl Paragraph {
                 &mut links,
                 &mut highlights,
             );
-            let box_style = inline_node_is_code(inline_node)
-                .then(|| node_cx.inline_code_box_style(cx.theme().accent))
-                .flatten();
+            for link in &mut links {
+                link.id += next_link_id;
+            }
+            next_link_id += links.len();
+            let box_style = inline_node_kind(inline_node)
+                .and_then(|kind| node_cx.inline_box_style(kind, cx.theme().accent));
             if box_style.is_some() {
                 // The containing rounded box owns the code background.
                 for (_, highlight) in &mut highlights {
@@ -1441,13 +1638,53 @@ impl Paragraph {
 
         items
     }
+
+    /// Return visible paragraph text after applying image resource policy fallbacks.
+    fn display_text(&self, node_cx: &NodeContext) -> String {
+        let mut text = String::new();
+        for child in &self.children {
+            if let Some(image) = &child.image
+                && !node_cx.link_handler.policy.allows_image(&image.url)
+            {
+                text.push_str(image.alt.as_deref().unwrap_or_default());
+            } else {
+                text.push_str(&child.text);
+            }
+        }
+        text
+    }
 }
 
-/// Inline code is emitted by the Markdown parser as one fully marked text node.
-fn inline_node_is_code(node: &InlineNode) -> bool {
-    node.marks
+/// Return the highest-priority semantic covering an entire inline parser node.
+fn inline_node_kind(node: &InlineNode) -> Option<MarkdownInlineKind> {
+    let full_mark = node
+        .marks
         .iter()
-        .any(|(range, mark)| mark.code && range.start == 0 && range.end == node.text.len())
+        .filter(|(range, _)| range.start == 0 && range.end == node.text.len())
+        .map(|(_, mark)| mark)
+        .next_back();
+    let Some(mark) = full_mark else {
+        return (!node.text.is_empty()).then_some(MarkdownInlineKind::Plain);
+    };
+    if mark.code {
+        Some(MarkdownInlineKind::InlineCode)
+    } else if mark.link.is_some() {
+        Some(MarkdownInlineKind::Link)
+    } else if mark.bold {
+        Some(MarkdownInlineKind::Strong)
+    } else if mark.italic {
+        Some(MarkdownInlineKind::Emphasis)
+    } else if mark.strikethrough {
+        Some(MarkdownInlineKind::Strikethrough)
+    } else if mark.underline {
+        Some(MarkdownInlineKind::Underline)
+    } else if mark.highlight.is_some() {
+        Some(MarkdownInlineKind::Mark)
+    } else if mark.footnote_reference {
+        Some(MarkdownInlineKind::FootnoteReference)
+    } else {
+        Some(MarkdownInlineKind::Plain)
+    }
 }
 
 impl Paragraph {
@@ -1456,6 +1693,9 @@ impl Paragraph {
             .children
             .iter()
             .map(|text_node| {
+                if let Some(custom) = &text_node.custom {
+                    return custom.to_markdown();
+                }
                 let mut text = text_node.text.to_string();
                 for (range, style) in &text_node.marks {
                     if style.bold {
@@ -2693,7 +2933,7 @@ mod tests {
         let light_theme = cx.update(|_, cx| cx.theme().highlight_theme.clone());
         let light_block = view.read_with(cx, |root, cx| {
             let state = root.text_view.read(cx);
-            let BlockNode::CodeBlock(block) = &state.parsed_content.document.blocks[0] else {
+            let BlockNode::CodeBlock(block) = &*state.parsed_content.document.blocks[0] else {
                 panic!("expected a code block");
             };
 
@@ -2711,7 +2951,7 @@ mod tests {
         let dark_theme = cx.update(|_, cx| cx.theme().highlight_theme.clone());
         let dark_block = view.read_with(cx, |root, cx| {
             let state = root.text_view.read(cx);
-            let BlockNode::CodeBlock(block) = &state.parsed_content.document.blocks[0] else {
+            let BlockNode::CodeBlock(block) = &*state.parsed_content.document.blocks[0] else {
                 panic!("expected a code block");
             };
 

@@ -7,18 +7,18 @@ use gpui::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, DefiniteLength, Element, ElementId,
     GlobalElementId, HighlightStyle, ImageSource, InspectorElementId, InteractiveElement as _,
     IntoElement, LayoutId, Length, LineFragment as WrapLineFragment, ObjectFit, ParentElement as _,
-    Pixels, ShapedLine, SharedString, SharedUri, Size, StatefulInteractiveElement as _,
+    Pixels, Role, ShapedLine, SharedString, SharedUri, Size, StatefulInteractiveElement as _,
     StyleRefinement, Styled, StyledImage as _, TextRun, TextStyle, WhiteSpace, Window, div, img,
     point, prelude::FluentBuilder as _, px, relative, size,
 };
 
-use crate::{StyledExt as _, WindowExt as _, tooltip::Tooltip};
+use crate::{ActiveTheme as _, StyledExt as _, tooltip::Tooltip};
 
 use super::{
     inline::{Inline, InlineLink, InlineSelectionSink, InlineState},
     node::LinkMark,
 };
-use crate::text::MarkdownTextStyle;
+use crate::text::{MarkdownInlineKind, MarkdownLinkHandler, MarkdownTextStyle};
 
 const IMAGE_LEN: usize = 1;
 
@@ -31,14 +31,35 @@ pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
     selection_state: Option<Arc<Mutex<InlineState>>>,
+    link_handler: MarkdownLinkHandler,
+    layout_cache: InlineFlowLayoutCache,
+    semantic_styles: Vec<(MarkdownInlineKind, MarkdownTextStyle)>,
 }
 
 /// Layout and paint properties for an atomic inline text box.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct InlineBoxStyle {
     pub(super) background: Option<gpui::Hsla>,
     pub(super) padding_x: Pixels,
+    pub(super) padding_y: Pixels,
+    pub(super) margin_x: Pixels,
+    pub(super) margin_y: Pixels,
     pub(super) corner_radius: Pixels,
+    pub(super) border_width: Pixels,
+    pub(super) border_color: Option<gpui::Hsla>,
+    pub(super) font_family: Option<SharedString>,
+    pub(super) font_size: Option<Pixels>,
+    pub(super) line_height: Option<Pixels>,
+}
+
+impl InlineBoxStyle {
+    fn outer_width(&self, content: Pixels) -> Pixels {
+        content + (self.padding_x + self.margin_x + self.border_width) * 2.
+    }
+
+    fn outer_height(&self, content: Pixels) -> Pixels {
+        content + (self.padding_y + self.margin_y + self.border_width) * 2.
+    }
 }
 
 pub(super) enum InlineFlowItem {
@@ -59,14 +80,63 @@ pub(super) enum InlineFlowItem {
         height: Option<DefiniteLength>,
         style: Box<StyleRefinement>,
     },
+    Custom {
+        element: Option<AnyElement>,
+        text: SharedString,
+    },
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct InlineFlowLayoutCache(
+    Arc<Mutex<Option<(InlineFlowLayoutKey, Arc<InlineFlowLayout>)>>>,
+);
+
+impl std::fmt::Debug for InlineFlowLayoutCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("InlineFlowLayoutCache").finish()
+    }
+}
+
+impl InlineFlowLayoutCache {
+    /// Return the cached layout for an identical measurement input or replace the single entry.
+    fn get_or_insert_with(
+        &self,
+        key: InlineFlowLayoutKey,
+        build: impl FnOnce() -> InlineFlowLayout,
+    ) -> Arc<InlineFlowLayout> {
+        if let Ok(cache) = self.0.lock()
+            && let Some((cached_key, layout)) = cache.as_ref()
+            && cached_key == &key
+        {
+            return layout.clone();
+        }
+
+        let layout = Arc::new(build());
+        if let Ok(mut cache) = self.0.lock() {
+            *cache = Some((key, layout.clone()));
+        }
+        layout
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct InlineFlowLayoutKey {
+    semantic_styles: Vec<(MarkdownInlineKind, MarkdownTextStyle)>,
+    resource_policy: crate::text::MarkdownResourcePolicy,
+    image_layouts: Vec<Option<MeasuredImageLayout>>,
+    custom_sizes: Vec<(usize, Size<Pixels>)>,
+    text_style: TextStyle,
+    wrap_width: Option<Pixels>,
+    line_height: Pixels,
+    rem_size: Pixels,
 }
 
 #[derive(Default)]
 pub(crate) struct InlineFlowLayoutState {
-    layout: Arc<Mutex<Option<InlineFlowLayout>>>,
+    layout: Arc<Mutex<Option<Arc<InlineFlowLayout>>>>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct InlineFlowLayout {
     fragments: Vec<PositionedFragment>,
     size: Size<Pixels>,
@@ -83,7 +153,9 @@ enum PositionedFragment {
         links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
         link_hover_style: Option<Arc<MarkdownTextStyle>>,
-        box_style: Option<InlineBoxStyle>,
+        box_style: Box<Option<InlineBoxStyle>>,
+        shaped_line: Arc<ShapedLine>,
+        line_height: Pixels,
     },
     Image {
         item_ix: usize,
@@ -91,8 +163,14 @@ enum PositionedFragment {
         size: Size<Pixels>,
         base_size: Size<Pixels>,
     },
+    Custom {
+        item_ix: usize,
+        origin: gpui::Point<Pixels>,
+        size: Size<Pixels>,
+    },
 }
 
+#[derive(Clone, Debug, PartialEq)]
 enum MeasureItem {
     Text {
         text: SharedString,
@@ -106,6 +184,10 @@ enum MeasureItem {
         width: Option<DefiniteLength>,
         height: Option<DefiniteLength>,
         style: Box<StyleRefinement>,
+    },
+    Custom {
+        size: Size<Pixels>,
+        len: usize,
     },
 }
 
@@ -131,10 +213,13 @@ enum LineFragmentKind {
         highlights: Vec<(Range<usize>, HighlightStyle)>,
         link_hover_style: Option<Arc<MarkdownTextStyle>>,
         box_style: Option<InlineBoxStyle>,
+        shaped_line: Arc<ShapedLine>,
+        line_height: Pixels,
     },
     Image {
         base_size: Size<Pixels>,
     },
+    Custom,
 }
 
 impl InlineFlow {
@@ -143,12 +228,36 @@ impl InlineFlow {
             id: id.into(),
             items,
             selection_state: None,
+            link_handler: MarkdownLinkHandler::default(),
+            layout_cache: InlineFlowLayoutCache::default(),
+            semantic_styles: Vec::new(),
         }
     }
 
     /// Store all fragment selections in one paragraph-level state.
     pub(super) fn selection_state(mut self, state: Arc<Mutex<InlineState>>) -> Self {
         self.selection_state = Some(state);
+        self
+    }
+
+    /// Apply the view-level resource policy and optional link callback.
+    pub(super) fn link_handler(mut self, handler: MarkdownLinkHandler) -> Self {
+        self.link_handler = handler;
+        self
+    }
+
+    /// Reuse paragraph layout while its content, style, and available width remain unchanged.
+    pub(super) fn layout_cache(mut self, cache: InlineFlowLayoutCache) -> Self {
+        self.layout_cache = cache;
+        self
+    }
+
+    /// Store the compact semantic style input used by inline measurement.
+    pub(super) fn semantic_styles(
+        mut self,
+        styles: Vec<(MarkdownInlineKind, MarkdownTextStyle)>,
+    ) -> Self {
+        self.semantic_styles = styles;
         self
     }
 
@@ -159,6 +268,7 @@ impl InlineFlow {
         title: &str,
         base_size: Size<Pixels>,
         style: &StyleRefinement,
+        link_handler: MarkdownLinkHandler,
     ) -> AnyElement {
         img(markdown_image_source(url))
             .id(ix)
@@ -169,15 +279,14 @@ impl InlineFlow {
             .refine_style(style)
             .when_some(
                 link.clone()
-                    .filter(|link| link.url.as_ref() != crate::text::streaming::PENDING_LINK_URL),
+                    .filter(|link| link_handler.policy.allows_link(&link.url)),
                 |this, link| {
                     let title = title.to_string();
+                    let link_handler = link_handler.clone();
                     this.cursor_pointer()
                         .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
                         .on_click(move |_, window, cx| {
-                            window.end_text_selection(cx);
-                            cx.stop_propagation();
-                            cx.open_url(&link.url);
+                            link_handler.activate(&link.url, window, cx);
                         })
                 },
             )
@@ -225,7 +334,25 @@ impl Element for InlineFlow {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
-        let measure_items = self.items.iter().map(MeasureItem::from).collect::<Vec<_>>();
+        let measure_items = self
+            .items
+            .iter_mut()
+            .map(|item| match item {
+                InlineFlowItem::Custom { element, text } => {
+                    let size = element
+                        .as_mut()
+                        .map(|element| {
+                            element.layout_as_root(AvailableSpace::min_size(), window, cx)
+                        })
+                        .unwrap_or_default();
+                    MeasureItem::Custom {
+                        size,
+                        len: text.len().max(1),
+                    }
+                }
+                item => MeasureItem::from(&*item),
+            })
+            .collect::<Vec<_>>();
         let line_height = window.line_height();
         let rem_size = window.rem_size();
         let image_layouts = measure_items
@@ -248,11 +375,22 @@ impl Element for InlineFlow {
                     window,
                     cx,
                 )),
-                MeasureItem::Text { .. } => None,
+                MeasureItem::Text { .. } | MeasureItem::Custom { .. } => None,
             })
             .collect::<Vec<_>>();
         let layout_state = InlineFlowLayoutState::default();
         let layout_ref = layout_state.layout.clone();
+        let layout_cache = self.layout_cache.clone();
+        let semantic_styles = self.semantic_styles.clone();
+        let resource_policy = self.link_handler.policy;
+        let custom_sizes = measure_items
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, item)| match item {
+                MeasureItem::Custom { size, .. } => Some((ix, *size)),
+                MeasureItem::Text { .. } | MeasureItem::Image { .. } => None,
+            })
+            .collect::<Vec<_>>();
 
         let layout_id = window.request_measured_layout(Default::default(), {
             move |known_dimensions, available_space, window, _cx| {
@@ -265,13 +403,25 @@ impl Element for InlineFlow {
                 } else {
                     None
                 };
-                let layout = layout_flow(
-                    &measure_items,
-                    &image_layouts,
-                    &text_style,
+                let key = InlineFlowLayoutKey {
+                    semantic_styles: semantic_styles.clone(),
+                    resource_policy,
+                    image_layouts: image_layouts.clone(),
+                    custom_sizes: custom_sizes.clone(),
+                    text_style: text_style.clone(),
                     wrap_width,
-                    window,
-                );
+                    line_height,
+                    rem_size,
+                };
+                let layout = layout_cache.get_or_insert_with(key, || {
+                    layout_flow(
+                        &measure_items,
+                        &image_layouts,
+                        &text_style,
+                        wrap_width,
+                        window,
+                    )
+                });
                 let size = layout.size;
                 if let Ok(mut state) = layout_ref.lock() {
                     *state = Some(layout);
@@ -296,11 +446,11 @@ impl Element for InlineFlow {
             .layout
             .lock()
             .ok()
-            .and_then(|layout| layout.as_ref().map(|layout| layout.fragments.clone()))
+            .and_then(|layout| layout.clone())
             .unwrap_or_default();
-        let mut elements = Vec::with_capacity(fragments.len());
+        let mut elements = Vec::with_capacity(fragments.fragments.len());
 
-        for fragment in fragments {
+        for fragment in fragments.fragments.iter().cloned() {
             match fragment {
                 PositionedFragment::Text {
                     item_ix,
@@ -312,6 +462,8 @@ impl Element for InlineFlow {
                     highlights,
                     link_hover_style,
                     box_style,
+                    shaped_line,
+                    line_height,
                     ..
                 } => {
                     let Some((state, hover_state)) =
@@ -319,6 +471,15 @@ impl Element for InlineFlow {
                     else {
                         continue;
                     };
+                    let accessible_text = match &self.items[item_ix] {
+                        InlineFlowItem::Text { text, .. } => text.clone(),
+                        _ => text.clone(),
+                    };
+                    let keyboard_link = (source_range.start == 0)
+                        .then(|| links.first())
+                        .flatten()
+                        .filter(|link| link.range.start == 0)
+                        .cloned();
                     if let Ok(mut state) = state.lock() {
                         state.set_text(text);
                     }
@@ -330,11 +491,13 @@ impl Element for InlineFlow {
                             (paragraph_range.start + source_range.start)
                                 ..(paragraph_range.start + source_range.end)
                         }
-                        InlineFlowItem::Image { .. } => continue,
+                        InlineFlowItem::Image { .. } | InlineFlowItem::Custom { .. } => continue,
                     };
 
                     let mut inline = Inline::new("text", state, links, highlights)
                         .link_hover_style(link_hover_style)
+                        .link_handler(self.link_handler.clone())
+                        .precomputed_line(shaped_line, line_height)
                         .hover_state(hover_state, elements.len());
                     if let Some(selection_state) = &self.selection_state {
                         inline = inline.selection_sink(InlineSelectionSink::new(
@@ -344,13 +507,27 @@ impl Element for InlineFlow {
                         ));
                     }
                     let inline = inline.into_any_element();
-                    let mut element = if let Some(box_style) = box_style {
+                    let mut element = if let Some(box_style) = *box_style {
                         div()
                             .id(elements.len())
                             .flex()
                             .items_center()
                             .size_full()
+                            .mx(box_style.margin_x)
+                            .my(box_style.margin_y)
                             .px(box_style.padding_x)
+                            .py(box_style.padding_y)
+                            .border(box_style.border_width)
+                            .when_some(box_style.border_color, |this, color| {
+                                this.border_color(color)
+                            })
+                            .when_some(box_style.font_family.clone(), |this, family| {
+                                this.font_family(family)
+                            })
+                            .when_some(box_style.font_size, |this, size| this.text_size(size))
+                            .when_some(box_style.line_height, |this, height| {
+                                this.line_height(height)
+                            })
                             .rounded(box_style.corner_radius)
                             .when_some(box_style.background, |this, background| this.bg(background))
                             .child(inline)
@@ -358,6 +535,40 @@ impl Element for InlineFlow {
                     } else {
                         inline
                     };
+                    if let Some(link) = keyboard_link
+                        .filter(|link| self.link_handler.policy.allows_link(&link.mark.url))
+                    {
+                        let focus_id = ElementId::NamedChild(
+                            Arc::new(self.id.clone()),
+                            format!("link-{}", link.id).into(),
+                        );
+                        let focus_handle = window
+                            .use_keyed_state(focus_id.clone(), cx, |_, cx| cx.focus_handle())
+                            .read(cx)
+                            .clone();
+                        let focus_visible =
+                            focus_handle.is_focused(window) && window.last_input_was_keyboard();
+                        let handler = self.link_handler.clone();
+                        let url = link.mark.url.clone();
+                        element = div()
+                            .id(focus_id)
+                            .role(Role::Link)
+                            .aria_label(accessible_text)
+                            .track_focus(&focus_handle.tab_stop(true))
+                            .when(focus_visible, |this| {
+                                this.bg(cx.theme().accent.opacity(0.35))
+                            })
+                            .on_key_down(move |event, window, cx| {
+                                if !event.keystroke.modifiers.modified()
+                                    && event.keystroke.key == "enter"
+                                {
+                                    window.prevent_default();
+                                    handler.activate(&url, window, cx);
+                                }
+                            })
+                            .child(element)
+                            .into_any_element();
+                    }
                     element.prepaint_as_root(
                         bounds.origin + origin,
                         size(
@@ -392,7 +603,30 @@ impl Element for InlineFlow {
                         title.as_str(),
                         base_size,
                         style.as_ref(),
+                        self.link_handler.clone(),
                     );
+                    element.prepaint_as_root(
+                        bounds.origin + origin,
+                        size(
+                            AvailableSpace::Definite(fragment_size.width),
+                            AvailableSpace::Definite(fragment_size.height),
+                        ),
+                        window,
+                        cx,
+                    );
+                    elements.push(element);
+                }
+                PositionedFragment::Custom {
+                    item_ix,
+                    origin,
+                    size: fragment_size,
+                } => {
+                    let InlineFlowItem::Custom { element, .. } = &mut self.items[item_ix] else {
+                        continue;
+                    };
+                    let Some(mut element) = element.take() else {
+                        continue;
+                    };
                     element.prepaint_as_root(
                         bounds.origin + origin,
                         size(
@@ -447,7 +681,7 @@ impl From<&InlineFlowItem> for MeasureItem {
                 links: links.clone(),
                 highlights: highlights.clone(),
                 link_hover_style: link_hover_style.clone(),
-                box_style: *box_style,
+                box_style: box_style.clone(),
             },
             InlineFlowItem::Image {
                 url,
@@ -461,6 +695,10 @@ impl From<&InlineFlowItem> for MeasureItem {
                 height: *height,
                 style: style.clone(),
             },
+            InlineFlowItem::Custom { text, .. } => MeasureItem::Custom {
+                size: Size::default(),
+                len: text.len().max(1),
+            },
         }
     }
 }
@@ -470,6 +708,7 @@ impl MeasureItem {
         match self {
             MeasureItem::Text { text, .. } => text.len(),
             MeasureItem::Image { .. } => IMAGE_LEN,
+            MeasureItem::Custom { len, .. } => *len,
         }
     }
 }
@@ -527,12 +766,28 @@ fn layout_flow(
                                 (range, *style)
                             });
                         let links = slice_links(links, local_start, local_end);
-                        let runs = runs_for_highlights(&subtext, text_style, highlights.clone());
-                        let shaped_line = shape_line(subtext.clone(), font_size, &runs, window);
-                        let width = shaped_line.width()
-                            + box_style
-                                .map(|style| style.padding_x * 2.)
-                                .unwrap_or_default();
+                        let item_text_style = text_style_for_box(text_style, box_style.as_ref());
+                        let item_font_size = box_style
+                            .as_ref()
+                            .and_then(|style| style.font_size)
+                            .unwrap_or(font_size);
+                        let runs =
+                            runs_for_highlights(&subtext, &item_text_style, highlights.clone());
+                        let shaped_line =
+                            Arc::new(shape_line(subtext.clone(), item_font_size, &runs, window));
+                        let width = box_style
+                            .as_ref()
+                            .map(|style| style.outer_width(shaped_line.width()))
+                            .unwrap_or_else(|| shaped_line.width());
+                        let content_line_height = box_style
+                            .as_ref()
+                            .and_then(|style| style.line_height)
+                            .unwrap_or(line_height);
+                        let height = box_style
+                            .as_ref()
+                            .map(|style| style.outer_height(content_line_height))
+                            .unwrap_or(content_line_height);
+                        actual_line_height = actual_line_height.max(height);
                         line_width += width;
                         line_fragments.push(LineFragmentLayout {
                             item_ix,
@@ -541,9 +796,11 @@ fn layout_flow(
                                 links,
                                 highlights,
                                 link_hover_style: link_hover_style.clone(),
-                                box_style: *box_style,
+                                box_style: box_style.clone(),
+                                shaped_line,
+                                line_height: content_line_height,
                             },
-                            size: size(width, line_height),
+                            size: size(width, height),
                             source_range: local_start..local_end,
                         });
                     }
@@ -564,6 +821,18 @@ fn layout_flow(
                         });
                     }
                 }
+                MeasureItem::Custom { size, .. } => {
+                    if line_range.start <= item_start && item_end <= line_range.end {
+                        line_width += size.width;
+                        actual_line_height = actual_line_height.max(size.height);
+                        line_fragments.push(LineFragmentLayout {
+                            item_ix,
+                            kind: LineFragmentKind::Custom,
+                            size: *size,
+                            source_range: 0..item.len(),
+                        });
+                    }
+                }
             }
 
             item_start = item_end;
@@ -579,6 +848,8 @@ fn layout_flow(
                     highlights,
                     link_hover_style,
                     box_style,
+                    shaped_line,
+                    line_height,
                 } => PositionedFragment::Text {
                     item_ix: fragment.item_ix,
                     origin,
@@ -588,13 +859,20 @@ fn layout_flow(
                     links,
                     highlights,
                     link_hover_style,
-                    box_style,
+                    box_style: Box::new(box_style),
+                    shaped_line,
+                    line_height,
                 },
                 LineFragmentKind::Image { base_size } => PositionedFragment::Image {
                     item_ix: fragment.item_ix,
                     origin,
                     size: fragment.size,
                     base_size,
+                },
+                LineFragmentKind::Custom => PositionedFragment::Custom {
+                    item_ix: fragment.item_ix,
+                    origin,
+                    size: fragment.size,
                 },
             };
             x += fragment.size.width;
@@ -609,6 +887,24 @@ fn layout_flow(
         fragments,
         size: size(max_width, y),
     }
+}
+
+/// Resolve the same atomic inline typography for wrapping, shaping, and painting.
+fn text_style_for_box(base: &TextStyle, box_style: Option<&InlineBoxStyle>) -> TextStyle {
+    let mut style = base.clone();
+    let Some(box_style) = box_style else {
+        return style;
+    };
+    if let Some(font_family) = &box_style.font_family {
+        style.font_family = font_family.clone();
+    }
+    if let Some(font_size) = box_style.font_size {
+        style.font_size = font_size.into();
+    }
+    if let Some(line_height) = box_style.line_height {
+        style.line_height = line_height.into();
+    }
+    style
 }
 
 fn line_ranges(
@@ -721,10 +1017,12 @@ fn wrap_fragments_for_range<'a>(
                         slice_ranges(highlights, local_start, local_end, |range, style| {
                             (range, *style)
                         });
-                    let runs = runs_for_highlights(subtext, text_style, highlights);
-                    let shaped_line = shape_line(subtext.into(), font_size, &runs, window);
+                    let item_text_style = text_style_for_box(text_style, Some(box_style));
+                    let item_font_size = box_style.font_size.unwrap_or(font_size);
+                    let runs = runs_for_highlights(subtext, &item_text_style, highlights);
+                    let shaped_line = shape_line(subtext.into(), item_font_size, &runs, window);
                     fragments.push(WrapLineFragment::element(
-                        shaped_line.width() + box_style.padding_x * 2.,
+                        box_style.outer_width(shaped_line.width()),
                         subtext.len(),
                     ));
                 } else {
@@ -739,6 +1037,9 @@ fn wrap_fragments_for_range<'a>(
                         .width,
                     IMAGE_LEN,
                 ));
+            }
+            MeasureItem::Custom { size, len } => {
+                fragments.push(WrapLineFragment::element(size.width, *len));
             }
         }
         item_start = item_end;
@@ -966,6 +1267,46 @@ mod tests {
     }
 
     #[test]
+    fn inline_flow_layout_cache_reuses_matching_inputs_and_replaces_changed_width() {
+        let cache = InlineFlowLayoutCache::default();
+        let key = InlineFlowLayoutKey {
+            semantic_styles: Vec::new(),
+            resource_policy: crate::text::MarkdownResourcePolicy::Trusted,
+            image_layouts: Vec::new(),
+            custom_sizes: Vec::new(),
+            text_style: TextStyle::default(),
+            wrap_width: Some(px(320.)),
+            line_height: px(20.),
+            rem_size: px(16.),
+        };
+        let mut builds = 0;
+
+        let first = cache.get_or_insert_with(key.clone(), || {
+            builds += 1;
+            InlineFlowLayout::default()
+        });
+        let second = cache.get_or_insert_with(key.clone(), || {
+            builds += 1;
+            InlineFlowLayout::default()
+        });
+
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(builds, 1);
+
+        cache.get_or_insert_with(
+            InlineFlowLayoutKey {
+                wrap_width: Some(px(240.)),
+                ..key
+            },
+            || {
+                builds += 1;
+                InlineFlowLayout::default()
+            },
+        );
+        assert_eq!(builds, 2);
+    }
+
+    #[test]
     fn markdown_image_source_preserves_embedded_and_remote_resource_kinds() {
         let embedded: SharedUri = "icons/heart.svg".into();
         assert!(matches!(
@@ -1079,7 +1420,7 @@ mod tests {
                 links: vec![],
                 highlights: vec![],
                 link_hover_style: None,
-                box_style: self.box_style,
+                box_style: self.box_style.clone(),
             }];
             let layout = layout_flow(&items, &[None], &window.text_style(), None, window);
             (
@@ -1193,12 +1534,47 @@ mod tests {
                 background: None,
                 padding_x: px(4.),
                 corner_radius: px(6.),
+                ..Default::default()
             }),
             cx,
         );
 
         assert_eq!(boxed.width, plain.width + px(8.));
         assert_eq!(boxed.height, plain.height);
+    }
+
+    #[gpui::test]
+    fn inline_box_vertical_box_model_contributes_to_layout(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| InlineFlowTestRoot);
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        let draw_text = |box_style, cx: &mut VisualTestContext| {
+            cx.draw(point(px(0.), px(0.)), size(px(300.), px(100.)), |_, _| {
+                InlineBoxMeasureProbe {
+                    text: "code".into(),
+                    box_style,
+                }
+            })
+            .0
+        };
+
+        let plain = draw_text(None, cx);
+        let boxed = draw_text(
+            Some(InlineBoxStyle {
+                padding_y: px(2.),
+                margin_y: px(1.),
+                border_width: px(1.),
+                ..Default::default()
+            }),
+            cx,
+        );
+
+        assert_eq!(boxed.width, plain.width + px(2.));
+        assert_eq!(boxed.height, plain.height + px(8.));
     }
 
     #[gpui::test]
@@ -1220,6 +1596,7 @@ mod tests {
                         background: None,
                         padding_x: px(4.),
                         corner_radius: px(6.),
+                        ..Default::default()
                     }),
                 },
             )

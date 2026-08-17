@@ -75,9 +75,13 @@ let style = MarkdownStyle::default()
 markdown(source).markdown_style(style)
 ```
 
-Element selector 覆盖 document、paragraph、各级 heading、blockquote、list 与 marker、task checkbox、code block 与 actions、table 与 cell、image 和 horizontal rule。Inline selector 覆盖 plain text、各类 emphasis、inline 与 block code text、link 与 link hover、mark 和 footnote reference。`syntax_theme(...)` 可以只覆盖当前视图的代码语法高亮。
+Element selector 覆盖 document、paragraph、各级 heading、blockquote、list 与 marker、task checkbox、code block 与 actions、table 与 cell、image 和 horizontal rule。Inline selector 覆盖 plain text、各类 emphasis、inline 与 block code text、link 与 link hover、mark 和 footnote reference。Atomic inline 语义支持 font family、font size、line height，以及分别设置的水平/垂直 padding、margin、border、background 和 corner radius；这些 metrics 会参与换行与行高测量。`syntax_theme(...)` 可以只覆盖当前视图的代码语法高亮。Link 提供稳定的 `Role::Link` focus target，并支持 Enter 激活，跨视觉行换行时同样有效。
 
 样式优先级为：当前 `Theme`、`TextViewStyle`、`MarkdownStyle`、link hover 等临时交互状态，最后是可选的 block renderer。
+
+`LinkHover` 保持布局稳定。支持 color、background、underline、strikethrough 和 fade；字体与盒模型 refinement 会被忽略，确保链接 hover 不会改变换行或段落高度。
+
+聊天 transcript 应由外层 message list 管理滚动，并为每条消息持久化 `TextViewState`。只有独立文档才启用 TextView 内部滚动，避免嵌套虚拟列表产生额外测量开销。
 
 ## 内置 Block Renderer
 
@@ -97,22 +101,28 @@ markdown(source).markdown_builtin_renderer(
 )
 ```
 
-如果完全替换默认 element，自定义 renderer 需要自行负责交互与无障碍行为。Inline 内容支持完整的语义文本样式，但不支持任意 inline element 替换。
+如果完全替换默认 element，自定义 renderer 需要自行负责交互与无障碍行为。Inline plugin 会作为 atomic flow item 参与测量，并可通过 `MarkdownNode::text(...)` 提供 selection 与 copy fallback 使用的纯文本。
 
 ## 流式 Markdown
 
-复用同一个 `TextViewState`，通过 `push_str` 追加每个 LLM delta，并在流结束时调用 `finish_streaming`：
+复用同一个 `TextViewState`，启动显式 streaming session，通过 `push_str` 追加每个 LLM delta，并在流结束时调用 `finish_streaming`：
 
 ```rust
 let state = cx.new(|cx| TextViewState::markdown("", cx));
 
+state.update(cx, |state, cx| state.begin_streaming(cx));
 state.update(cx, |state, cx| state.push_str(delta, cx));
 state.update(cx, |state, cx| state.finish_streaming(cx));
 
-TextView::new(&state).selectable(true)
+TextView::new(&state)
+    .selectable(true)
+    .scrollable(true)
+    .follow_tail(true)
 ```
 
-追加解析在后台执行，会合并排队的 delta；临时解析失败时保留最后一份有效文档；空闲 100 ms 后执行 canonical full parse。追加期间，display-only tail 会临时闭合未完成的 emphasis、inline code、strikethrough 和 link，减少 marker 出现、消失及换行跳变。合成闭合符不会进入 canonical source、selection、复制内容或最终 AST；未完成的 link 保留样式但不可点击，未完成的 image 则保持普通文本，直到 destination 完整。fenced code block 不执行补全。`finish_streaming` 会立即请求 canonical parse。引用式链接的 definition 即使在后续 chunk 才到达，也能得到正确结果。
+显式 session 按 24 ms cadence 合并 provider delta；session 活跃期间不会因空闲触发 canonical parse。`finish_streaming` 会先 flush 待处理批次，再且仅再请求一次 canonical parse。未调用 `begin_streaming` 的旧用法继续兼容，并在空闲 300 ms 后 settle。`set_text` 会终止当前 session 及其 timer。
+
+追加解析在后台执行；临时解析失败时保留最后一份有效文档；结构一致的 streamed block 会保留 selection、link hover 和 code highlight 状态。稳定的顶层 block 通过 `Arc` 共享，append 与 display repair 只 copy 变化的尾部 block；同步 replacement 结果会直接 seed 后台 parser，避免重复全文解析。追加期间，display-only tail 会临时闭合未完成的 emphasis、inline code、strikethrough 和 link，减少 marker 出现、消失及换行跳变。合成闭合符不会进入 canonical source、selection、复制内容或最终 AST；未完成的 link 保留样式但不可点击，未完成的 image 则保持普通文本，直到 destination 完整。fenced code block 不执行补全。引用式 link 的 definition 即使在后续 chunk 才到达，也能得到正确结果。
 
 当 provider 输出过快或单个 delta 很大时，使用 `StreamingTextPacer`：
 
@@ -134,7 +144,21 @@ state.update(cx, |state, cx| {
 });
 ```
 
-Pacer 不会拆分当前 buffer 中已经识别出的 grapheme，遇到换行会提前结束当前帧，并根据 backlog 自适应 chunk 大小。Provider 仍可能把同一个 grapheme 拆到不同 delta，因此中间帧可能暂时不完整；所有输出拼接后的 Unicode 序列和最终 settled render 保持准确。Pacer 不持有 task 或 timer。自动滚动跟随仍由宿主 scroll container 负责：记录用户是否位于底部附近，等待新内容完成布局后再应用最新 `max_offset`；用户向上滚动时暂停跟随，回到底部后恢复。
+Pacer 不会拆分当前 buffer 中已经识别出的 grapheme，遇到换行会提前结束当前帧，并根据 backlog 自适应 chunk 大小。Provider 仍可能把同一个 grapheme 拆到不同 delta，因此中间帧可能暂时不完整；所有输出拼接后的 Unicode 序列和最终 settled render 保持准确。Pacer 不持有 task 或 timer。`.follow_tail(true)` 使用 GPUI 原生 list follow mode：用户首次向上滚动时立即暂停，回到底部后自动恢复。
+
+## LLM 资源安全
+
+受信任 Markdown 保持历史资源行为。LLM 生成或其他不受信任 Markdown 应启用安全策略，并由宿主应用处理允许的 link：
+
+```rust
+use hearth_gpui::text::MarkdownResourcePolicy;
+
+TextView::new(&state)
+    .markdown_resource_policy(MarkdownResourcePolicy::llm_safe())
+    .on_link_click(|url, _window, cx| cx.open_url(url))
+```
+
+`llm_safe` 允许 HTTP(S) 与 `mailto` link，允许规范化的相对 embedded image path；阻止 remote image、`data:` image、path traversal、pending-link sentinel 和可执行 URL scheme。被阻止的 image 会显示 alt text。
 
 ## Markdown 插件
 

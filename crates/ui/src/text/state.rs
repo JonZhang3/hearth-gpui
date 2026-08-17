@@ -1,9 +1,15 @@
 use futures::Stream as _;
-use std::{pin::Pin, sync::Arc, task::Poll, time::Duration};
+use std::{
+    collections::HashMap,
+    pin::Pin,
+    sync::{Arc, Mutex},
+    task::Poll,
+    time::Duration,
+};
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, FocusHandle, IntoElement, KeyBinding, ListState,
-    ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, Window,
+    App, AppContext as _, Bounds, Context, FocusHandle, FollowMode, IntoElement, KeyBinding,
+    ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, Window,
     prelude::FluentBuilder as _, px,
 };
 
@@ -13,8 +19,8 @@ use crate::{
     input::{self, SelectAll},
     scroll::AutoScroll,
     text::{
-        CodeBlockActionsFn, MarkdownBlockRenderers, MarkdownExtensions, MarkdownStyle,
-        TextViewStyle,
+        CodeBlockActionsFn, MarkdownBlockRenderers, MarkdownExtensions, MarkdownLinkClickFn,
+        MarkdownLinkHandler, MarkdownResourcePolicy, MarkdownStyle, TextViewStyle,
         document::ParsedDocument,
         format,
         node::{self, NodeContext},
@@ -26,7 +32,24 @@ use crate::{
 const CONTEXT: &'static str = "TextView";
 // Keep coalescing bounded so sustained streams still render intermediate updates.
 const MAX_COALESCED_UPDATES_PER_PARSE: usize = 64;
-const STREAMING_SETTLE_DELAY: Duration = Duration::from_millis(100);
+
+/// Controls how provider deltas are batched and when an implicit stream settles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StreamingMarkdownConfig {
+    /// Minimum delay between progressive Markdown parses during an explicit stream.
+    pub parse_interval: Duration,
+    /// Idle delay used by the backwards-compatible implicit streaming path.
+    pub idle_settle_delay: Duration,
+}
+
+impl Default for StreamingMarkdownConfig {
+    fn default() -> Self {
+        Self {
+            parse_interval: Duration::from_millis(24),
+            idle_settle_delay: Duration::from_millis(300),
+        }
+    }
+}
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys(vec![
@@ -61,11 +84,14 @@ pub struct TextViewState {
 
     pub(super) selectable: bool,
     pub(super) scrollable: bool,
+    pub(super) follow_tail: bool,
     pub(super) text_view_style: TextViewStyle,
     pub(super) code_block_actions: Option<std::sync::Arc<CodeBlockActionsFn>>,
     pub(super) markdown_extensions: Arc<MarkdownExtensions>,
     pub(super) markdown_style: Arc<MarkdownStyle>,
     pub(super) markdown_block_renderers: Arc<MarkdownBlockRenderers>,
+    pub(super) markdown_resource_policy: MarkdownResourcePolicy,
+    pub(super) on_link_click: Option<Arc<MarkdownLinkClickFn>>,
 
     pub(super) is_selecting: bool,
     multi_click_selection: Option<TextViewMultiClickSelection>,
@@ -74,6 +100,11 @@ pub struct TextViewState {
     pub(super) auto_scroll: AutoScroll,
 
     pub(super) parsed_content: ParsedContent,
+    /// Visible text-line geometry collected during the latest paint.
+    ///
+    /// Inline elements append directly to this view-owned registry so passive
+    /// scrolling does not perform an entity update for every visible fragment.
+    selection_geometry: Arc<Mutex<Vec<Bounds<Pixels>>>>,
     /// Content format (markdown / html), used to parse synchronously on the
     /// main thread for full-replace updates.
     format: TextViewFormat,
@@ -81,11 +112,19 @@ pub struct TextViewState {
     revision: usize,
     epoch: usize,
     rendered_revision: usize,
+    source_revision: usize,
+    settled_source_revision: usize,
+    canonical_queued_source_revision: Option<usize>,
+    canonical_parse_revisions: HashMap<usize, usize>,
+    streaming_config: Option<StreamingMarkdownConfig>,
+    streaming_generation: usize,
+    streaming_pending: String,
     parsed_error: Option<SharedString>,
     tx: Sender<UpdateOptions>,
     _parse_task: Task<()>,
     _receive_task: Task<()>,
     _settle_task: Task<()>,
+    _streaming_parse_task: Task<()>,
 }
 
 impl TextViewState {
@@ -116,11 +155,35 @@ impl TextViewState {
                             return;
                         }
 
+                        let known_changed = parsed_update.changed_blocks;
                         match parsed_update.result {
                             Ok(content) => {
+                                if let Some(changed) = known_changed.filter(|changed| {
+                                    changed.old_len == state.parsed_content.document.blocks.len()
+                                }) {
+                                    remeasure_known_blocks(&state.list_state, changed);
+                                } else {
+                                    remeasure_changed_blocks(
+                                        &state.list_state,
+                                        &state.parsed_content.document,
+                                        &content.document,
+                                    );
+                                }
                                 state.parsed_content = content;
                                 state.rendered_revision = parsed_update.revision;
                                 state.parsed_error = None;
+                                if parsed_update.kind == UpdateKind::Canonical {
+                                    let source_revision = state
+                                        .canonical_parse_revisions
+                                        .remove(&parsed_update.revision)
+                                        .unwrap_or(state.source_revision);
+                                    state.settled_source_revision = source_revision;
+                                    if state.canonical_queued_source_revision
+                                        == Some(source_revision)
+                                    {
+                                        state.canonical_queued_source_revision = None;
+                                    }
+                                }
                                 if parsed_update.kind == UpdateKind::Replace && !state.is_selecting
                                 {
                                     state.reset_selection();
@@ -149,6 +212,7 @@ impl TextViewState {
             select_all: false,
             selectable: false,
             scrollable: false,
+            follow_tail: false,
             // Measure all blocks (not just visible ones) so the scrollbar
             // thumb size stays stable. Without this, off-screen blocks count
             // as zero height until scrolled into view, which makes the
@@ -159,19 +223,30 @@ impl TextViewState {
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
             markdown_block_renderers: Arc::default(),
+            markdown_resource_policy: MarkdownResourcePolicy::default(),
+            on_link_click: None,
             is_selecting: false,
             auto_scroll: AutoScroll::default(),
             parsed_content: Default::default(),
+            selection_geometry: Arc::new(Mutex::new(Vec::new())),
             format,
             parsed_error: None,
             text: text.to_string(),
             revision: 0,
             epoch: 0,
             rendered_revision: 0,
+            source_revision: 0,
+            settled_source_revision: 0,
+            canonical_queued_source_revision: None,
+            canonical_parse_revisions: HashMap::new(),
+            streaming_config: None,
+            streaming_generation: 0,
+            streaming_pending: String::new(),
             tx,
             _parse_task,
             _receive_task,
             _settle_task: Task::ready(()),
+            _streaming_parse_task: Task::ready(()),
         };
         this.increment_update(&text, UpdateKind::Replace, cx);
         this
@@ -209,14 +284,54 @@ impl TextViewState {
         cx.notify();
     }
 
+    /// Enable or disable native tail-following for a scrollable text view.
+    pub fn set_follow_tail(&mut self, follow: bool, cx: &mut Context<Self>) {
+        if self.follow_tail == follow {
+            return;
+        }
+        self.follow_tail = follow;
+        self.list_state.set_follow_mode(if follow {
+            FollowMode::Tail
+        } else {
+            FollowMode::Normal
+        });
+        cx.notify();
+    }
+
+    /// Start an explicit LLM streaming session with the default batching policy.
+    pub fn begin_streaming(&mut self, cx: &mut Context<Self>) {
+        self.begin_streaming_with_config(StreamingMarkdownConfig::default(), cx);
+    }
+
+    /// Start an explicit LLM streaming session with a custom batching policy.
+    pub fn begin_streaming_with_config(
+        &mut self,
+        config: StreamingMarkdownConfig,
+        cx: &mut Context<Self>,
+    ) {
+        if self.streaming_config.is_some() {
+            self.flush_streaming_pending(cx);
+        }
+        self.streaming_generation = self.streaming_generation.wrapping_add(1);
+        self.streaming_config = Some(config);
+        self.streaming_pending.clear();
+        self._settle_task = Task::ready(());
+        self._streaming_parse_task = Task::ready(());
+        cx.notify();
+    }
+
     /// Set the text content.
     pub fn set_text(&mut self, text: &str, cx: &mut Context<Self>) {
-        if self.text.as_str() == text {
+        let had_unparsed_streaming_text = !self.streaming_pending.is_empty();
+        self.end_streaming_session();
+        if self.text.as_str() == text && !had_unparsed_streaming_text {
             return;
         }
 
         self.text.clear();
         self.text.push_str(text);
+        self.source_revision = self.source_revision.wrapping_add(1);
+        self.canonical_queued_source_revision = None;
         self.parsed_error = None;
         self.increment_update(text, UpdateKind::Replace, cx);
     }
@@ -227,8 +342,15 @@ impl TextViewState {
             return;
         }
         self.text.push_str(new_text);
-        self.increment_update(new_text, UpdateKind::Append, cx);
-        self.schedule_streaming_settle(cx);
+        self.source_revision = self.source_revision.wrapping_add(1);
+        self.canonical_queued_source_revision = None;
+        if self.streaming_config.is_some() {
+            self.streaming_pending.push_str(new_text);
+            self.schedule_streaming_parse(cx);
+        } else {
+            self.increment_update(new_text, UpdateKind::Append, cx);
+            self.schedule_streaming_settle(cx);
+        }
     }
 
     /// Request an immediate canonical parse of all accumulated streaming text.
@@ -238,7 +360,8 @@ impl TextViewState {
     /// more text afterwards starts a new revision and safely supersedes the
     /// pending canonical result.
     pub fn finish_streaming(&mut self, cx: &mut Context<Self>) {
-        self._settle_task = Task::ready(());
+        self.flush_streaming_pending(cx);
+        self.end_streaming_session();
         self.queue_canonical_parse();
         cx.notify();
     }
@@ -275,6 +398,8 @@ impl TextViewState {
     fn increment_update(&mut self, text: &str, kind: UpdateKind, cx: &mut Context<Self>) {
         if kind == UpdateKind::Replace {
             self.epoch = self.epoch.wrapping_add(1);
+            self.canonical_queued_source_revision = None;
+            self.canonical_parse_revisions.clear();
         }
         self.revision += 1;
         let update_options = UpdateOptions {
@@ -283,6 +408,7 @@ impl TextViewState {
             kind,
             pending_text: text.to_string(),
             markdown_extensions: self.markdown_extensions.clone(),
+            seed_content: None,
         };
 
         // Full-replace updates (initial content / `set_text`) parse
@@ -297,8 +423,14 @@ impl TextViewState {
         if kind == UpdateKind::Replace {
             match parse_content(self.format, ParsedContent::default(), text, &update_options) {
                 Ok(content) => {
+                    remeasure_changed_blocks(
+                        &self.list_state,
+                        &self.parsed_content.document,
+                        &content.document,
+                    );
                     self.parsed_content = content;
                     self.rendered_revision = self.revision;
+                    self.settled_source_revision = self.source_revision;
                     self.parsed_error = None;
                     if !self.is_selecting {
                         self.reset_selection();
@@ -312,7 +444,11 @@ impl TextViewState {
             // Seed the background parser with the same full source. Without
             // this reset, the first append after non-empty initial content or
             // `set_text` would use the worker's stale baseline.
-            _ = self.tx.try_send(update_options);
+            _ = self.tx.try_send(UpdateOptions {
+                kind: UpdateKind::Seed,
+                seed_content: Some(self.parsed_content.clone()),
+                ..update_options
+            });
             return;
         }
 
@@ -321,10 +457,12 @@ impl TextViewState {
 
     fn schedule_streaming_settle(&mut self, cx: &mut Context<Self>) {
         let revision = self.revision;
+        let source_revision = self.source_revision;
+        let delay = StreamingMarkdownConfig::default().idle_settle_delay;
         self._settle_task = cx.spawn(async move |weak_self, cx| {
-            cx.background_executor().timer(STREAMING_SETTLE_DELAY).await;
+            cx.background_executor().timer(delay).await;
             _ = weak_self.update(cx, |state, cx| {
-                if state.revision != revision {
+                if state.revision != revision || state.source_revision != source_revision {
                     return;
                 }
                 state.queue_canonical_parse();
@@ -333,14 +471,60 @@ impl TextViewState {
         });
     }
 
+    /// Schedule one progressive parse for all deltas received during the cadence window.
+    fn schedule_streaming_parse(&mut self, cx: &mut Context<Self>) {
+        if !self._streaming_parse_task.is_ready() {
+            return;
+        }
+        let generation = self.streaming_generation;
+        let delay = self.streaming_config.unwrap_or_default().parse_interval;
+        self._streaming_parse_task = cx.spawn(async move |weak_self, cx| {
+            cx.background_executor().timer(delay).await;
+            _ = weak_self.update(cx, |state, cx| {
+                if state.streaming_generation != generation || state.streaming_config.is_none() {
+                    return;
+                }
+                state.flush_streaming_pending(cx);
+            });
+        });
+    }
+
+    /// Submit accumulated provider deltas as one append parse.
+    fn flush_streaming_pending(&mut self, cx: &mut Context<Self>) {
+        self._streaming_parse_task = Task::ready(());
+        if self.streaming_pending.is_empty() {
+            return;
+        }
+        let pending = std::mem::take(&mut self.streaming_pending);
+        self.increment_update(&pending, UpdateKind::Append, cx);
+    }
+
+    /// Cancel timers and invalidate callbacks owned by the current streaming session.
+    fn end_streaming_session(&mut self) {
+        self.streaming_generation = self.streaming_generation.wrapping_add(1);
+        self.streaming_config = None;
+        self.streaming_pending.clear();
+        self._settle_task = Task::ready(());
+        self._streaming_parse_task = Task::ready(());
+    }
+
     fn queue_canonical_parse(&mut self) {
+        if self.canonical_queued_source_revision == Some(self.source_revision)
+            || self.settled_source_revision == self.source_revision
+        {
+            return;
+        }
         self.revision += 1;
+        self.canonical_queued_source_revision = Some(self.source_revision);
+        self.canonical_parse_revisions
+            .insert(self.revision, self.source_revision);
         _ = self.tx.try_send(UpdateOptions {
             revision: self.revision,
             epoch: self.epoch,
             kind: UpdateKind::Canonical,
             pending_text: self.text.clone(),
             markdown_extensions: self.markdown_extensions.clone(),
+            seed_content: None,
         });
     }
 
@@ -354,6 +538,38 @@ impl TextViewState {
 
     pub(super) fn bounds(&self) -> Bounds<Pixels> {
         self.bounds
+    }
+
+    /// Clear text geometry before painting the current frame.
+    pub(super) fn clear_selection_geometry(&self) {
+        if let Ok(mut geometry) = self.selection_geometry.lock() {
+            geometry.clear();
+        }
+    }
+
+    /// Append visible visual-line bounds without updating the owning entity.
+    pub(super) fn register_selection_geometry(
+        &self,
+        bounds: impl IntoIterator<Item = Bounds<Pixels>>,
+    ) {
+        if let Ok(mut geometry) = self.selection_geometry.lock() {
+            geometry.extend(bounds);
+        }
+    }
+
+    /// Return whether a window position lies on painted text rather than row whitespace.
+    pub(super) fn selection_geometry_contains(&self, position: Point<Pixels>) -> bool {
+        self.selection_geometry
+            .lock()
+            .is_ok_and(|geometry| geometry.iter().any(|bounds| bounds.contains(&position)))
+    }
+
+    #[cfg(test)]
+    pub(super) fn selection_geometry_snapshot(&self) -> Vec<Bounds<Pixels>> {
+        self.selection_geometry
+            .lock()
+            .map(|geometry| geometry.clone())
+            .unwrap_or_default()
     }
 
     /// Whether this view has a view-local selection (select-all, multi-click, or override),
@@ -507,6 +723,10 @@ impl Render for TextViewState {
         node_cx.markdown_extensions = self.markdown_extensions.clone();
         node_cx.markdown_style = self.markdown_style.clone();
         node_cx.markdown_block_renderers = self.markdown_block_renderers.clone();
+        node_cx.link_handler = MarkdownLinkHandler {
+            policy: self.markdown_resource_policy,
+            on_click: self.on_link_click.clone(),
+        };
         node_cx.source = document.source.clone();
         node_cx.style = self.text_view_style.clone();
 
@@ -559,6 +779,7 @@ struct UpdateFuture {
     source: String,
     epoch: usize,
     content: ParsedContent,
+    published_content: ParsedContent,
     rx: Pin<Box<Receiver<UpdateOptions>>>,
     tx_result: Sender<ParsedUpdate>,
 }
@@ -574,6 +795,7 @@ impl UpdateFuture {
             source: String::new(),
             epoch: 0,
             content: Default::default(),
+            published_content: Default::default(),
             rx: Box::pin(rx),
             tx_result,
         }
@@ -587,15 +809,36 @@ impl Future for UpdateFuture {
         loop {
             match self.rx.as_mut().poll_next(cx) {
                 Poll::Ready(Some(mut options)) => {
+                    if options.kind == UpdateKind::Seed {
+                        self.epoch = options.epoch;
+                        self.source = options.pending_text;
+                        self.content = options.seed_content.take().unwrap_or_default();
+                        self.published_content = self.content.clone();
+                        continue;
+                    }
                     let hit_coalesce_budget =
                         merge_pending_options(&mut options, self.rx.as_ref().get_ref());
+                    if options.kind == UpdateKind::Seed {
+                        self.epoch = options.epoch;
+                        self.source = options.pending_text;
+                        self.content = options.seed_content.take().unwrap_or_default();
+                        self.published_content = self.content.clone();
+                        continue;
+                    }
 
                     let res = self.parse_update(&options);
+                    let changed = res.as_ref().ok().map(|content| {
+                        changed_blocks(&self.published_content.document, &content.document)
+                    });
+                    if let Ok(content) = &res {
+                        self.published_content = content.clone();
+                    }
                     _ = self.tx_result.try_send(ParsedUpdate {
                         revision: options.revision,
                         epoch: options.epoch,
                         kind: options.kind,
                         result: res,
+                        changed_blocks: changed,
                     });
                     if hit_coalesce_budget {
                         cx.waker().wake_by_ref();
@@ -635,11 +878,12 @@ impl UpdateFuture {
             self.epoch = options.epoch;
             self.source.clear();
             self.content = ParsedContent::default();
+            self.published_content = ParsedContent::default();
         }
 
         match options.kind {
             UpdateKind::Append => self.source.push_str(&options.pending_text),
-            UpdateKind::Replace | UpdateKind::Canonical => {
+            UpdateKind::Replace | UpdateKind::Canonical | UpdateKind::Seed => {
                 self.source.clone_from(&options.pending_text)
             }
         }
@@ -687,15 +931,14 @@ fn streaming_display_content(
         return canonical;
     };
     if let Some(synthetic_suffix) = repair.synthetic_text_suffix
-        && !display_tail
-            .blocks
-            .last_mut()
-            .is_some_and(|block| block.remove_trailing_synthetic_char(synthetic_suffix))
+        && !display_tail.blocks.last_mut().is_some_and(|block| {
+            Arc::make_mut(block).remove_trailing_synthetic_char(synthetic_suffix)
+        })
     {
         return canonical;
     }
     for block in &mut display_tail.blocks {
-        block.clamp_spans(complete_source.len());
+        Arc::make_mut(block).clamp_spans(complete_source.len());
     }
 
     let mut display = canonical.clone();
@@ -712,6 +955,7 @@ struct UpdateOptions {
     pending_text: String,
     kind: UpdateKind,
     markdown_extensions: Arc<MarkdownExtensions>,
+    seed_content: Option<ParsedContent>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -719,6 +963,7 @@ enum UpdateKind {
     Replace,
     Append,
     Canonical,
+    Seed,
 }
 
 impl UpdateOptions {
@@ -744,6 +989,63 @@ struct ParsedUpdate {
     epoch: usize,
     kind: UpdateKind,
     result: Result<ParsedContent, SharedString>,
+    changed_blocks: Option<ChangedBlocks>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ChangedBlocks {
+    start: usize,
+    old_len: usize,
+    new_len: usize,
+}
+
+/// Keep measured list heights aligned with changed streaming blocks.
+fn remeasure_changed_blocks(
+    list_state: &ListState,
+    previous: &ParsedDocument,
+    next: &ParsedDocument,
+) {
+    let unchanged_prefix = previous
+        .blocks
+        .iter()
+        .zip(&next.blocks)
+        .take_while(|(old, new)| old == new)
+        .count();
+    let old_len = previous.blocks.len();
+    let new_len = next.blocks.len();
+
+    if old_len != new_len {
+        list_state.splice(unchanged_prefix..old_len, new_len - unchanged_prefix);
+    } else if unchanged_prefix < new_len {
+        list_state.remeasure_items(unchanged_prefix..new_len);
+    }
+}
+
+/// Apply a parser-provided changed suffix without comparing block contents on the UI thread.
+fn remeasure_known_blocks(list_state: &ListState, changed: ChangedBlocks) {
+    if changed.old_len != changed.new_len {
+        list_state.splice(
+            changed.start..changed.old_len,
+            changed.new_len - changed.start,
+        );
+    } else if changed.start < changed.new_len {
+        list_state.remeasure_items(changed.start..changed.new_len);
+    }
+}
+
+/// Find the changed suffix while preferring the parser's shared block identity.
+fn changed_blocks(previous: &ParsedDocument, next: &ParsedDocument) -> ChangedBlocks {
+    let start = previous
+        .blocks
+        .iter()
+        .zip(&next.blocks)
+        .take_while(|(old, new)| Arc::ptr_eq(old, new) || old == new)
+        .count();
+    ChangedBlocks {
+        start,
+        old_len: previous.blocks.len(),
+        new_len: next.blocks.len(),
+    }
 }
 
 fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOptions>) -> bool {
@@ -752,8 +1054,12 @@ fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOption
     while update_count < MAX_COALESCED_UPDATES_PER_PARSE {
         match rx.try_recv() {
             Ok(next_options) => {
+                let is_seed = next_options.kind == UpdateKind::Seed;
                 options.merge(next_options);
                 update_count += 1;
+                if is_seed {
+                    return false;
+                }
             }
             Err(_) => return false,
         }
@@ -768,24 +1074,22 @@ fn parse_content(
     complete_source: &str,
     options: &UpdateOptions,
 ) -> Result<ParsedContent, SharedString> {
+    let previous_link_refs = content.node_cx.link_refs.clone();
     let mut node_cx = NodeContext {
+        link_refs: if options.kind == UpdateKind::Append {
+            previous_link_refs.clone()
+        } else {
+            HashMap::new()
+        },
         markdown_extensions: options.markdown_extensions.clone(),
         ..NodeContext::default()
     };
 
     let append = options.kind == UpdateKind::Append;
-    // Reference definitions affect parsing outside the unstable tail. Once a
-    // document contains one, suffix-only parsing is not semantically safe.
-    let requires_full_parse = !content.node_cx.link_refs.is_empty();
     let mut previous_tail = None;
-    let mut source = if append && requires_full_parse {
-        complete_source.to_string()
-    } else {
-        String::new()
-    };
+    let mut source = String::new();
 
     if append
-        && !requires_full_parse
         && let Some(last_block) = content.document.blocks.pop()
         && let Some(span) = last_block.span()
     {
@@ -796,6 +1100,20 @@ fn parse_content(
         source = complete_source.to_string();
     }
 
+    // The Markdown parser must see definitions in the same source in order to
+    // recognize shortcut and collapsed references. Existing definitions do not
+    // require a full parse for ordinary text, but a tail containing `[` may use
+    // one of them and therefore falls back to the canonical source.
+    let requires_full_parse = append && !previous_link_refs.is_empty() && source.contains('[');
+    if requires_full_parse {
+        node_cx = NodeContext {
+            markdown_extensions: options.markdown_extensions.clone(),
+            ..NodeContext::default()
+        };
+        source = complete_source.to_string();
+        previous_tail = None;
+    }
+
     let mut new_document = match format {
         TextViewFormat::Markdown => format::markdown::parse(&source, &mut node_cx),
         TextViewFormat::Html => format::html::parse(&source, &mut node_cx),
@@ -804,12 +1122,13 @@ fn parse_content(
     if let Some(previous_tail) = previous_tail.as_ref()
         && let Some(current_tail) = new_document.blocks.first_mut()
     {
-        current_tail.reuse_runtime_state_from(previous_tail);
+        Arc::make_mut(current_tail).reuse_runtime_state_from(previous_tail.as_ref());
     }
 
-    // A newly appended definition can retroactively turn earlier plain text
-    // into reference links, so reparse the canonical source before publishing.
-    if append && !requires_full_parse && !node_cx.link_refs.is_empty() {
+    // Only a changed definition map can alter already-published reference links.
+    // Existing definitions are seeded into the suffix parser so ordinary appends
+    // remain incremental after a document has introduced reference definitions.
+    if append && (requires_full_parse || node_cx.link_refs != previous_link_refs) {
         node_cx = NodeContext {
             markdown_extensions: options.markdown_extensions.clone(),
             ..NodeContext::default()
@@ -820,7 +1139,7 @@ fn parse_content(
         }?;
         reuse_unchanged_prefix(&content.document, &mut new_document);
         content.document = new_document;
-    } else if append && !requires_full_parse {
+    } else if append {
         content.document.source = complete_source.to_string().into();
         content.document.blocks.extend(new_document.blocks);
     } else {
@@ -844,8 +1163,19 @@ fn reuse_unchanged_prefix(previous: &ParsedDocument, next: &mut ParsedDocument) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::MarkdownNode;
+    use crate::text::{
+        MarkdownNode,
+        node::{BlockNode, Paragraph},
+    };
     use gpui::TestAppContext;
+
+    #[test]
+    fn streaming_markdown_default_matches_the_stream_frame_cadence() {
+        assert_eq!(
+            StreamingMarkdownConfig::default().parse_interval,
+            Duration::from_millis(24)
+        );
+    }
 
     #[gpui::test]
     fn set_text_then_push_str_appends_to_replaced_content(cx: &mut TestAppContext) {
@@ -900,6 +1230,7 @@ mod tests {
             pending_text: "Read [the docs].".to_string(),
             kind: UpdateKind::Replace,
             markdown_extensions: extensions.clone(),
+            seed_content: None,
         };
         let initial = parse_content(
             TextViewFormat::Markdown,
@@ -918,6 +1249,7 @@ mod tests {
                 pending_text: "\n\n[the docs]: https://example.com".to_string(),
                 kind: UpdateKind::Append,
                 markdown_extensions: extensions.clone(),
+                seed_content: None,
             },
         )
         .unwrap();
@@ -931,11 +1263,79 @@ mod tests {
                 pending_text: "Read [the docs].\n\n[the docs]: https://example.com".to_string(),
                 kind: UpdateKind::Canonical,
                 markdown_extensions: extensions,
+                seed_content: None,
             },
         )
         .unwrap();
 
         assert_eq!(streamed.document, canonical.document);
+    }
+
+    #[test]
+    fn unchanged_document_prefix_reuses_shared_blocks() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let options = |source: &str| UpdateOptions {
+            revision: 1,
+            epoch: 1,
+            pending_text: source.to_string(),
+            kind: UpdateKind::Replace,
+            markdown_extensions: extensions.clone(),
+            seed_content: None,
+        };
+        let previous = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            "# Stable\n\nold tail",
+            &options("# Stable\n\nold tail"),
+        )
+        .unwrap();
+        let mut next = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            "# Stable\n\nnew tail",
+            &options("# Stable\n\nnew tail"),
+        )
+        .unwrap();
+
+        reuse_unchanged_prefix(&previous.document, &mut next.document);
+
+        assert!(Arc::ptr_eq(
+            &previous.document.blocks[0],
+            &next.document.blocks[0]
+        ));
+        assert!(!Arc::ptr_eq(
+            &previous.document.blocks[1],
+            &next.document.blocks[1]
+        ));
+    }
+
+    #[test]
+    fn changed_block_range_prefers_shared_prefix_and_tracks_length_changes() {
+        let shared = Arc::new(BlockNode::Paragraph(Paragraph::new("stable".to_string())));
+        let previous = ParsedDocument {
+            blocks: vec![
+                shared.clone(),
+                Arc::new(BlockNode::HorizontalRule { span: None }),
+            ],
+            ..Default::default()
+        };
+        let next = ParsedDocument {
+            blocks: vec![
+                shared,
+                Arc::new(BlockNode::Paragraph(Paragraph::new("tail".to_string()))),
+                Arc::new(BlockNode::HorizontalRule { span: None }),
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            changed_blocks(&previous, &next),
+            ChangedBlocks {
+                start: 1,
+                old_len: 2,
+                new_len: 3,
+            }
+        );
     }
 
     #[test]
@@ -952,6 +1352,7 @@ mod tests {
                 pending_text: initial_source.to_string(),
                 kind: UpdateKind::Replace,
                 markdown_extensions: extensions.clone(),
+                seed_content: None,
             },
         )
         .unwrap();
@@ -965,6 +1366,7 @@ mod tests {
                 pending_text: " [docs]".to_string(),
                 kind: UpdateKind::Append,
                 markdown_extensions: extensions.clone(),
+                seed_content: None,
             },
         )
         .unwrap();
@@ -978,10 +1380,64 @@ mod tests {
                 pending_text: format!("{initial_source} [docs]"),
                 kind: UpdateKind::Canonical,
                 markdown_extensions: extensions,
+                seed_content: None,
             },
         )
         .unwrap();
 
+        assert_eq!(streamed.document, canonical.document);
+    }
+
+    #[test]
+    fn plain_text_after_reference_definitions_remains_incremental() {
+        let extensions = Arc::new(MarkdownExtensions::default());
+        let initial_source = "[docs]: https://example.com\n\n# Stable\n\nTail";
+        let initial = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            initial_source,
+            &UpdateOptions {
+                revision: 1,
+                epoch: 1,
+                pending_text: initial_source.to_string(),
+                kind: UpdateKind::Replace,
+                markdown_extensions: extensions.clone(),
+                seed_content: None,
+            },
+        )
+        .unwrap();
+        let stable = initial.document.blocks[1].clone();
+        let complete = format!("{initial_source} text");
+        let streamed = parse_content(
+            TextViewFormat::Markdown,
+            initial,
+            &complete,
+            &UpdateOptions {
+                revision: 2,
+                epoch: 1,
+                pending_text: " text".to_string(),
+                kind: UpdateKind::Append,
+                markdown_extensions: extensions.clone(),
+                seed_content: None,
+            },
+        )
+        .unwrap();
+        let canonical = parse_content(
+            TextViewFormat::Markdown,
+            ParsedContent::default(),
+            &complete,
+            &UpdateOptions {
+                revision: 2,
+                epoch: 1,
+                pending_text: complete.clone(),
+                kind: UpdateKind::Canonical,
+                markdown_extensions: extensions,
+                seed_content: None,
+            },
+        )
+        .unwrap();
+
+        assert!(Arc::ptr_eq(&stable, &streamed.document.blocks[1]));
         assert_eq!(streamed.document, canonical.document);
     }
 
@@ -998,6 +1454,7 @@ mod tests {
             pending_text: "{value".to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions.clone(),
+            seed_content: None,
         };
         assert!(future.parse_update(&incomplete).is_err());
         assert_eq!(future.source, "{value");
@@ -1010,6 +1467,7 @@ mod tests {
                 pending_text: "}".to_string(),
                 kind: UpdateKind::Append,
                 markdown_extensions: extensions,
+                seed_content: None,
             })
             .expect("completed MDX expression should parse without waiting for settle");
 
@@ -1026,6 +1484,7 @@ mod tests {
             pending_text: "**bold".to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions,
+            seed_content: None,
         };
         let canonical = parse_content(
             TextViewFormat::Markdown,
@@ -1041,7 +1500,7 @@ mod tests {
             &options,
         );
 
-        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+        let node::BlockNode::Paragraph(paragraph) = &*display.document.blocks[0] else {
             panic!("expected paragraph");
         };
         assert!(paragraph.children[0].marks[0].1.bold);
@@ -1059,6 +1518,7 @@ mod tests {
             pending_text: source.to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions,
+            seed_content: None,
         };
         let canonical = parse_content(
             TextViewFormat::Markdown,
@@ -1070,7 +1530,7 @@ mod tests {
         let display =
             streaming_display_content(TextViewFormat::Markdown, canonical, source, &options);
 
-        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+        let node::BlockNode::Paragraph(paragraph) = &*display.document.blocks[0] else {
             panic!("expected paragraph");
         };
         let pending = paragraph.children[0].marks[0]
@@ -1100,6 +1560,7 @@ mod tests {
             pending_text: source.to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions,
+            seed_content: None,
         };
         let canonical = parse_content(
             TextViewFormat::Markdown,
@@ -1115,7 +1576,7 @@ mod tests {
             &options,
         );
 
-        let node::BlockNode::Paragraph(paragraph) = &display.document.blocks[0] else {
+        let node::BlockNode::Paragraph(paragraph) = &*display.document.blocks[0] else {
             panic!("expected literal image syntax to remain a paragraph");
         };
         assert!(paragraph.children.iter().all(|child| child.image.is_none()));
@@ -1133,6 +1594,7 @@ mod tests {
             pending_text: source.to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions.clone(),
+            seed_content: None,
         };
         let canonical = parse_content(
             TextViewFormat::Markdown,
@@ -1145,7 +1607,7 @@ mod tests {
             streaming_display_content(TextViewFormat::Markdown, canonical, source, &options);
 
         assert!(matches!(
-            display.document.blocks[0],
+            *display.document.blocks[0],
             node::BlockNode::Paragraph(_)
         ));
         assert_eq!(display.document.text(), "heading\n---\n");
@@ -1163,6 +1625,7 @@ mod tests {
                 pending_text: user_source.to_string(),
                 kind: UpdateKind::Append,
                 markdown_extensions: extensions,
+                seed_content: None,
             },
         )
         .unwrap();
@@ -1179,6 +1642,7 @@ mod tests {
             pending_text: source.to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: extensions,
+            seed_content: None,
         };
         let canonical = parse_content(
             TextViewFormat::Markdown,
@@ -1210,6 +1674,7 @@ mod tests {
                 pending_text: "previous document".to_string(),
                 kind: UpdateKind::Replace,
                 markdown_extensions: extensions.clone(),
+                seed_content: None,
             })
             .expect("initial document");
         assert_eq!(future.content.document.source.as_ref(), "previous document");
@@ -1222,6 +1687,7 @@ mod tests {
                     pending_text: "{next".to_string(),
                     kind: UpdateKind::Replace,
                     markdown_extensions: extensions.clone(),
+                    seed_content: None,
                 })
                 .is_err()
         );
@@ -1234,6 +1700,7 @@ mod tests {
                 pending_text: "}".to_string(),
                 kind: UpdateKind::Append,
                 markdown_extensions: extensions,
+                seed_content: None,
             })
             .expect("new epoch should recover without the previous source");
         assert_eq!(completed.document.source.as_ref(), "{next}");
@@ -1266,6 +1733,7 @@ mod tests {
                         UpdateKind::Append
                     },
                     markdown_extensions: extensions.clone(),
+                    seed_content: None,
                 },
             )
             .unwrap();
@@ -1281,6 +1749,7 @@ mod tests {
                 pending_text: source.to_string(),
                 kind: UpdateKind::Canonical,
                 markdown_extensions: extensions,
+                seed_content: None,
             },
         )
         .unwrap();
@@ -1297,7 +1766,8 @@ mod tests {
         cx.run_until_parked();
         let append_revision = state.read_with(cx, |state, _| state.revision);
 
-        cx.background_executor.advance_clock(STREAMING_SETTLE_DELAY);
+        cx.background_executor
+            .advance_clock(StreamingMarkdownConfig::default().idle_settle_delay);
         cx.run_until_parked();
 
         state.read_with(cx, |state, _| {
@@ -1326,6 +1796,83 @@ mod tests {
         });
     }
 
+    #[gpui::test]
+    fn explicit_streaming_batches_provider_deltas_and_settles_once(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("", cx)));
+
+        state.update(cx, |state, cx| {
+            state.begin_streaming(cx);
+            state.push_str("# ", cx);
+            state.push_str("Title", cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(state.read_with(cx, |state, _| state.source()), "");
+
+        cx.background_executor
+            .advance_clock(StreamingMarkdownConfig::default().parse_interval);
+        cx.run_until_parked();
+        let append_revision = state.read_with(cx, |state, _| {
+            assert_eq!(state.source().as_ref(), "# Title");
+            state.revision
+        });
+
+        cx.background_executor
+            .advance_clock(StreamingMarkdownConfig::default().idle_settle_delay);
+        cx.run_until_parked();
+        assert_eq!(
+            state.read_with(cx, |state, _| state.revision),
+            append_revision,
+            "an active explicit session must not settle on idle"
+        );
+
+        state.update(cx, |state, cx| {
+            state.finish_streaming(cx);
+            let settled_revision = state.revision;
+            state.finish_streaming(cx);
+            assert_eq!(state.revision, settled_revision);
+        });
+        cx.run_until_parked();
+
+        state.read_with(cx, |state, _| {
+            assert_eq!(state.source().as_ref(), "# Title");
+            assert_eq!(state.rendered_revision, state.revision);
+        });
+    }
+
+    #[gpui::test]
+    fn set_text_terminates_an_explicit_streaming_session(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("", cx)));
+
+        state.update(cx, |state, cx| {
+            state.begin_streaming(cx);
+            state.push_str("discarded pending batch", cx);
+            state.set_text("replacement", cx);
+            state.push_str(" tail", cx);
+            assert!(state.streaming_config.is_none());
+            assert!(state.streaming_pending.is_empty());
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            state.read_with(cx, |state, _| state.source()),
+            "replacement tail"
+        );
+    }
+
+    #[gpui::test]
+    fn follow_tail_uses_the_native_list_follow_mode(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("", cx)));
+
+        state.update(cx, |state, cx| state.set_follow_tail(true, cx));
+        assert!(state.read_with(cx, |state, _| state.list_state.is_following_tail()));
+
+        state.update(cx, |state, cx| state.set_follow_tail(false, cx));
+        assert!(!state.read_with(cx, |state, _| state.list_state.is_following_tail()));
+    }
+
     #[test]
     fn update_options_merge_keeps_latest_full_text() {
         let mut options = UpdateOptions {
@@ -1334,6 +1881,7 @@ mod tests {
             pending_text: "old".to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: Arc::default(),
+            seed_content: None,
         };
 
         options.merge(UpdateOptions {
@@ -1342,6 +1890,7 @@ mod tests {
             pending_text: "new".to_string(),
             kind: UpdateKind::Replace,
             markdown_extensions: Arc::default(),
+            seed_content: None,
         });
         options.merge(UpdateOptions {
             revision: 3,
@@ -1349,6 +1898,7 @@ mod tests {
             pending_text: " text".to_string(),
             kind: UpdateKind::Append,
             markdown_extensions: Arc::default(),
+            seed_content: None,
         });
 
         assert_eq!(options.revision, 3);
@@ -1373,6 +1923,7 @@ mod tests {
                     UpdateKind::Append
                 },
                 markdown_extensions: Arc::default(),
+                seed_content: None,
             })
             .unwrap();
         }
@@ -1455,7 +2006,7 @@ mod tests {
         cx.run_until_parked();
 
         state.read_with(cx, |state, _| {
-            let node::BlockNode::Custom(node) = &state.parsed_content.document.blocks[0] else {
+            let node::BlockNode::Custom(node) = &*state.parsed_content.document.blocks[0] else {
                 panic!("expected custom markdown node");
             };
             assert_eq!(node.name(), "ticker");

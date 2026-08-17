@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{ops::Range, sync::Arc};
 
 use gpui::SharedString;
 use markdown::mdast::{self, Node};
@@ -14,6 +14,7 @@ use crate::text::{
 
 /// Parse Markdown into a tree of nodes.
 pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument, SharedString> {
+    cx.source = source.to_string().into();
     let options = cx.markdown_extensions.parse_options();
     markdown::to_mdast(&source, &options)
         .map(|n| ast_to_document(source, n, cx))
@@ -96,6 +97,16 @@ fn merge_children_with_mark(
         text.push_str(&child_text);
 
         for node in child_paragraph.children {
+            if let Some(custom) = node.custom {
+                push_merged(
+                    paragraph,
+                    std::mem::take(&mut merged_text),
+                    std::mem::take(&mut merged_marks),
+                    mark.clone(),
+                );
+                paragraph.push(InlineNode::custom(custom));
+                continue;
+            }
             let merged_offset = merged_text.len();
             merged_text.push_str(&node.text);
 
@@ -155,6 +166,14 @@ fn append_inline_html_blocks(paragraph: &mut Paragraph, blocks: Vec<BlockNode>) 
 }
 
 fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeContext) -> String {
+    let parse_cx = MarkdownParseContext::new(&cx.source, cx.offset);
+    if let Some(mut custom) = cx.markdown_extensions.parse_inline(node, &parse_cx) {
+        custom.set_span(new_span(node.position().cloned(), cx));
+        let text = custom.as_text().to_string();
+        paragraph.push(InlineNode::custom(custom));
+        return text;
+    }
+
     let span = node.position().map(|pos| Span {
         start: cx.offset + pos.start.offset,
         end: cx.offset + pos.end.offset,
@@ -239,7 +258,10 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeC
         }
         Node::Html(val) => match super::html::parse(&val.value, cx) {
             Ok(el) => {
-                if let Some(inline_text) = append_inline_html_blocks(paragraph, el.blocks) {
+                if let Some(inline_text) = append_inline_html_blocks(
+                    paragraph,
+                    el.blocks.into_iter().map(Arc::unwrap_or_clone).collect(),
+                ) {
                     text = inline_text;
                 } else {
                     if cfg!(debug_assertions) {
@@ -302,7 +324,7 @@ fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> Par
     let blocks = root
         .children
         .into_iter()
-        .map(|c| ast_to_node(source, c, cx))
+        .map(|c| Arc::new(ast_to_node(source, c, cx)))
         .collect();
     ParsedDocument {
         source: source.to_string().into(),
@@ -401,7 +423,7 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
         )),
         Node::Html(val) => match super::html::parse(&val.value, cx) {
             Ok(el) => BlockNode::Root {
-                children: el.blocks,
+                children: el.blocks.into_iter().map(Arc::unwrap_or_clone).collect(),
                 span: new_span(val.position, cx),
             },
             Err(err) => {
@@ -518,7 +540,7 @@ mod tests {
         let mut cx = NodeContext::default();
         let document = parse("This has **_bold and italic_** text.", &mut cx).unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -546,7 +568,7 @@ mod tests {
         )
         .unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -572,7 +594,7 @@ mod tests {
         )
         .unwrap();
 
-        let BlockNode::Paragraph(paragraph) = &document.blocks[0] else {
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
 
@@ -624,7 +646,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom(node) = &*document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");
@@ -683,7 +705,7 @@ mod tests {
         };
         let document = parse("$TSLA.US", &mut cx).unwrap();
 
-        let BlockNode::Custom(node) = &document.blocks[0] else {
+        let BlockNode::Custom(node) = &*document.blocks[0] else {
             panic!("expected custom markdown node");
         };
         assert_eq!(node.name(), "ticker");
@@ -693,5 +715,57 @@ mod tests {
                 symbol: "TSLA.US".to_string()
             })
         );
+    }
+
+    struct InlineTickerPlugin;
+
+    impl MarkdownPlugin for InlineTickerPlugin {
+        fn name(&self) -> &str {
+            "inline-ticker"
+        }
+
+        fn parse(&self, node: &Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
+            let Node::InlineCode(code) = node else {
+                return None;
+            };
+            let symbol = code.value.strip_prefix('$')?.to_string();
+            Some(
+                MarkdownNode::new("inline-ticker", Ticker { symbol })
+                    .text(code.value.clone())
+                    .markdown(cx.node_source(node).unwrap_or_default()),
+            )
+        }
+
+        fn render(
+            &self,
+            node: &MarkdownNode,
+            _window: &mut gpui::Window,
+            _cx: &mut gpui::App,
+        ) -> impl gpui::IntoElement {
+            gpui::div().child(node.as_text().to_string())
+        }
+    }
+
+    #[test]
+    fn inline_plugin_converts_nodes_without_panicking() {
+        let extensions = MarkdownExtensions::default().plugin(InlineTickerPlugin);
+        let mut cx = NodeContext {
+            markdown_extensions: extensions.into(),
+            ..NodeContext::default()
+        };
+        let document = parse("Price: `$TSLA.US` now", &mut cx).unwrap();
+
+        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let custom = paragraph
+            .children
+            .iter()
+            .find_map(|child| child.custom.as_ref())
+            .expect("expected custom inline node");
+        assert_eq!(custom.name(), "inline-ticker");
+        assert_eq!(custom.as_text(), "$TSLA.US");
+        assert_eq!(custom.as_markdown(), "`$TSLA.US`");
+        assert_eq!(document.text(), "Price: $TSLA.US now\n");
     }
 }

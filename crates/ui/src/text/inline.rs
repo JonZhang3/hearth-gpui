@@ -6,14 +6,14 @@ use std::{
 };
 
 use gpui::{
-    App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, GlobalElementId, Half,
-    HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyledText,
-    TextLayout, TextStyle, Window, point, px, quad,
+    App, AvailableSpace, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId,
+    GlobalElementId, Half, HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement,
+    LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ShapedLine,
+    SharedString, StyledText, TextAlign, TextLayout, TextStyle, Window, point, px, quad, size,
 };
 
 use crate::{
-    ActiveTheme, WindowExt as _, global_state::GlobalState, input::Selection,
+    ActiveTheme, global_state::GlobalState, input::Selection, text::MarkdownLinkHandler,
     text::MarkdownTextStyle, text::TextViewMultiClickKind, text::node::LinkMark,
     text::selection::word_range_at,
 };
@@ -41,6 +41,81 @@ pub(super) struct Inline {
     hover_state: Arc<Mutex<InlineState>>,
     hover_owner: usize,
     selection_sink: Option<InlineSelectionSink>,
+    link_handler: MarkdownLinkHandler,
+    precomputed_line: Option<(Arc<ShapedLine>, Pixels)>,
+    use_precomputed_line: bool,
+}
+
+#[derive(Clone)]
+enum InlineTextLayout {
+    Wrapped(TextLayout),
+    Shaped {
+        line: Arc<ShapedLine>,
+        bounds: Bounds<Pixels>,
+        line_height: Pixels,
+    },
+}
+
+impl InlineTextLayout {
+    fn index_for_position(&self, position: Point<Pixels>) -> Result<usize, usize> {
+        match self {
+            Self::Wrapped(layout) => layout.index_for_position(position),
+            Self::Shaped { line, bounds, .. } => {
+                if position.y < bounds.top() || position.y > bounds.bottom() {
+                    return Err(if position.y < bounds.top() {
+                        0
+                    } else {
+                        line.len()
+                    });
+                }
+                Ok(line
+                    .index_for_x(position.x - bounds.left())
+                    .unwrap_or(line.len()))
+            }
+        }
+    }
+
+    fn position_for_index(&self, index: usize) -> Option<Point<Pixels>> {
+        match self {
+            Self::Wrapped(layout) => layout.position_for_index(index),
+            Self::Shaped { line, bounds, .. } => (index <= line.len())
+                .then(|| point(bounds.left() + line.x_for_index(index), bounds.top())),
+        }
+    }
+
+    fn line_height(&self) -> Pixels {
+        match self {
+            Self::Wrapped(layout) => layout.line_height(),
+            Self::Shaped { line_height, .. } => *line_height,
+        }
+    }
+
+    fn paint_shaped(&self, window: &mut Window, cx: &mut App) {
+        let Self::Shaped {
+            line,
+            bounds,
+            line_height,
+        } = self
+        else {
+            return;
+        };
+        _ = line.paint_background(
+            bounds.origin,
+            *line_height,
+            TextAlign::Left,
+            Some(bounds.size.width),
+            window,
+            cx,
+        );
+        _ = line.paint(
+            bounds.origin,
+            *line_height,
+            TextAlign::Left,
+            Some(bounds.size.width),
+            window,
+            cx,
+        );
+    }
 }
 
 /// Maps a fragment-local selection back to its owning paragraph.
@@ -153,6 +228,9 @@ impl Inline {
             state,
             hover_owner: 0,
             selection_sink: None,
+            link_handler: MarkdownLinkHandler::default(),
+            precomputed_line: None,
+            use_precomputed_line: false,
         }
     }
 
@@ -172,6 +250,18 @@ impl Inline {
     /// Store this fragment's selection in its owning paragraph state.
     pub(super) fn selection_sink(mut self, sink: InlineSelectionSink) -> Self {
         self.selection_sink = Some(sink);
+        self
+    }
+
+    /// Apply the view-level resource policy and optional link callback.
+    pub(super) fn link_handler(mut self, handler: MarkdownLinkHandler) -> Self {
+        self.link_handler = handler;
+        self
+    }
+
+    /// Reuse the single-line shaping produced by `InlineFlow` for layout and paint.
+    pub(super) fn precomputed_line(mut self, line: Arc<ShapedLine>, line_height: Pixels) -> Self {
+        self.precomputed_line = Some((line, line_height));
         self
     }
 
@@ -223,7 +313,7 @@ impl Inline {
 
     /// Get link at given mouse position.
     fn link_for_position(
-        layout: &TextLayout,
+        layout: &InlineTextLayout,
         links: &[InlineLink],
         position: Point<Pixels>,
     ) -> Option<LinkMark> {
@@ -239,7 +329,7 @@ impl Inline {
 
     /// Return the stable identity of the link at the given mouse position.
     fn link_id_for_position(
-        layout: &TextLayout,
+        layout: &InlineTextLayout,
         links: &[InlineLink],
         position: Point<Pixels>,
     ) -> Option<usize> {
@@ -265,7 +355,7 @@ impl Inline {
 
     fn layout_selections(
         &self,
-        text_layout: &TextLayout,
+        text_layout: &InlineTextLayout,
         bounds: &Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
@@ -311,7 +401,7 @@ impl Inline {
         else {
             return (is_selectable, false, None);
         };
-        let line_height = window.line_height();
+        let line_height = text_layout.line_height();
         let mask_bounds = window.content_mask().bounds;
 
         // Use for debug selection bounds
@@ -359,61 +449,58 @@ impl Inline {
         (true, true, selection)
     }
 
+    /// Resolve one clipped bound per visual line without walking every character.
     fn text_line_bounds(
         &self,
-        text_layout: &TextLayout,
+        text_layout: &InlineTextLayout,
         line_height: Pixels,
         mask_bounds: Bounds<Pixels>,
     ) -> Vec<Bounds<Pixels>> {
-        let mut line_bounds = Vec::new();
-        let mut current_line_y = None;
-        let mut current_bounds: Option<Bounds<Pixels>> = None;
-        let mut offset = 0;
+        let mut result = Vec::new();
+        let mut push = |bounds: Bounds<Pixels>| {
+            let bounds = bounds.intersect(&mask_bounds);
+            if bounds.size.width > Pixels::ZERO && bounds.size.height > Pixels::ZERO {
+                result.push(bounds);
+            }
+        };
 
-        for c in self.text.chars() {
-            let next_offset = offset + c.len_utf8();
-            let Some(pos) = text_layout.position_for_index(offset) else {
-                offset = next_offset;
-                continue;
-            };
-
-            let mut char_width = line_height.half();
-            if let Some(next_pos) = text_layout.position_for_index(next_offset) {
-                if next_pos.y == pos.y {
-                    char_width = next_pos.x - pos.x;
+        match text_layout {
+            InlineTextLayout::Shaped { line, bounds, .. } => {
+                push(Bounds::new(bounds.origin, size(line.width(), line_height)));
+            }
+            InlineTextLayout::Wrapped(layout) => {
+                let bounds = layout.bounds();
+                let mut row_top = bounds.top();
+                for line in layout.line_layouts() {
+                    let unwrapped = &line.unwrapped_layout;
+                    let mut row_start_x = Pixels::ZERO;
+                    for row_end_x in line
+                        .wrap_boundaries()
+                        .iter()
+                        .map(|boundary| {
+                            unwrapped.runs[boundary.run_ix].glyphs[boundary.glyph_ix]
+                                .position
+                                .x
+                        })
+                        .chain([unwrapped.width])
+                    {
+                        push(Bounds::new(
+                            point(bounds.left(), row_top),
+                            size((row_end_x - row_start_x).max(Pixels::ZERO), line_height),
+                        ));
+                        row_start_x = row_end_x;
+                        row_top += line_height;
+                    }
                 }
             }
-
-            let bounds = Bounds::from_corners(pos, point(pos.x + char_width, pos.y + line_height))
-                .intersect(&mask_bounds);
-            if bounds.size.width > px(0.) && bounds.size.height > px(0.) {
-                if current_line_y == Some(pos.y) {
-                    if let Some(current) = current_bounds.as_mut() {
-                        *current = current.union(&bounds);
-                    }
-                } else {
-                    if let Some(current) = current_bounds.take() {
-                        line_bounds.push(current);
-                    }
-                    current_line_y = Some(pos.y);
-                    current_bounds = Some(bounds);
-                }
-            }
-
-            offset = next_offset;
         }
-
-        if let Some(current) = current_bounds {
-            line_bounds.push(current);
-        }
-
-        line_bounds
+        result
     }
 
     /// Paint the selection background.
     fn paint_selection(
         selection: &Selection,
-        text_layout: &TextLayout,
+        text_layout: &InlineTextLayout,
         bounds: &Bounds<Pixels>,
         window: &mut Window,
         cx: &mut App,
@@ -512,6 +599,36 @@ impl Element for Inline {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
+        self.use_precomputed_line =
+            self.precomputed_line.is_some() && self.hovered_link_id().is_none();
+        if self.use_precomputed_line {
+            let (line, line_height) = self.precomputed_line.as_ref().expect("precomputed line");
+            let measured = size(line.width(), *line_height);
+            let layout_id = window.request_measured_layout(Default::default(), {
+                move |known_dimensions, available_space, _window, _cx| {
+                    size(
+                        known_dimensions
+                            .width
+                            .unwrap_or(match available_space.width {
+                                AvailableSpace::Definite(width) => width,
+                                AvailableSpace::MinContent | AvailableSpace::MaxContent => {
+                                    measured.width
+                                }
+                            }),
+                        known_dimensions
+                            .height
+                            .unwrap_or(match available_space.height {
+                                AvailableSpace::Definite(height) => height,
+                                AvailableSpace::MinContent | AvailableSpace::MaxContent => {
+                                    measured.height
+                                }
+                            }),
+                    )
+                }
+            });
+            return (layout_id, ());
+        }
+
         let text_style = window.text_style();
         let highlights = self.resolved_highlights(self.hovered_link_id());
         self.styled_text = Self::styled_text(self.text.clone(), &text_style, highlights);
@@ -531,8 +648,10 @@ impl Element for Inline {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        self.styled_text
-            .prepaint(id, inspector_id, bounds, &mut (), window, cx);
+        if !self.use_precomputed_line {
+            self.styled_text
+                .prepaint(id, inspector_id, bounds, &mut (), window, cx);
+        }
 
         window.insert_hitbox(bounds, HitboxBehavior::Normal)
     }
@@ -549,9 +668,22 @@ impl Element for Inline {
     ) {
         let current_view = window.current_view();
         let hitbox = prepaint;
-        let text_layout = self.styled_text.layout().clone();
-        self.styled_text
-            .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
+        let text_layout = if self.use_precomputed_line {
+            let (line, line_height) = self.precomputed_line.as_ref().expect("precomputed line");
+            InlineTextLayout::Shaped {
+                line: line.clone(),
+                bounds,
+                line_height: *line_height,
+            }
+        } else {
+            InlineTextLayout::Wrapped(self.styled_text.layout().clone())
+        };
+        if self.use_precomputed_line {
+            text_layout.paint_shaped(window, cx);
+        } else {
+            self.styled_text
+                .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
+        }
 
         // layout selections
         let (is_selectable, is_selection, selection) =
@@ -587,12 +719,9 @@ impl Element for Inline {
                     text_layout.line_height(),
                     window.content_mask().bounds,
                 );
-                crate::Root::register_selectable_text_inline(
-                    &text_view_state,
-                    text_bounds,
-                    window,
-                    cx,
-                );
+                text_view_state
+                    .read(cx)
+                    .register_selection_geometry(text_bounds);
             }
 
             window.on_mouse_event({
@@ -687,6 +816,7 @@ impl Element for Inline {
                 let text_layout = text_layout.clone();
                 let hitbox = hitbox.clone();
                 let text_view_state = GlobalState::global(cx).text_view_state().cloned();
+                let link_handler = self.link_handler.clone();
 
                 move |event: &MouseUpEvent, phase, window, cx| {
                     if !phase.bubble() || !hitbox.is_hovered(window) {
@@ -702,12 +832,7 @@ impl Element for Inline {
                     if let Some(link) =
                         Self::link_for_position(&text_layout, &links, event.position)
                     {
-                        if link.url.as_ref() == crate::text::streaming::PENDING_LINK_URL {
-                            return;
-                        }
-                        window.end_text_selection(cx);
-                        cx.stop_propagation();
-                        cx.open_url(&link.url);
+                        link_handler.activate(&link.url, window, cx);
                     }
                 }
             });
@@ -739,7 +864,7 @@ fn refine_highlights_in_range(
         }
 
         let mut hovered = style;
-        refinement.refine(&mut hovered);
+        refinement.refine_paint(&mut hovered);
         resolved.push((overlap_start..overlap_end, hovered));
 
         if overlap_end < range.end {
@@ -752,7 +877,7 @@ fn refine_highlights_in_range(
 
 fn selection_for_multi_click(
     text: &str,
-    text_layout: &TextLayout,
+    text_layout: &InlineTextLayout,
     bounds: Bounds<Pixels>,
     pos: Point<Pixels>,
     kind: TextViewMultiClickKind,
@@ -865,6 +990,22 @@ mod tests {
         assert_eq!(resolved[1].1.font_weight, Some(FontWeight::BOLD));
         assert_eq!(resolved[2].0, 8..10);
         assert_eq!(resolved[2].1.underline, Some(underline));
+    }
+
+    #[test]
+    fn hover_refinement_ignores_geometry_changing_font_properties() {
+        let resolved = refine_highlights_in_range(
+            vec![(0..4, HighlightStyle::default())],
+            &(0..4),
+            &MarkdownTextStyle::default()
+                .font_weight(FontWeight::BOLD)
+                .font_style(gpui::FontStyle::Italic)
+                .color(hsla(0.4, 0.8, 0.5, 1.)),
+        );
+
+        assert_eq!(resolved[0].1.font_weight, None);
+        assert_eq!(resolved[0].1.font_style, None);
+        assert_eq!(resolved[0].1.color, Some(hsla(0.4, 0.8, 0.5, 1.)));
     }
 
     #[test]

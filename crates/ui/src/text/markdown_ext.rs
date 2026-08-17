@@ -34,8 +34,7 @@ pub type MarkdownBlockRenderFn =
 pub trait MarkdownPlugin: Send + Sync + 'static {
     /// Whether this plugin produces block-level nodes.
     ///
-    /// Plugins are inline by default. TextView does not support inline custom
-    /// Markdown rendering yet, so block plugins should return `true`.
+    /// Plugins are inline by default. Return `true` for a block-level node.
     fn is_block(&self) -> bool {
         false
     }
@@ -178,6 +177,8 @@ pub struct MarkdownExtensions {
     enable_mdx: bool,
     block_parsers: Vec<Arc<MarkdownBlockParserFn>>,
     block_renderers: HashMap<SharedString, Arc<MarkdownBlockRenderFn>>,
+    inline_parsers: Vec<Arc<MarkdownBlockParserFn>>,
+    inline_renderers: HashMap<SharedString, Arc<MarkdownBlockRenderFn>>,
     revision: u64,
 }
 
@@ -231,7 +232,18 @@ impl MarkdownExtensions {
             });
             extensions
         } else {
-            panic!("inline Markdown plugins are not supported by TextView yet")
+            let mut extensions = self;
+            extensions
+                .inline_parsers
+                .push(Arc::new(move |node, cx| parser.parse(node, cx)));
+            extensions.inline_renderers.insert(
+                name,
+                Arc::new(move |node, window, cx| {
+                    renderer.render(node, window, cx).into_any_element()
+                }),
+            );
+            extensions.bump_revision();
+            extensions
         }
     }
 
@@ -295,6 +307,30 @@ impl MarkdownExtensions {
         cx: &mut App,
     ) -> Option<AnyElement> {
         self.block_renderers
+            .get(node.name())
+            .map(|render| render(node, window, cx))
+    }
+
+    pub(crate) fn parse_inline(
+        &self,
+        node: &mdast::Node,
+        cx: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode> {
+        for parser in &self.inline_parsers {
+            if let Some(node) = parser(node, cx) {
+                return Some(node);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn render_inline(
+        &self,
+        node: &MarkdownNode,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Option<AnyElement> {
+        self.inline_renderers
             .get(node.name())
             .map(|render| render(node, window, cx))
     }

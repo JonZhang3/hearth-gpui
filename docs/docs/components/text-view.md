@@ -75,9 +75,13 @@ let style = MarkdownStyle::default()
 markdown(source).markdown_style(style)
 ```
 
-Element selectors cover the document, paragraphs, each heading level, blockquotes, lists and markers, task checkboxes, code blocks and actions, tables and cells, images, and horizontal rules. Inline selectors cover plain text, emphasis variants, inline and block code text, links and link hover, marks, and footnote references. `syntax_theme(...)` overrides code syntax highlighting for only this view.
+Element selectors cover the document, paragraphs, each heading level, blockquotes, lists and markers, task checkboxes, code blocks and actions, tables and cells, images, and horizontal rules. Inline selectors cover plain text, emphasis variants, inline and block code text, links and link hover, marks, and footnote references. Atomic inline semantics support font family, font size, line height, independent horizontal/vertical padding, margins, border, background, and corner radius; these metrics participate in wrapping and line measurement. `syntax_theme(...)` overrides code syntax highlighting for only this view. Links expose a stable `Role::Link` focus target and activate with Enter, including links that wrap across visual lines.
 
 Style precedence is: active `Theme`, `TextViewStyle`, `MarkdownStyle`, transient interaction state such as link hover, then an optional block renderer.
+
+`LinkHover` is layout-stable. Color, background, underline, strikethrough, and fade refinements are supported. Font and box-model refinements are ignored so hovering a link cannot change wrapping or paragraph height.
+
+For chat transcripts, let the outer message list own scrolling and keep each message's `TextViewState` persistent. Enable TextView scrolling only for standalone documents; nested virtual lists add avoidable measurement work.
 
 ## Built-in Block Renderers
 
@@ -97,22 +101,28 @@ markdown(source).markdown_builtin_renderer(
 )
 ```
 
-Replacing the default element completely transfers interaction and accessibility responsibility to the custom renderer. Inline content supports complete semantic text styling, but not arbitrary inline element replacement.
+Replacing the default element completely transfers interaction and accessibility responsibility to the custom renderer. Inline plugins are measured as atomic flow items and may provide a plain-text representation through `MarkdownNode::text(...)` for selection and copy fallbacks.
 
 ## Streaming Markdown
 
-Keep one `TextViewState`, append each LLM delta with `push_str`, and call `finish_streaming` when the stream completes:
+Keep one `TextViewState`, start an explicit session, append each LLM delta with `push_str`, and call `finish_streaming` when the stream completes:
 
 ```rust
 let state = cx.new(|cx| TextViewState::markdown("", cx));
 
+state.update(cx, |state, cx| state.begin_streaming(cx));
 state.update(cx, |state, cx| state.push_str(delta, cx));
 state.update(cx, |state, cx| state.finish_streaming(cx));
 
-TextView::new(&state).selectable(true)
+TextView::new(&state)
+    .selectable(true)
+    .scrollable(true)
+    .follow_tail(true)
 ```
 
-Append parsing runs in the background, coalesces queued deltas, preserves the last valid rendered document on a transient parse failure, and performs a canonical full parse after 100 ms of inactivity. While appending, the display-only tail closes incomplete emphasis, inline code, strikethrough, and links to avoid visible marker and wrapping jumps. Synthetic closers never enter the canonical source, selection, copy output, or settled AST; incomplete links are styled but not clickable, while incomplete images remain literal text until their destination is complete. Fenced code blocks are never mended. `finish_streaming` requests the canonical parse immediately. Reference-style links remain correct when their definitions arrive in later chunks.
+An explicit session batches provider deltas at a 24 ms parse cadence and never performs an idle canonical parse while the session is active. `finish_streaming` flushes the pending batch and requests exactly one canonical parse. Calling `push_str` without `begin_streaming` remains supported and settles after 300 ms of inactivity. `set_text` cancels the active session and its timers.
+
+Append parsing runs in the background, preserves the last valid rendered document on a transient parse failure, and keeps selection, link hover, and code-highlight state for structurally matching streamed blocks. Stable top-level blocks are shared with `Arc`; append and display repairs copy only the changed tail block. Synchronous replacement results seed the background parser, avoiding a duplicate full parse. While appending, the display-only tail closes incomplete emphasis, inline code, strikethrough, and links to avoid visible marker and wrapping jumps. Synthetic closers never enter the canonical source, selection, copy output, or settled AST; incomplete links are styled but not clickable, while incomplete images remain literal text until their destination is complete. Fenced code blocks are never mended. Reference-style links remain correct when their definitions arrive in later chunks.
 
 Use `StreamingTextPacer` when providers emit deltas too quickly or in very large chunks:
 
@@ -134,7 +144,21 @@ state.update(cx, |state, cx| {
 });
 ```
 
-The pacer avoids splitting graphemes already present in its current buffer, stops a frame at a newline, and adapts its chunk size to backlog. A provider may still divide one grapheme across separate deltas, so an intermediate frame can be incomplete; concatenated output and the final settled render preserve the original Unicode sequence. The pacer owns no task or timer. Automatic scroll following remains the host scroll container's responsibility: remember whether the reader is near the bottom, wait until the new content has been laid out, then apply the latest `max_offset`. Pause following when the reader scrolls upward and restore it when they return to the bottom.
+The pacer avoids splitting graphemes already present in its current buffer, stops a frame at a newline, and adapts its chunk size to backlog. A provider may still divide one grapheme across separate deltas, so an intermediate frame can be incomplete; concatenated output and the final settled render preserve the original Unicode sequence. The pacer owns no task or timer. `.follow_tail(true)` uses GPUI's native list follow mode: an upward gesture pauses following immediately, and returning to the bottom re-engages it.
+
+## LLM Resource Safety
+
+Trusted Markdown keeps the historical resource behavior. For generated or otherwise untrusted Markdown, opt into the safe policy and route allowed links through the host application:
+
+```rust
+use hearth_gpui::text::MarkdownResourcePolicy;
+
+TextView::new(&state)
+    .markdown_resource_policy(MarkdownResourcePolicy::llm_safe())
+    .on_link_click(|url, _window, cx| cx.open_url(url))
+```
+
+`llm_safe` allows HTTP(S) and `mailto` links, allows normalized relative embedded image paths, and blocks remote images, `data:` images, path traversal, pending-link sentinels, and executable URL schemes. A blocked image renders its alt text.
 
 ## Markdown Plugins
 

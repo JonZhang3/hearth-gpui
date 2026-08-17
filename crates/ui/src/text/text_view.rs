@@ -7,12 +7,12 @@ use gpui::{
     SharedString, StyleRefinement, Styled, Window, div,
 };
 
-use crate::StyledExt;
 use crate::scroll::ScrollableElement;
 use crate::text::TextViewFormat;
 use crate::text::markdown_ext::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
 use crate::text::node::CodeBlock;
 use crate::text::state::TextViewState;
+use crate::{StyledExt, WindowExt as _};
 use crate::{
     global_state::GlobalState,
     text::{MarkdownHeadingLevel, MarkdownStyle, TextViewStyle},
@@ -21,6 +21,79 @@ use crate::{
 /// Type for code block actions generator function.
 pub(crate) type CodeBlockActionsFn =
     dyn Fn(&CodeBlock, &mut Window, &mut App) -> AnyElement + Send + Sync;
+pub(crate) type MarkdownLinkClickFn = dyn Fn(&str, &mut Window, &mut App) + Send + Sync;
+
+/// Cloneable interaction policy shared by text and image link renderers.
+#[derive(Clone, Default)]
+pub(crate) struct MarkdownLinkHandler {
+    pub(crate) policy: MarkdownResourcePolicy,
+    pub(crate) on_click: Option<Arc<MarkdownLinkClickFn>>,
+}
+
+impl MarkdownLinkHandler {
+    pub(crate) fn activate(&self, url: &str, window: &mut Window, cx: &mut App) {
+        if !self.policy.allows_link(url) {
+            return;
+        }
+        window.end_text_selection(cx);
+        cx.stop_propagation();
+        if let Some(handler) = &self.on_click {
+            handler(url, window, cx);
+        } else {
+            cx.open_url(url);
+        }
+    }
+}
+
+/// Controls which links and images may perform external resource access.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MarkdownResourcePolicy {
+    /// Preserve the historical behavior and allow caller-provided resources.
+    #[default]
+    Trusted,
+    /// Allow common web links and local embedded assets, but block remote images.
+    LlmSafe,
+}
+
+impl MarkdownResourcePolicy {
+    /// Return the backwards-compatible policy for trusted Markdown.
+    pub fn trusted() -> Self {
+        Self::Trusted
+    }
+
+    /// Return the policy intended for untrusted LLM-generated Markdown.
+    pub fn llm_safe() -> Self {
+        Self::LlmSafe
+    }
+
+    pub(crate) fn allows_link(self, url: &str) -> bool {
+        if url == crate::text::streaming::PENDING_LINK_URL {
+            return false;
+        }
+        match self {
+            Self::Trusted => true,
+            Self::LlmSafe => {
+                let lower = url.to_ascii_lowercase();
+                lower.starts_with("https://")
+                    || lower.starts_with("http://")
+                    || lower.starts_with("mailto:")
+            }
+        }
+    }
+
+    pub(crate) fn allows_image(self, url: &str) -> bool {
+        match self {
+            Self::Trusted => true,
+            Self::LlmSafe => {
+                !url.is_empty()
+                    && !url.contains("://")
+                    && !url.starts_with('/')
+                    && !url.to_ascii_lowercase().starts_with("data:")
+                    && !url.split('/').any(|segment| segment == "..")
+            }
+        }
+    }
+}
 
 /// A built-in Markdown block that can use a custom renderer.
 #[non_exhaustive]
@@ -124,10 +197,13 @@ pub struct TextView {
     style: StyleRefinement,
     selectable: bool,
     scrollable: bool,
+    follow_tail: bool,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     markdown_extensions: Arc<MarkdownExtensions>,
     markdown_style: Arc<MarkdownStyle>,
     markdown_block_renderers: Arc<MarkdownBlockRenderers>,
+    markdown_resource_policy: MarkdownResourcePolicy,
+    on_link_click: Option<Arc<MarkdownLinkClickFn>>,
 }
 
 /// A plugin that can configure a [`TextView`].
@@ -165,10 +241,13 @@ impl TextView {
             style: StyleRefinement::default(),
             selectable: false,
             scrollable: false,
+            follow_tail: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
             markdown_block_renderers: Arc::default(),
+            markdown_resource_policy: MarkdownResourcePolicy::default(),
+            on_link_click: None,
         }
     }
 
@@ -183,10 +262,13 @@ impl TextView {
             state: None,
             selectable: false,
             scrollable: false,
+            follow_tail: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
             markdown_block_renderers: Arc::default(),
+            markdown_resource_policy: MarkdownResourcePolicy::default(),
+            on_link_click: None,
         }
     }
 
@@ -201,10 +283,13 @@ impl TextView {
             state: None,
             selectable: false,
             scrollable: false,
+            follow_tail: false,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
             markdown_block_renderers: Arc::default(),
+            markdown_resource_policy: MarkdownResourcePolicy::default(),
+            on_link_click: None,
         }
     }
 
@@ -258,6 +343,30 @@ impl TextView {
     /// This mode is suitable for small content, such as a few lines of text, a label, etc.
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
+        self
+    }
+
+    /// Follow appended content while the scroll position remains at the tail.
+    ///
+    /// Any upward user scroll pauses following. Scrolling back to the bottom
+    /// re-engages it through GPUI's native list behavior.
+    pub fn follow_tail(mut self, follow: bool) -> Self {
+        self.follow_tail = follow;
+        self
+    }
+
+    /// Set the resource policy used for Markdown links and images.
+    pub fn markdown_resource_policy(mut self, policy: MarkdownResourcePolicy) -> Self {
+        self.markdown_resource_policy = policy;
+        self
+    }
+
+    /// Handle an allowed Markdown link instead of opening it with the platform default.
+    pub fn on_link_click<F>(mut self, handler: F) -> Self
+    where
+        F: Fn(&str, &mut Window, &mut App) + Send + Sync + 'static,
+    {
+        self.on_link_click = Some(Arc::new(handler));
         self
     }
 
@@ -391,9 +500,12 @@ impl Element for TextView {
             state.code_block_actions = self.code_block_actions.clone();
             state.markdown_style = self.markdown_style.clone();
             state.markdown_block_renderers = self.markdown_block_renderers.clone();
+            state.markdown_resource_policy = self.markdown_resource_policy;
+            state.on_link_click = self.on_link_click.clone();
             state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
             state.scrollable = self.scrollable;
+            state.set_follow_tail(self.follow_tail, cx);
             state.text_view_style = self.text_view_style.clone();
 
             if let Some(text) = self.text.clone() {
@@ -452,9 +564,8 @@ impl Element for TextView {
         cx: &mut App,
     ) {
         let state = &request_layout.state;
+        state.read(cx).clear_selection_geometry();
         if self.selectable {
-            // Register before painting children so this frame's Inline paint can
-            // repopulate the text bounds after stale ones are cleared.
             crate::Root::register_selectable_text_view(state, hitbox, window, cx);
         }
 
@@ -468,7 +579,7 @@ impl Element for TextView {
 
 #[cfg(test)]
 mod tests {
-    use super::{MarkdownBlockKind, TextView, TextViewPlugin};
+    use super::{MarkdownBlockKind, MarkdownResourcePolicy, TextView, TextViewPlugin};
     use crate::text::{
         MarkdownElementKind, MarkdownInlineKind, MarkdownStyle, MarkdownTextStyle, TextViewState,
     };
@@ -483,6 +594,20 @@ mod tests {
     }
 
     struct DummyTextViewPlugin;
+
+    #[test]
+    fn llm_safe_resource_policy_blocks_remote_images_and_unsafe_links() {
+        let policy = MarkdownResourcePolicy::llm_safe();
+
+        assert!(policy.allows_link("https://example.com/docs"));
+        assert!(policy.allows_link("mailto:docs@example.com"));
+        assert!(!policy.allows_link("javascript:alert(1)"));
+        assert!(!policy.allows_link(crate::text::streaming::PENDING_LINK_URL));
+        assert!(policy.allows_image("icons/heart.svg"));
+        assert!(!policy.allows_image("https://example.com/tracker.png"));
+        assert!(!policy.allows_image("../secret.png"));
+        assert!(!policy.allows_image("data:image/svg+xml;base64,PHN2Zy8+"));
+    }
 
     impl TextViewPlugin for DummyTextViewPlugin {
         fn setup(self, mut text_view: TextView) -> TextView {
@@ -609,12 +734,14 @@ mod tests {
         });
 
         let inline_bounds = cx.update(|window, cx| {
-            crate::Root::read(window, cx)
-                .selectable_text_inlines
+            let root = crate::Root::read(window, cx);
+            let view = root
+                .selectable_text_views
                 .values()
                 .next()
-                .cloned()
-                .unwrap_or_default()
+                .and_then(|(view, _, _)| view.upgrade())
+                .expect("selectable text view");
+            view.read(cx).selection_geometry_snapshot()
         });
 
         assert_eq!(inline_bounds.len(), 2);
@@ -839,6 +966,25 @@ mod tests {
         cx.simulate_click(point(px(10.), px(34.)), Modifiers::default());
 
         assert_eq!(cx.opened_url(), None);
+    }
+
+    #[gpui::test]
+    fn markdown_link_is_focusable_and_activates_with_enter(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, cx| {
+            TextViewTestRoot::new("[keyboard link](https://example.com)", cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            window.focus_next(cx);
+            let _ = window.draw(cx);
+        });
+
+        cx.simulate_keystrokes("enter");
+
+        assert_eq!(cx.opened_url().as_deref(), Some("https://example.com"));
     }
 
     #[gpui::test]

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use gpui::{
     App, InteractiveElement as _, IntoElement, ListState, ParentElement as _, SharedString,
     Styled as _, Window, div, prelude::FluentBuilder as _,
@@ -15,7 +17,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct ParsedDocument {
     pub(crate) source: SharedString,
-    pub(crate) blocks: Vec<BlockNode>,
+    pub(crate) blocks: Vec<Arc<BlockNode>>,
 }
 
 #[derive(Default, Clone, Copy)]
