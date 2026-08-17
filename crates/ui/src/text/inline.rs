@@ -9,7 +9,7 @@ use gpui::{
     App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, GlobalElementId, Half,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyledText,
-    TextLayout, Window, point, px, quad,
+    TextLayout, TextStyle, Window, point, px, quad,
 };
 
 use crate::{
@@ -34,12 +34,66 @@ pub(super) struct Inline {
     text: SharedString,
     links: Rc<Vec<InlineLink>>,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
-    link_hover_style: Option<MarkdownTextStyle>,
+    link_hover_style: Option<Arc<MarkdownTextStyle>>,
     styled_text: StyledText,
 
     state: Arc<Mutex<InlineState>>,
     hover_state: Arc<Mutex<InlineState>>,
     hover_owner: usize,
+    selection_sink: Option<InlineSelectionSink>,
+}
+
+/// Maps a fragment-local selection back to its owning paragraph.
+#[derive(Clone)]
+pub(super) struct InlineSelectionSink {
+    state: Arc<Mutex<InlineState>>,
+    source_range: Range<usize>,
+    paragraph_bounds: Bounds<Pixels>,
+}
+
+impl InlineSelectionSink {
+    /// Create a paragraph selection sink for one positioned text fragment.
+    pub(super) fn new(
+        state: Arc<Mutex<InlineState>>,
+        source_range: Range<usize>,
+        paragraph_bounds: Bounds<Pixels>,
+    ) -> Self {
+        Self {
+            state,
+            source_range,
+            paragraph_bounds,
+        }
+    }
+
+    /// Return whether a paragraph multi-click belongs to this paragraph.
+    fn contains(&self, position: Point<Pixels>) -> bool {
+        self.paragraph_bounds.contains(&position)
+    }
+
+    /// Merge a fragment-local selection into the paragraph byte range.
+    fn merge(&self, selection: Selection) {
+        let mapped = Selection::new(
+            self.source_range.start + selection.start,
+            self.source_range.start + selection.end,
+        );
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state.selection = Some(match state.selection {
+            Some(current) => {
+                Selection::new(current.start.min(mapped.start), current.end.max(mapped.end))
+            }
+            None => mapped,
+        });
+    }
+
+    /// Return the complete paragraph text used by paragraph multi-click selection.
+    fn text(&self) -> SharedString {
+        self.state
+            .lock()
+            .map(|state| state.text.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// The inline text state, used RefCell to keep the selection state.
@@ -98,11 +152,12 @@ impl Inline {
             hover_state: state.clone(),
             state,
             hover_owner: 0,
+            selection_sink: None,
         }
     }
 
     /// Set the style applied while the pointer is over a link range.
-    pub(super) fn link_hover_style(mut self, style: Option<MarkdownTextStyle>) -> Self {
+    pub(super) fn link_hover_style(mut self, style: Option<Arc<MarkdownTextStyle>>) -> Self {
         self.link_hover_style = style;
         self
     }
@@ -112,6 +167,58 @@ impl Inline {
         self.hover_state = state;
         self.hover_owner = owner;
         self
+    }
+
+    /// Store this fragment's selection in its owning paragraph state.
+    pub(super) fn selection_sink(mut self, sink: InlineSelectionSink) -> Self {
+        self.selection_sink = Some(sink);
+        self
+    }
+
+    /// Resolve the active link identity from persistent hover state.
+    fn hovered_link_id(&self) -> Option<usize> {
+        self.hover_state
+            .lock()
+            .ok()
+            .and_then(|state| state.hovered_link.map(|(link, _)| link))
+    }
+
+    /// Resolve base semantic highlights plus an optional link-hover refinement.
+    fn resolved_highlights(
+        &self,
+        hovered_link: Option<usize>,
+    ) -> Vec<(Range<usize>, HighlightStyle)> {
+        let mut highlights =
+            gpui::combine_highlights(Vec::new(), self.highlights.clone()).collect::<Vec<_>>();
+        if let Some(hover_style) = &self.link_hover_style
+            && let Some(hovered_link) = hovered_link
+        {
+            for link in self.links.iter().filter(|link| link.id == hovered_link) {
+                highlights = refine_highlights_in_range(highlights, &link.range, hover_style);
+            }
+        }
+        highlights
+    }
+
+    /// Build StyledText runs from already-resolved, non-overlapping highlights.
+    fn styled_text(
+        text: SharedString,
+        text_style: &TextStyle,
+        highlights: Vec<(Range<usize>, HighlightStyle)>,
+    ) -> StyledText {
+        let mut runs = Vec::new();
+        let mut ix = 0;
+        for (range, highlight) in highlights {
+            if ix < range.start {
+                runs.push(text_style.clone().to_run(range.start - ix));
+            }
+            runs.push(text_style.clone().highlight(highlight).to_run(range.len()));
+            ix = range.end;
+        }
+        if ix < text.len() {
+            runs.push(text_style.to_run(text.len() - ix));
+        }
+        StyledText::new(text).with_runs(runs)
     }
 
     /// Get link at given mouse position.
@@ -178,6 +285,14 @@ impl Inline {
         }
 
         if let Some(selection) = text_view_state.multi_click_selection() {
+            if selection.kind == TextViewMultiClickKind::Paragraph
+                && self
+                    .selection_sink
+                    .as_ref()
+                    .is_some_and(|sink| sink.contains(selection.pos))
+            {
+                return (is_selectable, true, Some((0..self.text.len()).into()));
+            }
             return (
                 is_selectable,
                 true,
@@ -398,33 +513,8 @@ impl Element for Inline {
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let text_style = window.text_style();
-        let mut highlights =
-            gpui::combine_highlights(Vec::new(), self.highlights.clone()).collect::<Vec<_>>();
-        if let Some(hover_style) = &self.link_hover_style
-            && let Some((hovered_link, _)) = self
-                .hover_state
-                .lock()
-                .ok()
-                .and_then(|state| state.hovered_link)
-        {
-            for link in self.links.iter().filter(|link| link.id == hovered_link) {
-                highlights = refine_highlights_in_range(highlights, &link.range, hover_style);
-            }
-        }
-
-        let mut runs = Vec::new();
-        let mut ix = 0;
-        for (range, highlight) in highlights {
-            if ix < range.start {
-                runs.push(text_style.clone().to_run(range.start - ix));
-            }
-            runs.push(text_style.clone().highlight(highlight).to_run(range.len()));
-            ix = range.end;
-        }
-        if ix < self.text.len() {
-            runs.push(text_style.to_run(self.text.len() - ix));
-        }
-        self.styled_text = StyledText::new(self.text.clone()).with_runs(runs);
+        let highlights = self.resolved_highlights(self.hovered_link_id());
+        self.styled_text = Self::styled_text(self.text.clone(), &text_style, highlights);
         let (layout_id, _) =
             self.styled_text
                 .request_layout(global_element_id, inspector_id, window, cx);
@@ -444,8 +534,7 @@ impl Element for Inline {
         self.styled_text
             .prepaint(id, inspector_id, bounds, &mut (), window, cx);
 
-        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        hitbox
+        window.insert_hitbox(bounds, HitboxBehavior::Normal)
     }
 
     fn paint(
@@ -460,10 +549,6 @@ impl Element for Inline {
     ) {
         let current_view = window.current_view();
         let hitbox = prepaint;
-        let Ok(mut state) = self.state.lock() else {
-            return;
-        };
-
         let text_layout = self.styled_text.layout().clone();
         self.styled_text
             .paint(global_id, None, bounds, &mut (), &mut (), window, cx);
@@ -472,7 +557,14 @@ impl Element for Inline {
         let (is_selectable, is_selection, selection) =
             self.layout_selections(&text_layout, &bounds, window, cx);
 
-        state.selection = selection;
+        if let Ok(mut state) = self.state.lock() {
+            state.selection = selection;
+        }
+        if let Some(selection) = selection
+            && let Some(sink) = &self.selection_sink
+        {
+            sink.merge(selection);
+        }
 
         if is_selection || is_selectable {
             window.set_cursor_style(CursorStyle::IBeam, &hitbox);
@@ -484,7 +576,7 @@ impl Element for Inline {
             window.set_cursor_style(CursorStyle::PointingHand, &hitbox);
         }
 
-        if let Some(selection) = &state.selection {
+        if let Some(selection) = &selection {
             Self::paint_selection(selection, &text_layout, &bounds, window, cx);
         }
 
@@ -509,6 +601,7 @@ impl Element for Inline {
                 let inline_state = self.state.clone();
                 let text = self.text.clone();
                 let text_view_state = GlobalState::global(cx).text_view_state().cloned();
+                let selection_sink = self.selection_sink.clone();
 
                 move |event: &MouseDownEvent, phase, window, cx| {
                     if !phase.bubble()
@@ -534,10 +627,22 @@ impl Element for Inline {
                         return;
                     };
 
-                    let selected_text = text[range.clone()].to_string();
+                    let selected_text = if kind == TextViewMultiClickKind::Paragraph {
+                        selection_sink
+                            .as_ref()
+                            .map(InlineSelectionSink::text)
+                            .filter(|text| !text.is_empty())
+                            .map(|text| text.to_string())
+                            .unwrap_or_else(|| text[range.clone()].to_string())
+                    } else {
+                        text[range.clone()].to_string()
+                    };
 
                     if let Ok(mut inline_state) = inline_state.lock() {
-                        inline_state.selection = Some(range.into());
+                        inline_state.selection = Some(range.clone().into());
+                    }
+                    if let Some(selection_sink) = &selection_sink {
+                        selection_sink.merge(range.into());
                     }
                     if let Some(text_view_state) = &text_view_state {
                         text_view_state.update(cx, |state, _| {
@@ -660,9 +765,6 @@ fn selection_for_multi_click(
 
     match kind {
         TextViewMultiClickKind::Word => word_range_at(text, offset),
-        // Known limitation: a paragraph maps to a single Inline run here. When a
-        // paragraph embeds an inline image it is split into multiple Inline runs,
-        // so triple-click only selects the run on the clicked side of the image.
         TextViewMultiClickKind::Paragraph => (!text.is_empty()).then_some(0..text.len()),
     }
 }
@@ -712,9 +814,24 @@ fn point_in_text_selection(
 
 #[cfg(test)]
 mod tests {
-    use super::{InlineState, point_in_text_selection, refine_highlights_in_range};
-    use crate::text::MarkdownTextStyle;
-    use gpui::{FontWeight, HighlightStyle, UnderlineStyle, hsla, point, px};
+    use super::{
+        InlineSelectionSink, InlineState, point_in_text_selection, refine_highlights_in_range,
+    };
+    use crate::{input::Selection, text::MarkdownTextStyle};
+    use gpui::{Bounds, FontWeight, HighlightStyle, UnderlineStyle, hsla, point, px};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn fragment_selections_merge_into_paragraph_byte_ranges() {
+        let state = Arc::new(Mutex::new(InlineState::default()));
+        let first = InlineSelectionSink::new(state.clone(), 7..11, Bounds::default());
+        let second = InlineSelectionSink::new(state.clone(), 12..17, Bounds::default());
+
+        first.merge(Selection::new(1, 4));
+        second.merge(Selection::new(0, 3));
+
+        assert_eq!(state.lock().unwrap().selection, Some(Selection::new(8, 15)));
+    }
 
     #[test]
     fn hover_refinement_clears_link_styles_after_highlight_combination() {

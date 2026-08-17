@@ -517,6 +517,14 @@ mod tests {
         text_view: Entity<TextViewState>,
     }
 
+    struct StreamingLinkHoverTestRoot {
+        text_view: Entity<TextViewState>,
+    }
+
+    struct InlineCodeSelectionTestRoot {
+        text_view: Entity<TextViewState>,
+    }
+
     impl InlineImageTextViewTestRoot {
         fn new(cx: &mut Context<Self>) -> Self {
             let text_view = cx.new(|cx| {
@@ -534,6 +542,55 @@ mod tests {
             div()
                 .w(px(420.))
                 .child(TextView::new(&self.text_view).selectable(true))
+        }
+    }
+
+    impl StreamingLinkHoverTestRoot {
+        fn new(cx: &mut Context<Self>) -> Self {
+            let text_view = cx.new(|cx| {
+                TextViewState::markdown(
+                    "`code` [hover link](https://example.com)\nnext streamed line",
+                    cx,
+                )
+            });
+            Self { text_view }
+        }
+    }
+
+    impl Render for StreamingLinkHoverTestRoot {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let style = MarkdownStyle::default()
+                .inline(
+                    MarkdownInlineKind::InlineCode,
+                    MarkdownTextStyle::default()
+                        .background(gpui::black())
+                        .padding_x(px(4.))
+                        .corner_radius(px(4.)),
+                )
+                .inline(
+                    MarkdownInlineKind::LinkHover,
+                    MarkdownTextStyle::default().color(gpui::red()),
+                );
+            div()
+                .w(px(420.))
+                .child(TextView::new(&self.text_view).markdown_style(style))
+        }
+    }
+
+    impl Render for InlineCodeSelectionTestRoot {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            let style = MarkdownStyle::default().inline(
+                MarkdownInlineKind::InlineCode,
+                MarkdownTextStyle::default()
+                    .background(gpui::black())
+                    .padding_x(px(4.))
+                    .corner_radius(px(4.)),
+            );
+            div().w(px(220.)).child(
+                TextView::new(&self.text_view)
+                    .selectable(true)
+                    .markdown_style(style),
+            )
         }
     }
 
@@ -573,6 +630,108 @@ mod tests {
         assert!(
             inline_bounds[1].left() - inline_bounds[0].right() < px(40.),
             "unloaded inline image fallback should stay generic and compact"
+        );
+    }
+
+    #[gpui::test]
+    fn streamed_soft_break_remains_safe_while_link_hover_refreshes(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|cx| StreamingLinkHoverTestRoot::new(cx));
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_move(point(px(72.), px(12.)), None, Modifiers::default());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+    }
+
+    #[gpui::test]
+    fn triple_click_inline_code_selects_the_complete_paragraph(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let text_view =
+            cx.update(|cx| cx.new(|cx| TextViewState::markdown("before `code` after", cx)));
+        let state_for_view = text_view.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| InlineCodeSelectionTestRoot {
+                text_view: state_for_view.clone(),
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let text_bounds = text_view.read_with(cx, |state, _| state.bounds());
+        // "code" starts after the leading "before " text run.
+        let code_position = point(text_bounds.left() + px(62.), text_bounds.center().y);
+        cx.simulate_event(MouseDownEvent {
+            position: code_position,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 3,
+            first_mouse: false,
+        });
+        cx.simulate_event(MouseUpEvent {
+            position: code_position,
+            modifiers: Modifiers::default(),
+            button: MouseButton::Left,
+            click_count: 3,
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let selected_text = text_view.read_with(cx, |state, _| state.selected_text());
+        assert_eq!(selected_text, "before code after");
+    }
+
+    #[gpui::test]
+    fn drag_across_inline_code_keeps_the_complete_paragraph_selection(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let text_view =
+            cx.update(|cx| cx.new(|cx| TextViewState::markdown("before `code` after", cx)));
+        let state_for_view = text_view.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| InlineCodeSelectionTestRoot {
+                text_view: state_for_view.clone(),
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let text_bounds = text_view.read_with(cx, |state, _| state.bounds());
+        let start = point(text_bounds.left() + px(1.), text_bounds.center().y);
+        let end = point(text_bounds.left() + px(110.), text_bounds.center().y);
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let selected_text = text_view.read_with(cx, |state, _| state.selected_text());
+        assert!(
+            selected_text.starts_with("before code"),
+            "selection should cross both plain and inline-code fragments: {selected_text:?}"
         );
     }
 

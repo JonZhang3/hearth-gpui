@@ -27,6 +27,7 @@ use crate::{
         MarkdownNode, MarkdownStyle, MarkdownTextStyle,
         document::NodeRenderOptions,
         inline::{Inline, InlineLink, InlineState},
+        inline_flow::InlineBoxStyle,
         inline_flow::{InlineFlow, InlineFlowItem},
     },
     tooltip::Tooltip,
@@ -558,6 +559,12 @@ impl Paragraph {
     }
 
     pub(super) fn selected_text(&self) -> String {
+        if let Ok(state) = self.state.lock()
+            && let Some(selection) = &state.selection
+        {
+            return state.text[selection.start..selection.end].to_string();
+        }
+
         let mut text = String::new();
 
         for c in self.children.iter() {
@@ -567,12 +574,6 @@ impl Paragraph {
             if let Some(selection) = &state.selection {
                 text.push_str(&state.text[selection.start..selection.end]);
             }
-        }
-
-        if let Ok(state) = self.state.lock()
-            && let Some(selection) = &state.selection
-        {
-            text.push_str(&state.text[selection.start..selection.end]);
         }
 
         text
@@ -1017,12 +1018,30 @@ impl NodeContext {
         }
     }
 
-    fn link_hover_style(&self) -> Option<MarkdownTextStyle> {
-        Some(
+    fn link_hover_style(&self) -> Option<Arc<MarkdownTextStyle>> {
+        Some(Arc::new(
             self.markdown_style
                 .inline_style(MarkdownInlineKind::LinkHover)?
                 .clone(),
-        )
+        ))
+    }
+
+    /// Resolve layout and paint properties for an inline code box.
+    fn inline_code_box_style(&self, accent: Hsla) -> Option<InlineBoxStyle> {
+        let refinement = self
+            .markdown_style
+            .inline_style(MarkdownInlineKind::InlineCode)?;
+        let (padding_x, corner_radius) = refinement.inline_box_metrics()?;
+        let mut style = HighlightStyle {
+            background_color: Some(accent),
+            ..Default::default()
+        };
+        refinement.refine(&mut style);
+        Some(InlineBoxStyle {
+            background: style.background_color,
+            padding_x,
+            corner_radius,
+        })
     }
 
     fn syntax_theme<'a>(&'a self, cx: &'a App) -> &'a Arc<HighlightTheme> {
@@ -1172,11 +1191,15 @@ impl Paragraph {
         let span = self.span;
         let children = &self.children;
 
-        if self.should_render_inline_flow() {
+        if self.should_render_inline_flow(node_cx, cx) {
+            if let Ok(mut state) = self.state.lock() {
+                state.set_text(self.text().into());
+            }
             return InlineFlow::new(
                 span.unwrap_or_default(),
                 self.inline_flow_items(node_cx, cx),
             )
+            .selection_state(self.state.clone())
             .into_any_element();
         }
 
@@ -1342,37 +1365,21 @@ impl Paragraph {
         cached
     }
 
-    fn should_render_inline_flow(&self) -> bool {
+    fn should_render_inline_flow(&self, node_cx: &NodeContext, cx: &App) -> bool {
         let has_image = self.children.iter().any(|child| child.image.is_some());
         let has_text = self.children.iter().any(|child| !child.text.is_empty());
-        has_image && has_text
+        let has_inline_code_box = node_cx.inline_code_box_style(cx.theme().accent).is_some()
+            && self.children.iter().any(inline_node_is_code);
+        (has_image && has_text) || has_inline_code_box
     }
 
     fn inline_flow_items(&self, node_cx: &NodeContext, cx: &mut App) -> Vec<InlineFlowItem> {
         let mut items = Vec::new();
-        let mut text = String::new();
-        let mut highlights: Vec<(Range<usize>, HighlightStyle)> = vec![];
-        let mut links: Vec<InlineLink> = vec![];
-        let mut offset = 0;
+        let link_hover_style = node_cx.link_hover_style();
+        let mut paragraph_offset = 0;
 
         for inline_node in &self.children {
-            let text_len = inline_node.text.len();
-            text.push_str(&inline_node.text);
-
             if let Some(image) = &inline_node.image {
-                if !text.is_empty() {
-                    if let Ok(mut state) = inline_node.state.lock() {
-                        state.set_text(text.clone().into());
-                    }
-                    items.push(InlineFlowItem::Text {
-                        state: inline_node.state.clone(),
-                        text: text.clone().into(),
-                        links: links.clone(),
-                        highlights: highlights.clone(),
-                        link_hover_style: node_cx.link_hover_style(),
-                    });
-                }
-
                 items.push(InlineFlowItem::Image {
                     url: image.url.clone(),
                     link: image.link.clone(),
@@ -1388,39 +1395,59 @@ impl Paragraph {
                     ),
                 });
 
-                text.clear();
-                links.clear();
-                highlights.clear();
-                offset = 0;
-            } else {
-                append_resolved_inline_styles(
-                    inline_node,
-                    offset,
-                    node_cx,
-                    cx.theme().accent,
-                    cx.theme().link,
-                    &mut links,
-                    &mut highlights,
-                );
-                offset += text_len;
+                paragraph_offset += inline_node.text.len();
+                continue;
             }
-        }
 
-        if !text.is_empty() {
-            if let Ok(mut state) = self.state.lock() {
-                state.set_text(text.clone().into());
+            if inline_node.text.is_empty() {
+                continue;
+            }
+
+            let mut highlights = Vec::new();
+            let mut links = Vec::new();
+            append_resolved_inline_styles(
+                inline_node,
+                0,
+                node_cx,
+                cx.theme().accent,
+                cx.theme().link,
+                &mut links,
+                &mut highlights,
+            );
+            let box_style = inline_node_is_code(inline_node)
+                .then(|| node_cx.inline_code_box_style(cx.theme().accent))
+                .flatten();
+            if box_style.is_some() {
+                // The containing rounded box owns the code background.
+                for (_, highlight) in &mut highlights {
+                    highlight.background_color = None;
+                }
+            }
+            if let Ok(mut state) = inline_node.state.lock() {
+                state.set_text(inline_node.text.clone());
+                state.selection = None;
             }
             items.push(InlineFlowItem::Text {
-                state: self.state.clone(),
-                text: text.into(),
+                state: inline_node.state.clone(),
+                paragraph_range: paragraph_offset..(paragraph_offset + inline_node.text.len()),
+                text: inline_node.text.clone(),
                 links,
                 highlights,
-                link_hover_style: node_cx.link_hover_style(),
+                link_hover_style: link_hover_style.clone(),
+                box_style,
             });
+            paragraph_offset += inline_node.text.len();
         }
 
         items
     }
+}
+
+/// Inline code is emitted by the Markdown parser as one fully marked text node.
+fn inline_node_is_code(node: &InlineNode) -> bool {
+    node.marks
+        .iter()
+        .any(|(range, mark)| mark.code && range.start == 0 && range.end == node.text.len())
 }
 
 impl Paragraph {

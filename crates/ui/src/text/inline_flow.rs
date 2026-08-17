@@ -6,16 +6,16 @@ use std::{
 use gpui::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, DefiniteLength, Element, ElementId,
     GlobalElementId, HighlightStyle, ImageSource, InspectorElementId, InteractiveElement as _,
-    IntoElement, LayoutId, Length, LineFragment as WrapLineFragment, ObjectFit, Pixels, ShapedLine,
-    SharedString, SharedUri, Size, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    StyledImage as _, TextRun, TextStyle, WhiteSpace, Window, img, point,
-    prelude::FluentBuilder as _, px, relative, size,
+    IntoElement, LayoutId, Length, LineFragment as WrapLineFragment, ObjectFit, ParentElement as _,
+    Pixels, ShapedLine, SharedString, SharedUri, Size, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, StyledImage as _, TextRun, TextStyle, WhiteSpace, Window, div, img,
+    point, prelude::FluentBuilder as _, px, relative, size,
 };
 
 use crate::{StyledExt as _, WindowExt as _, tooltip::Tooltip};
 
 use super::{
-    inline::{Inline, InlineLink, InlineState},
+    inline::{Inline, InlineLink, InlineSelectionSink, InlineState},
     node::LinkMark,
 };
 use crate::text::MarkdownTextStyle;
@@ -30,15 +30,26 @@ fn markdown_image_source(url: &SharedUri) -> ImageSource {
 pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
+    selection_state: Option<Arc<Mutex<InlineState>>>,
+}
+
+/// Layout and paint properties for an atomic inline text box.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct InlineBoxStyle {
+    pub(super) background: Option<gpui::Hsla>,
+    pub(super) padding_x: Pixels,
+    pub(super) corner_radius: Pixels,
 }
 
 pub(super) enum InlineFlowItem {
     Text {
         state: Arc<Mutex<InlineState>>,
+        paragraph_range: Range<usize>,
         text: SharedString,
         links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
-        link_hover_style: Option<MarkdownTextStyle>,
+        link_hover_style: Option<Arc<MarkdownTextStyle>>,
+        box_style: Option<InlineBoxStyle>,
     },
     Image {
         url: SharedUri,
@@ -71,7 +82,8 @@ enum PositionedFragment {
         text: SharedString,
         links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
-        link_hover_style: Option<MarkdownTextStyle>,
+        link_hover_style: Option<Arc<MarkdownTextStyle>>,
+        box_style: Option<InlineBoxStyle>,
     },
     Image {
         item_ix: usize,
@@ -86,7 +98,8 @@ enum MeasureItem {
         text: SharedString,
         links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
-        link_hover_style: Option<MarkdownTextStyle>,
+        link_hover_style: Option<Arc<MarkdownTextStyle>>,
+        box_style: Option<InlineBoxStyle>,
     },
     Image {
         url: SharedUri,
@@ -116,7 +129,8 @@ enum LineFragmentKind {
         text: SharedString,
         links: Vec<InlineLink>,
         highlights: Vec<(Range<usize>, HighlightStyle)>,
-        link_hover_style: Option<MarkdownTextStyle>,
+        link_hover_style: Option<Arc<MarkdownTextStyle>>,
+        box_style: Option<InlineBoxStyle>,
     },
     Image {
         base_size: Size<Pixels>,
@@ -128,7 +142,14 @@ impl InlineFlow {
         Self {
             id: id.into(),
             items,
+            selection_state: None,
         }
+    }
+
+    /// Store all fragment selections in one paragraph-level state.
+    pub(super) fn selection_state(mut self, state: Arc<Mutex<InlineState>>) -> Self {
+        self.selection_state = Some(state);
+        self
     }
 
     fn image_element(
@@ -166,22 +187,13 @@ impl InlineFlow {
     /// Resolve fragment-local selection state and persistent source-item hover state.
     fn text_fragment_states(
         item: &InlineFlowItem,
-        source_range: &Range<usize>,
     ) -> Option<(Arc<Mutex<InlineState>>, Arc<Mutex<InlineState>>)> {
-        let InlineFlowItem::Text {
-            state,
-            text: source,
-            ..
-        } = item
-        else {
+        let InlineFlowItem::Text { state, .. } = item else {
             return None;
         };
 
-        let selection_state = if source_range == &(0..source.len()) {
-            state.clone()
-        } else {
-            Arc::new(Mutex::new(InlineState::default()))
-        };
+        // Fragment state is paint-local. Paragraph selection is persisted separately.
+        let selection_state = Arc::new(Mutex::new(InlineState::default()));
         Some((selection_state, state.clone()))
     }
 }
@@ -299,10 +311,11 @@ impl Element for InlineFlow {
                     links,
                     highlights,
                     link_hover_style,
+                    box_style,
                     ..
                 } => {
                     let Some((state, hover_state)) =
-                        Self::text_fragment_states(&self.items[item_ix], &source_range)
+                        Self::text_fragment_states(&self.items[item_ix])
                     else {
                         continue;
                     };
@@ -310,10 +323,41 @@ impl Element for InlineFlow {
                         state.set_text(text);
                     }
 
-                    let mut element = Inline::new(elements.len(), state, links, highlights)
+                    let paragraph_range = match &self.items[item_ix] {
+                        InlineFlowItem::Text {
+                            paragraph_range, ..
+                        } => {
+                            (paragraph_range.start + source_range.start)
+                                ..(paragraph_range.start + source_range.end)
+                        }
+                        InlineFlowItem::Image { .. } => continue,
+                    };
+
+                    let mut inline = Inline::new("text", state, links, highlights)
                         .link_hover_style(link_hover_style)
-                        .hover_state(hover_state, elements.len())
-                        .into_any_element();
+                        .hover_state(hover_state, elements.len());
+                    if let Some(selection_state) = &self.selection_state {
+                        inline = inline.selection_sink(InlineSelectionSink::new(
+                            selection_state.clone(),
+                            paragraph_range,
+                            bounds,
+                        ));
+                    }
+                    let inline = inline.into_any_element();
+                    let mut element = if let Some(box_style) = box_style {
+                        div()
+                            .id(elements.len())
+                            .flex()
+                            .items_center()
+                            .size_full()
+                            .px(box_style.padding_x)
+                            .rounded(box_style.corner_radius)
+                            .when_some(box_style.background, |this, background| this.bg(background))
+                            .child(inline)
+                            .into_any_element()
+                    } else {
+                        inline
+                    };
                     element.prepaint_as_root(
                         bounds.origin + origin,
                         size(
@@ -376,6 +420,11 @@ impl Element for InlineFlow {
         window: &mut Window,
         cx: &mut App,
     ) {
+        if let Some(selection_state) = &self.selection_state
+            && let Ok(mut state) = selection_state.lock()
+        {
+            state.selection = None;
+        }
         for element in prepaint {
             element.paint(window, cx);
         }
@@ -391,12 +440,14 @@ impl From<&InlineFlowItem> for MeasureItem {
                 links,
                 highlights,
                 link_hover_style,
+                box_style,
                 ..
             } => MeasureItem::Text {
                 text: text.clone(),
                 links: links.clone(),
                 highlights: highlights.clone(),
                 link_hover_style: link_hover_style.clone(),
+                box_style: *box_style,
             },
             InlineFlowItem::Image {
                 url,
@@ -465,6 +516,7 @@ fn layout_flow(
                     links,
                     highlights,
                     link_hover_style,
+                    box_style,
                 } => {
                     let local_start = line_range.start.max(item_start) - item_start;
                     let local_end = line_range.end.min(item_end) - item_start;
@@ -477,7 +529,10 @@ fn layout_flow(
                         let links = slice_links(links, local_start, local_end);
                         let runs = runs_for_highlights(&subtext, text_style, highlights.clone());
                         let shaped_line = shape_line(subtext.clone(), font_size, &runs, window);
-                        let width = shaped_line.width();
+                        let width = shaped_line.width()
+                            + box_style
+                                .map(|style| style.padding_x * 2.)
+                                .unwrap_or_default();
                         line_width += width;
                         line_fragments.push(LineFragmentLayout {
                             item_ix,
@@ -486,6 +541,7 @@ fn layout_flow(
                                 links,
                                 highlights,
                                 link_hover_style: link_hover_style.clone(),
+                                box_style: *box_style,
                             },
                             size: size(width, line_height),
                             source_range: local_start..local_end,
@@ -522,6 +578,7 @@ fn layout_flow(
                     links,
                     highlights,
                     link_hover_style,
+                    box_style,
                 } => PositionedFragment::Text {
                     item_ix: fragment.item_ix,
                     origin,
@@ -531,6 +588,7 @@ fn layout_flow(
                     links,
                     highlights,
                     link_hover_style,
+                    box_style,
                 },
                 LineFragmentKind::Image { base_size } => PositionedFragment::Image {
                     item_ix: fragment.item_ix,
@@ -560,49 +618,133 @@ fn line_ranges(
     wrap_width: Option<Pixels>,
     window: &mut Window,
 ) -> Vec<Range<usize>> {
-    let total_len = items.iter().map(MeasureItem::len).sum::<usize>();
+    let hard_lines = hard_line_ranges(items);
     let Some(wrap_width) = wrap_width else {
-        return std::iter::once(0..total_len).collect();
+        return hard_lines;
     };
     let rem_size = window.rem_size();
-
-    let wrap_fragments = items
-        .iter()
-        .enumerate()
-        .map(|(ix, item)| match item {
-            MeasureItem::Text { text, .. } => WrapLineFragment::text(text),
-            MeasureItem::Image { .. } => WrapLineFragment::element(
-                image_layouts[ix]
-                    .expect("image should be measured before wrapping")
-                    .outer_size
-                    .width,
-                IMAGE_LEN,
-            ),
-        })
-        .collect::<Vec<_>>();
     let font_size = text_style.font_size.to_pixels(rem_size);
     let mut wrapper = window
         .text_system()
         .line_wrapper(text_style.font(), font_size);
-    let boundaries = wrapper
-        .wrap_line(&wrap_fragments, wrap_width)
-        .map(|boundary| boundary.ix.min(total_len))
-        .collect::<Vec<_>>();
-    let mut ranges = Vec::with_capacity(boundaries.len() + 1);
-    let mut start = 0;
 
-    for end in boundaries {
-        if start < end {
-            ranges.push(start..end);
+    let mut ranges = Vec::new();
+    for hard_line in hard_lines {
+        if hard_line.is_empty() {
+            ranges.push(hard_line);
+            continue;
         }
-        start = end;
-    }
 
-    if start < total_len {
-        ranges.push(start..total_len);
+        let wrap_fragments = wrap_fragments_for_range(
+            items,
+            image_layouts,
+            text_style,
+            font_size,
+            &hard_line,
+            window,
+        );
+        let boundaries = wrapper
+            .wrap_line(&wrap_fragments, wrap_width)
+            .map(|boundary| hard_line.start + boundary.ix.min(hard_line.len()))
+            .collect::<Vec<_>>();
+        let mut start = hard_line.start;
+        for end in boundaries {
+            if start < end {
+                ranges.push(start..end);
+            }
+            start = end;
+        }
+        if start < hard_line.end {
+            ranges.push(start..hard_line.end);
+        }
     }
 
     ranges
+}
+
+/// Split source items at hard line breaks while keeping global byte offsets.
+fn hard_line_ranges(items: &[MeasureItem]) -> Vec<Range<usize>> {
+    let mut ranges = Vec::new();
+    let mut item_start = 0;
+    let mut line_start = 0;
+
+    for item in items {
+        if let MeasureItem::Text { text, .. } = item {
+            for (offset, character) in text.char_indices() {
+                if character == '\n' {
+                    let newline = item_start + offset;
+                    ranges.push(line_start..newline);
+                    line_start = newline + character.len_utf8();
+                }
+            }
+        }
+        item_start += item.len();
+    }
+    ranges.push(line_start..item_start);
+    ranges
+}
+
+/// Build GPUI wrapping fragments for one newline-free source range.
+fn wrap_fragments_for_range<'a>(
+    items: &'a [MeasureItem],
+    image_layouts: &[Option<MeasuredImageLayout>],
+    text_style: &TextStyle,
+    font_size: Pixels,
+    range: &Range<usize>,
+    window: &mut Window,
+) -> Vec<WrapLineFragment<'a>> {
+    let mut fragments = Vec::new();
+    let mut item_start = 0;
+
+    for (ix, item) in items.iter().enumerate() {
+        let item_end = item_start + item.len();
+        if item_end <= range.start {
+            item_start = item_end;
+            continue;
+        }
+        if item_start >= range.end {
+            break;
+        }
+
+        match item {
+            MeasureItem::Text {
+                text,
+                highlights,
+                box_style,
+                ..
+            } => {
+                let local_start = range.start.max(item_start) - item_start;
+                let local_end = range.end.min(item_end) - item_start;
+                let subtext = &text[local_start..local_end];
+                if let Some(box_style) = box_style {
+                    let highlights =
+                        slice_ranges(highlights, local_start, local_end, |range, style| {
+                            (range, *style)
+                        });
+                    let runs = runs_for_highlights(subtext, text_style, highlights);
+                    let shaped_line = shape_line(subtext.into(), font_size, &runs, window);
+                    fragments.push(WrapLineFragment::element(
+                        shaped_line.width() + box_style.padding_x * 2.,
+                        subtext.len(),
+                    ));
+                } else {
+                    fragments.push(WrapLineFragment::text(subtext));
+                }
+            }
+            MeasureItem::Image { .. } => {
+                fragments.push(WrapLineFragment::element(
+                    image_layouts[ix]
+                        .expect("image should be measured before wrapping")
+                        .outer_size
+                        .width,
+                    IMAGE_LEN,
+                ));
+            }
+        }
+        item_start = item_end;
+    }
+
+    fragments
 }
 
 /// Measure an inline image with the same base dimensions and semantic style used for painting.
@@ -759,6 +901,10 @@ fn shape_line(
     runs: &[TextRun],
     window: &mut Window,
 ) -> ShapedLine {
+    debug_assert!(
+        !text.contains('\n'),
+        "InlineFlow must split hard lines before shaping"
+    );
     window.text_system().shape_line(text, font_size, runs, None)
 }
 
@@ -812,6 +958,11 @@ mod tests {
 
     struct ImageMeasureProbe {
         style: StyleRefinement,
+    }
+
+    struct InlineBoxMeasureProbe {
+        text: SharedString,
+        box_style: Option<InlineBoxStyle>,
     }
 
     #[test]
@@ -896,6 +1047,71 @@ mod tests {
         }
     }
 
+    impl IntoElement for InlineBoxMeasureProbe {
+        type Element = Self;
+
+        fn into_element(self) -> Self::Element {
+            self
+        }
+    }
+
+    impl Element for InlineBoxMeasureProbe {
+        type RequestLayoutState = Size<Pixels>;
+        type PrepaintState = ();
+
+        fn id(&self) -> Option<ElementId> {
+            None
+        }
+
+        fn source_location(&self) -> Option<&'static core::panic::Location<'static>> {
+            None
+        }
+
+        fn request_layout(
+            &mut self,
+            _id: Option<&GlobalElementId>,
+            _inspector_id: Option<&InspectorElementId>,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> (LayoutId, Self::RequestLayoutState) {
+            let items = vec![MeasureItem::Text {
+                text: self.text.clone(),
+                links: vec![],
+                highlights: vec![],
+                link_hover_style: None,
+                box_style: self.box_style,
+            }];
+            let layout = layout_flow(&items, &[None], &window.text_style(), None, window);
+            (
+                window.request_layout(Default::default(), [], cx),
+                layout.size,
+            )
+        }
+
+        fn prepaint(
+            &mut self,
+            _id: Option<&GlobalElementId>,
+            _inspector_id: Option<&InspectorElementId>,
+            _bounds: Bounds<Pixels>,
+            _request_layout: &mut Self::RequestLayoutState,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) {
+        }
+
+        fn paint(
+            &mut self,
+            _id: Option<&GlobalElementId>,
+            _inspector_id: Option<&InspectorElementId>,
+            _bounds: Bounds<Pixels>,
+            _request_layout: &mut Self::RequestLayoutState,
+            _prepaint: &mut Self::PrepaintState,
+            _window: &mut Window,
+            _cx: &mut App,
+        ) {
+        }
+    }
+
     #[test]
     fn wrapped_link_fragments_preserve_the_same_hover_identity() {
         let links = vec![InlineLink {
@@ -917,24 +1133,102 @@ mod tests {
     }
 
     #[test]
+    fn hard_line_ranges_exclude_newlines_and_preserve_empty_lines() {
+        let items = vec![MeasureItem::Text {
+            text: "first\n\nsecond".into(),
+            links: vec![],
+            highlights: vec![],
+            link_hover_style: None,
+            box_style: None,
+        }];
+
+        assert_eq!(hard_line_ranges(&items), vec![0..5, 6..6, 7..13]);
+    }
+
+    #[test]
     fn wrapped_fragments_reuse_persistent_hover_state_across_frames() {
         let source_state = Arc::new(Mutex::new(InlineState::default()));
         let item = InlineFlowItem::Text {
             state: source_state.clone(),
+            paragraph_range: 0..12,
             text: "wrapped text".into(),
             links: vec![],
             highlights: vec![],
             link_hover_style: None,
+            box_style: None,
         };
 
         let (first_selection, first_hover) =
-            InlineFlow::text_fragment_states(&item, &(0..7)).expect("text fragment states");
+            InlineFlow::text_fragment_states(&item).expect("text fragment states");
         let (second_selection, second_hover) =
-            InlineFlow::text_fragment_states(&item, &(0..7)).expect("text fragment states");
+            InlineFlow::text_fragment_states(&item).expect("text fragment states");
 
         assert!(!Arc::ptr_eq(&first_selection, &second_selection));
         assert!(Arc::ptr_eq(&first_hover, &source_state));
         assert!(Arc::ptr_eq(&second_hover, &source_state));
+    }
+
+    #[gpui::test]
+    fn inline_box_horizontal_padding_contributes_to_layout(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| InlineFlowTestRoot);
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        let draw_text = |box_style, cx: &mut VisualTestContext| {
+            cx.draw(point(px(0.), px(0.)), size(px(300.), px(100.)), |_, _| {
+                InlineBoxMeasureProbe {
+                    text: "code".into(),
+                    box_style,
+                }
+            })
+            .0
+        };
+
+        let plain = draw_text(None, cx);
+        let boxed = draw_text(
+            Some(InlineBoxStyle {
+                background: None,
+                padding_x: px(4.),
+                corner_radius: px(6.),
+            }),
+            cx,
+        );
+
+        assert_eq!(boxed.width, plain.width + px(8.));
+        assert_eq!(boxed.height, plain.height);
+    }
+
+    #[gpui::test]
+    fn inline_flow_shapes_streamed_hard_lines_independently(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let content = cx.new(|_| InlineFlowTestRoot);
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        let draw_text = |text: &'static str, cx: &mut VisualTestContext| {
+            cx.draw(
+                point(px(0.), px(0.)),
+                size(px(300.), px(100.)),
+                move |_, _| InlineBoxMeasureProbe {
+                    text: text.into(),
+                    box_style: Some(InlineBoxStyle {
+                        background: None,
+                        padding_x: px(4.),
+                        corner_radius: px(6.),
+                    }),
+                },
+            )
+            .0
+        };
+        let single_line = draw_text("pending link", cx);
+        let measured = draw_text("pending link\nnext frame", cx);
+
+        assert_eq!(measured.height, single_line.height * 2.);
     }
 
     #[test]

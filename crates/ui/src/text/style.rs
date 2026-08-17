@@ -184,6 +184,8 @@ pub struct MarkdownTextStyle {
     underline: Option<Option<UnderlineStyle>>,
     strikethrough: Option<Option<StrikethroughStyle>>,
     fade_out: Option<f32>,
+    padding_x: Option<Pixels>,
+    corner_radius: Option<Pixels>,
 }
 
 impl MarkdownTextStyle {
@@ -245,6 +247,25 @@ impl MarkdownTextStyle {
     pub fn fade_out(mut self, factor: f32) -> Self {
         self.fade_out = Some(factor);
         self
+    }
+
+    /// Set horizontal padding for an inline semantic box.
+    pub fn padding_x(mut self, padding: Pixels) -> Self {
+        self.padding_x = Some(padding);
+        self
+    }
+
+    /// Set the corner radius for an inline semantic box.
+    pub fn corner_radius(mut self, radius: Pixels) -> Self {
+        self.corner_radius = Some(radius);
+        self
+    }
+
+    pub(crate) fn inline_box_metrics(&self) -> Option<(Pixels, Pixels)> {
+        (self.padding_x.is_some() || self.corner_radius.is_some()).then_some((
+            self.padding_x.unwrap_or_default(),
+            self.corner_radius.unwrap_or_default(),
+        ))
     }
 
     pub(crate) fn refine(&self, style: &mut HighlightStyle) {
@@ -364,5 +385,14 @@ mod tests {
         assert_eq!(resolved.color, Some(hsla(0.6, 0.8, 0.5, 1.)));
         assert_eq!(resolved.background_color, None);
         assert_eq!(resolved.underline, None);
+    }
+
+    #[test]
+    fn markdown_text_style_exposes_inline_box_metrics() {
+        let style = MarkdownTextStyle::default()
+            .padding_x(px(4.))
+            .corner_radius(px(6.));
+
+        assert_eq!(style.inline_box_metrics(), Some((px(4.), px(6.))));
     }
 }

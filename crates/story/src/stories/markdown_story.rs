@@ -148,7 +148,6 @@ impl MarkdownStory {
                 MarkdownInlineKind::Link,
                 MarkdownTextStyle::default()
                     .color(cx.theme().link)
-                    .background(cx.theme().accent)
                     .underline(UnderlineStyle {
                         thickness: px(1.),
                         ..Default::default()
@@ -156,16 +155,15 @@ impl MarkdownStory {
             )
             .inline(
                 MarkdownInlineKind::LinkHover,
-                MarkdownTextStyle::default()
-                    .color(cx.theme().primary)
-                    .no_background()
-                    .no_underline(),
+                MarkdownTextStyle::default().color(cx.theme().primary),
             )
             .inline(
                 MarkdownInlineKind::InlineCode,
                 MarkdownTextStyle::default()
                     .color(cx.theme().primary)
-                    .background(cx.theme().muted),
+                    .background(cx.theme().muted)
+                    .padding_x(px(4.))
+                    .corner_radius(cx.theme().style.radii.sm),
             )
             .element(
                 MarkdownElementKind::CodeBlock,
