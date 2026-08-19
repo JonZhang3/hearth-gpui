@@ -12,7 +12,7 @@ use gpui::{
     InspectorElementId, InteractiveElement as _, IntoElement, KeyContext, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Refineable as _,
     ScrollHandle, SharedString, StatefulInteractiveElement as _, StrikethroughStyle,
-    StyleRefinement, Styled, StyledText, Task, TextLayout, TextStyle, TextStyleRefinement,
+    StyleRefinement, Styled, StyledText, Task, TextLayout, TextRun, TextStyle, TextStyleRefinement,
     UnderlineStyle, Window, actions, div, fill, img, point, prelude::FluentBuilder as _, px, rems,
 };
 use linkify::{LinkFinder, LinkKind};
@@ -288,20 +288,61 @@ struct InlineFlags {
     soft_break: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct TextSegment {
     text: SharedString,
     source: Range<usize>,
     flags: InlineFlags,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ParsedLink {
     source: Range<usize>,
     destination: SharedString,
 }
 
 #[derive(Clone, Debug)]
+struct SegmentMapping {
+    rendered: Range<usize>,
+    source: Range<usize>,
+}
+
+#[derive(Clone)]
+struct RenderedLink {
+    source: Range<usize>,
+    destination: SharedString,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct TextPreparationKey {
+    block_style: TextStyle,
+    inline_code: TextStyleRefinement,
+    link: TextStyleRefinement,
+    selection_background_color: Hsla,
+    soft_break_as_hard_break: bool,
+    search: Vec<Range<usize>>,
+    active_search: Option<usize>,
+}
+
+#[derive(Clone)]
+struct CachedTextPreparation {
+    key: TextPreparationKey,
+    text: SharedString,
+    mappings: Arc<[SegmentMapping]>,
+    runs: Vec<TextRun>,
+    links: Arc<[RenderedLink]>,
+}
+
+#[derive(Clone, Default)]
+struct TextPreparationCache(Arc<std::sync::Mutex<Option<CachedTextPreparation>>>);
+
+impl std::fmt::Debug for TextPreparationCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.debug_struct("TextPreparationCache").finish()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 enum TextBlockKind {
     Paragraph,
     Heading(HeadingLevel),
@@ -319,9 +360,19 @@ struct ParsedTextBlock {
     source: Range<usize>,
     segments: Vec<TextSegment>,
     links: Vec<ParsedLink>,
+    render_cache: TextPreparationCache,
 }
 
-#[derive(Clone, Debug)]
+impl PartialEq for ParsedTextBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.source == other.source
+            && self.segments == other.segments
+            && self.links == other.links
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct ParsedCodeBlock {
     source: Range<usize>,
     code: SharedString,
@@ -332,7 +383,7 @@ struct ParsedCodeBlock {
     highlight: super::node::CodeBlock,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ParsedImageBlock {
     source: Range<usize>,
     destination: SharedString,
@@ -340,7 +391,7 @@ struct ParsedImageBlock {
     alt: SharedString,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum ParsedBlock {
     Text(ParsedTextBlock),
     Code(ParsedCodeBlock),
@@ -359,7 +410,7 @@ struct ParsedMarkdown {
 
 /// Stateful Markdown document. All mutable behavior is local to this entity.
 pub struct Markdown {
-    source: SharedString,
+    source: String,
     options: MarkdownOptions,
     parsed: Arc<ParsedMarkdown>,
     revision: u64,
@@ -386,9 +437,9 @@ impl Markdown {
         options: MarkdownOptions,
         cx: &mut Context<Self>,
     ) -> Self {
-        let source = source.into();
+        let source: SharedString = source.into();
         let mut this = Self {
-            source: source.clone(),
+            source: source.to_string(),
             options,
             parsed: Arc::new(ParsedMarkdown {
                 source,
@@ -411,12 +462,12 @@ impl Markdown {
 
     /// Returns the canonical source, including deltas not yet published by the parser.
     pub fn source(&self) -> SharedString {
-        self.source.clone()
+        self.source.clone().into()
     }
 
     /// Replaces the canonical source and rejects every older parse result.
     pub fn replace(&mut self, source: impl Into<SharedString>, cx: &mut Context<Self>) {
-        self.source = source.into();
+        self.source = source.into().to_string();
         self.revision = self.revision.wrapping_add(1);
         if self.source.is_empty() {
             self.parsed = Arc::new(ParsedMarkdown::default());
@@ -431,16 +482,14 @@ impl Markdown {
         if chunk.is_empty() {
             return;
         }
-        let mut source = self.source.to_string();
-        source.push_str(chunk);
-        self.source = source.into();
+        self.source.push_str(chunk);
         self.revision = self.revision.wrapping_add(1);
         self.schedule_parse(cx);
     }
 
     /// Returns whether the published document trails the canonical source.
     pub fn is_parsing(&self) -> bool {
-        self.pending_parse.is_some() || self.parsed.source != self.source
+        self.pending_parse.is_some() || self.parsed.source.as_ref() != self.source
     }
 
     /// Returns canonical source offsets for every parsed root block.
@@ -531,27 +580,40 @@ impl Markdown {
             return;
         }
 
-        let source = self.source.clone();
+        let source: SharedString = self.source.clone().into();
         let options = self.options;
         let revision = self.revision;
         self.pending_parse = Some(cx.spawn(async move |entity, cx| {
-            let parsed = cx
+            let mut parsed = cx
                 .background_spawn(async move { parse_markdown(source, options) })
                 .await;
             let _ = entity.update(cx, |this, cx| {
                 this.pending_parse = None;
                 if revision == this.revision {
+                    reuse_unchanged_block_prefix(&this.parsed, &mut parsed);
                     this.parsed = Arc::new(parsed);
                     this.selection.anchor = this.selection.anchor.min(this.source.len());
                     this.selection.head = this.selection.head.min(this.source.len());
                     cx.notify();
                 }
-                if this.should_reparse || this.parsed.source != this.source {
+                if this.should_reparse || this.parsed.source.as_ref() != this.source {
                     this.should_reparse = false;
                     this.schedule_parse(cx);
                 }
             });
         }));
+    }
+}
+
+/// Reuse parsed blocks whose canonical structure is unchanged so their syntax and
+/// rendering state remains stable across tail-only streaming updates.
+fn reuse_unchanged_block_prefix(previous: &ParsedMarkdown, next: &mut ParsedMarkdown) {
+    let blocks = Arc::make_mut(&mut next.blocks);
+    for (old, new) in previous.blocks.iter().zip(blocks.iter_mut()) {
+        if old != new {
+            break;
+        }
+        *new = old.clone();
     }
 }
 
@@ -625,6 +687,7 @@ impl TextBlockBuilder {
             source: self.source_start..self.source_end,
             segments: self.segments,
             links: self.links,
+            render_cache: TextPreparationCache::default(),
         }
     }
 }
@@ -1088,6 +1151,7 @@ fn parse_links_only(source: SharedString) -> ParsedMarkdown {
         source: 0..source.len(),
         segments,
         links,
+        render_cache: TextPreparationCache::default(),
     };
     ParsedMarkdown {
         source,
@@ -1243,23 +1307,11 @@ impl Styled for MarkdownElement {
     }
 }
 
-#[derive(Clone, Debug)]
-struct SegmentMapping {
-    rendered: Range<usize>,
-    source: Range<usize>,
-}
-
-#[derive(Clone)]
-struct RenderedLink {
-    source: Range<usize>,
-    destination: SharedString,
-}
-
 struct RenderedLine {
     layout: TextLayout,
     text: SharedString,
     source: Range<usize>,
-    mappings: Vec<SegmentMapping>,
+    mappings: Arc<[SegmentMapping]>,
     links: Vec<RenderedLink>,
 }
 
@@ -1482,93 +1534,20 @@ fn render_text_block(
         block_text_style.refine(&style.inline_code);
     }
 
-    let mut text = String::new();
-    let mut mappings = Vec::new();
-    let mut runs = Vec::new();
-    for segment in &block.segments {
-        let start = text.len();
-        if segment.flags.soft_break && !style.soft_break_as_hard_break {
-            text.push(' ');
-        } else {
-            text.push_str(&segment.text);
-        }
-        let end = text.len();
-        mappings.push(SegmentMapping {
-            rendered: start..end,
-            source: segment.source.clone(),
-        });
-
-        let mut segment_style = block_text_style.clone();
-        if segment.flags.strong {
-            segment_style.font_weight = gpui::FontWeight::BOLD;
-        }
-        if segment.flags.emphasis {
-            segment_style.font_style = gpui::FontStyle::Italic;
-        }
-        if segment.flags.strike {
-            segment_style.strikethrough = Some(StrikethroughStyle::default());
-        }
-        if segment.flags.code {
-            segment_style.refine(&style.inline_code);
-        }
-        if segment.flags.link {
-            segment_style.refine(&style.link);
-        }
-        let segment_len = end - start;
-        let mut highlights = search
-            .iter()
-            .enumerate()
-            .filter(|(_, range)| {
-                range.start < segment.source.end && range.end > segment.source.start
-            })
-            .map(|(index, range)| {
-                let rendered_range = if segment.source.len() == segment_len {
-                    range.start.max(segment.source.start) - segment.source.start
-                        ..range.end.min(segment.source.end) - segment.source.start
-                } else {
-                    0..segment_len
-                };
-                (index, rendered_range)
-            })
-            .collect::<Vec<_>>();
-        highlights.sort_by_key(|(_, range)| range.start);
-
-        let mut run_cursor = 0;
-        for (index, range) in highlights {
-            let range = range.start.max(run_cursor)..range.end.min(segment_len);
-            if range.start >= range.end {
-                continue;
-            }
-            if run_cursor < range.start {
-                runs.push(segment_style.clone().to_run(range.start - run_cursor));
-            }
-            let mut run = segment_style.clone().to_run(range.len());
-            run.background_color = Some(style.selection_background_color.opacity(
-                if active_search == Some(index) {
-                    0.8
-                } else {
-                    0.45
-                },
-            ));
-            runs.push(run);
-            run_cursor = range.end;
-        }
-        if run_cursor < segment_len {
-            runs.push(segment_style.to_run(segment_len - run_cursor));
-        }
-    }
-
-    let text: SharedString = text.into();
-    let styled_text = StyledText::new(text.clone()).with_runs(runs);
+    let key = TextPreparationKey {
+        block_style: block_text_style.clone(),
+        inline_code: style.inline_code.clone(),
+        link: style.link.clone(),
+        selection_background_color: style.selection_background_color,
+        soft_break_as_hard_break: style.soft_break_as_hard_break,
+        search: search.to_vec(),
+        active_search,
+    };
+    let prepared = prepare_text_block(block, key);
+    let text = prepared.text.clone();
+    let styled_text = StyledText::new(text.clone()).with_runs(prepared.runs.clone());
     let layout = styled_text.layout().clone();
-    let mut links: Vec<RenderedLink> = block
-        .links
-        .iter()
-        .map(|link| RenderedLink {
-            source: link.source.clone(),
-            destination: link.destination.clone(),
-        })
-        .collect();
+    let mut links = prepared.links.to_vec();
     if let Some(resolve) = code_span_link {
         links.extend(block.segments.iter().filter_map(|segment| {
             if segment.flags.code {
@@ -1625,10 +1604,118 @@ fn render_text_block(
             layout,
             text,
             source: block.source.clone(),
-            mappings,
+            mappings: prepared.mappings.clone(),
             links,
         },
     )
+}
+
+/// Flatten and style one parsed text block, reusing the result while its semantic
+/// content and visual inputs remain unchanged.
+fn prepare_text_block(block: &ParsedTextBlock, key: TextPreparationKey) -> CachedTextPreparation {
+    if let Ok(cache) = block.render_cache.0.lock()
+        && let Some(cached) = cache.as_ref()
+        && cached.key == key
+    {
+        return cached.clone();
+    }
+
+    let mut text = String::new();
+    let mut mappings = Vec::new();
+    let mut runs = Vec::new();
+    for segment in &block.segments {
+        let start = text.len();
+        if segment.flags.soft_break && !key.soft_break_as_hard_break {
+            text.push(' ');
+        } else {
+            text.push_str(&segment.text);
+        }
+        let end = text.len();
+        mappings.push(SegmentMapping {
+            rendered: start..end,
+            source: segment.source.clone(),
+        });
+
+        let mut segment_style = key.block_style.clone();
+        if segment.flags.strong {
+            segment_style.font_weight = gpui::FontWeight::BOLD;
+        }
+        if segment.flags.emphasis {
+            segment_style.font_style = gpui::FontStyle::Italic;
+        }
+        if segment.flags.strike {
+            segment_style.strikethrough = Some(StrikethroughStyle::default());
+        }
+        if segment.flags.code {
+            segment_style.refine(&key.inline_code);
+        }
+        if segment.flags.link {
+            segment_style.refine(&key.link);
+        }
+        let segment_len = end - start;
+        let mut highlights = key
+            .search
+            .iter()
+            .enumerate()
+            .filter(|(_, range)| {
+                range.start < segment.source.end && range.end > segment.source.start
+            })
+            .map(|(index, range)| {
+                let rendered_range = if segment.source.len() == segment_len {
+                    range.start.max(segment.source.start) - segment.source.start
+                        ..range.end.min(segment.source.end) - segment.source.start
+                } else {
+                    0..segment_len
+                };
+                (index, rendered_range)
+            })
+            .collect::<Vec<_>>();
+        highlights.sort_by_key(|(_, range)| range.start);
+
+        let mut run_cursor = 0;
+        for (index, range) in highlights {
+            let range = range.start.max(run_cursor)..range.end.min(segment_len);
+            if range.start >= range.end {
+                continue;
+            }
+            if run_cursor < range.start {
+                runs.push(segment_style.clone().to_run(range.start - run_cursor));
+            }
+            let mut run = segment_style.clone().to_run(range.len());
+            run.background_color = Some(key.selection_background_color.opacity(
+                if key.active_search == Some(index) {
+                    0.8
+                } else {
+                    0.45
+                },
+            ));
+            runs.push(run);
+            run_cursor = range.end;
+        }
+        if run_cursor < segment_len {
+            runs.push(segment_style.to_run(segment_len - run_cursor));
+        }
+    }
+
+    let cached = CachedTextPreparation {
+        key,
+        text: text.into(),
+        mappings: mappings.into(),
+        runs,
+        links: block
+            .links
+            .iter()
+            .map(|link| RenderedLink {
+                source: link.source.clone(),
+                destination: link.destination.clone(),
+            })
+            .collect::<Vec<_>>()
+            .into(),
+    };
+    if let Ok(mut cache) = block.render_cache.0.lock() {
+        *cache = Some(cached.clone());
+    }
+    cached
 }
 
 fn render_code_block(
@@ -1700,7 +1787,8 @@ fn render_code_block(
                         mappings: vec![SegmentMapping {
                             rendered: 0..block.code.len(),
                             source: block.source.clone(),
-                        }],
+                        }]
+                        .into(),
                         links: Vec::new(),
                     },
                 );
@@ -1816,7 +1904,8 @@ fn render_code_block(
             mappings: vec![SegmentMapping {
                 rendered: 0..block.code.len(),
                 source: block.source.clone(),
-            }],
+            }]
+            .into(),
             links: Vec::new(),
         },
     )
@@ -2315,6 +2404,51 @@ mod tests {
             let parsed = parse_markdown(prefix.to_string().into(), MarkdownOptions::default());
             assert_eq!(parsed.source.as_ref(), prefix);
         }
+    }
+
+    #[test]
+    fn tail_append_reuses_unchanged_block_runtime_cache() {
+        let previous = parse_markdown(
+            "First paragraph.\n\n```rust\nfn stable() {}\n```\n\nTail".into(),
+            MarkdownOptions::default(),
+        );
+        let mut next = parse_markdown(
+            "First paragraph.\n\n```rust\nfn stable() {}\n```\n\nTail grows".into(),
+            MarkdownOptions::default(),
+        );
+
+        let ParsedBlock::Text(first_before) = &previous.blocks[0] else {
+            panic!("expected a text prefix");
+        };
+        let prefix_cache = first_before.render_cache.0.clone();
+        reuse_unchanged_block_prefix(&previous, &mut next);
+
+        let ParsedBlock::Text(first_after) = &next.blocks[0] else {
+            panic!("expected a text prefix");
+        };
+        assert!(Arc::ptr_eq(&prefix_cache, &first_after.render_cache.0));
+        assert_eq!(previous.blocks[1], next.blocks[1]);
+        assert_ne!(previous.blocks.last(), next.blocks.last());
+    }
+
+    #[gpui::test]
+    fn coalesced_streaming_appends_publish_the_latest_canonical_source(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("base", cx)));
+        markdown.update(cx, |markdown, cx| {
+            markdown.append(" one", cx);
+            markdown.append(" two", cx);
+            markdown.append(" 三", cx);
+        });
+        cx.run_until_parked();
+
+        markdown.read_with(cx, |markdown, _| {
+            assert_eq!(markdown.source(), "base one two 三");
+            assert_eq!(markdown.parsed.source.as_ref(), "base one two 三");
+            assert!(!markdown.is_parsing());
+        });
     }
 
     #[test]

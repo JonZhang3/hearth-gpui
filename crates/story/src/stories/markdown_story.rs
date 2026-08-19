@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use hearth_gpui::{
     ActiveTheme as _,
     button::Button,
@@ -34,10 +34,14 @@ pub struct MarkdownStory {
     style_markdown: Entity<Markdown>,
     stream_markdown: Entity<Markdown>,
     style_scroll_handle: ScrollHandle,
-    stream_scroll_handle: ScrollHandle,
-    following_tail: bool,
+    stream_list_state: ListState,
+    stream_pending: String,
+    stream_finished: bool,
+    bytes_to_reveal_per_tick: usize,
     replay_id: usize,
-    _update_task: Task<()>,
+    _stream_subscription: Subscription,
+    _provider_task: Task<()>,
+    _reveal_task: Task<()>,
 }
 
 impl super::Story for MarkdownStory {
@@ -75,15 +79,26 @@ impl MarkdownStory {
             render_metadata_blocks: true,
             ..Default::default()
         };
+        let stream_markdown =
+            cx.new(|cx| Markdown::new_with_options("# Streaming Markdown\n\n", options, cx));
+        let stream_list_state = ListState::new(1, ListAlignment::Top, px(512.));
+        stream_list_state.set_follow_mode(FollowMode::Tail);
+        let _stream_subscription = cx.observe(&stream_markdown, |this, _, cx| {
+            this.stream_list_state.remeasure_items(0..1);
+            cx.notify();
+        });
         Self {
             style_markdown: cx.new(|cx| Markdown::new(STYLE_EXAMPLE, cx)),
-            stream_markdown: cx
-                .new(|cx| Markdown::new_with_options("# Streaming Markdown\n\n", options, cx)),
+            stream_markdown,
             style_scroll_handle: ScrollHandle::new(),
-            stream_scroll_handle: ScrollHandle::new(),
-            following_tail: true,
+            stream_list_state,
+            stream_pending: String::new(),
+            stream_finished: true,
+            bytes_to_reveal_per_tick: 1,
             replay_id: 0,
-            _update_task: Task::ready(()),
+            _stream_subscription,
+            _provider_task: Task::ready(()),
+            _reveal_task: Task::ready(()),
         }
     }
 
@@ -91,12 +106,15 @@ impl MarkdownStory {
     fn replay(&mut self, cx: &mut Context<Self>) {
         self.replay_id = self.replay_id.wrapping_add(1);
         let replay_id = self.replay_id;
-        self.following_tail = true;
+        self.stream_pending.clear();
+        self.stream_finished = false;
+        self.bytes_to_reveal_per_tick = 1;
         self.stream_markdown
             .update(cx, |markdown, cx| markdown.replace("", cx));
-        self.stream_scroll_handle.scroll_to_bottom();
+        self.stream_list_state.remeasure_items(0..1);
+        self.stream_list_state.set_follow_mode(FollowMode::Tail);
 
-        self._update_task = cx.spawn(async move |weak_self, cx| {
+        self._provider_task = cx.spawn(async move |weak_self, cx| {
             let source = format!(
                 "Streaming repairs **strong text**, `inline code`, and [pending links](https://example.com/path) without replacing the last valid frame.\n\n{STREAM_EXAMPLE}"
             );
@@ -109,15 +127,16 @@ impl MarkdownStory {
                 let chunk = source[cursor..end].to_string();
                 cursor = end;
                 let should_continue = weak_self
-                    .update(cx, |this, cx| {
+                    .update(cx, |this, _| {
                         if this.replay_id != replay_id {
                             return false;
                         }
-                        this.stream_markdown
-                            .update(cx, |markdown, cx| markdown.append(&chunk, cx));
-                        if this.following_tail {
-                            this.stream_scroll_handle.scroll_to_bottom();
-                        }
+                        this.stream_pending.push_str(&chunk);
+                        this.bytes_to_reveal_per_tick = (this.stream_pending.len() as f32
+                            / 200.0
+                            * 16.0)
+                            .ceil()
+                            .max(1.0) as usize;
                         true
                     })
                     .unwrap_or(false);
@@ -128,28 +147,57 @@ impl MarkdownStory {
                     .timer(Duration::from_millis(24))
                     .await;
             }
+            _ = weak_self.update(cx, |this, _| {
+                if this.replay_id == replay_id {
+                    this.stream_finished = true;
+                }
+            });
         });
-    }
 
-    /// Pauses follow-tail as soon as a wheel gesture leaves the bottom edge.
-    fn update_follow_tail(&mut self, event: &ScrollWheelEvent, window: &Window) {
-        let max_offset = self.stream_scroll_handle.max_offset().y.max(px(0.));
-        let delta = event.delta.pixel_delta(window.line_height()).y;
-        let next_offset = (self.stream_scroll_handle.offset().y + delta).clamp(-max_offset, px(0.));
-        self.following_tail = (next_offset + max_offset).abs() <= px(1.);
+        self._reveal_task = cx.spawn(async move |weak_self, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(16))
+                    .await;
+                let should_continue = weak_self
+                    .update(cx, |this, cx| {
+                        if this.replay_id != replay_id {
+                            return false;
+                        }
+                        if this.stream_pending.is_empty() {
+                            return !this.stream_finished;
+                        }
+
+                        let end = this
+                            .stream_pending
+                            .ceil_char_boundary(this.bytes_to_reveal_per_tick)
+                            .min(this.stream_pending.len());
+                        let chunk = this.stream_pending.drain(..end).collect::<String>();
+                        this.stream_markdown
+                            .update(cx, |markdown, cx| markdown.append(&chunk, cx));
+                        true
+                    })
+                    .unwrap_or(false);
+                if !should_continue {
+                    break;
+                }
+            }
+        });
     }
 
     fn markdown_element(
         markdown: &Entity<Markdown>,
         font: MarkdownFont,
-        scroll_handle: &ScrollHandle,
+        scroll_handle: Option<&ScrollHandle>,
         window: &Window,
         cx: &App,
     ) -> MarkdownElement {
         let mut style = MarkdownStyle::themed(font, window, cx);
         style.container_style.padding.right = Some(px(8.).into());
         MarkdownElement::new(markdown.clone(), style)
-            .scroll_handle(scroll_handle.clone())
+            .when_some(scroll_handle, |element, handle| {
+                element.scroll_handle(handle.clone())
+            })
             .on_url_click(|url, _, cx| cx.open_url(&url))
             .code_block_renderer(CodeBlockRenderer::Default {
                 copy_button_visibility: CopyButtonVisibility::VisibleOnHover,
@@ -161,12 +209,6 @@ impl MarkdownStory {
 
 impl Render for MarkdownStory {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if !self.following_tail {
-            let max_offset = self.stream_scroll_handle.max_offset().y.max(px(0.));
-            self.following_tail =
-                (self.stream_scroll_handle.offset().y + max_offset).abs() <= px(1.);
-        }
-
         v_flex()
             .id("markdown-story")
             .size_full()
@@ -234,7 +276,7 @@ impl Render for MarkdownStory {
                                             .child(Self::markdown_element(
                                                 &self.style_markdown,
                                                 MarkdownFont::Preview,
-                                                &self.style_scroll_handle,
+                                                Some(&self.style_scroll_handle),
                                                 window,
                                                 cx,
                                             )),
@@ -271,23 +313,22 @@ impl Render for MarkdownStory {
                                     .flex_1()
                                     .min_h_0()
                                     .child(
-                                        div()
-                                            .id("stream-scroll-area")
-                                            .size_full()
-                                            .overflow_y_scroll()
-                                            .track_scroll(&self.stream_scroll_handle)
-                                            .on_scroll_wheel(cx.listener(|this, event, window, _| {
-                                                this.update_follow_tail(event, window);
-                                            }))
-                                            .child(Self::markdown_element(
-                                                &self.stream_markdown,
-                                                MarkdownFont::Agent,
-                                                &self.stream_scroll_handle,
-                                                window,
-                                                cx,
-                                            )),
+                                        list(
+                                            self.stream_list_state.clone(),
+                                            cx.processor(|this, _, window, cx| {
+                                                Self::markdown_element(
+                                                    &this.stream_markdown,
+                                                    MarkdownFont::Agent,
+                                                    None,
+                                                    window,
+                                                    cx,
+                                                )
+                                                .into_any_element()
+                                            }),
+                                        )
+                                            .size_full(),
                                     )
-                                    .vertical_scrollbar(&self.stream_scroll_handle),
+                                    .vertical_scrollbar(&self.stream_list_state),
                             ),
                     ),
             )
