@@ -23,7 +23,7 @@ use pulldown_cmark::{
 
 use crate::{
     ActiveTheme as _, Sizable as _, button::Button, clipboard::Clipboard, h_flex,
-    highlighter::HighlightTheme,
+    highlighter::HighlightTheme, scroll::ScrollableElement as _,
 };
 
 use super::{
@@ -388,6 +388,7 @@ impl PartialEq for ParsedTextBlock {
 struct ParsedCodeBlock {
     source: Range<usize>,
     code: SharedString,
+    display_code: SharedString,
     language: Option<SharedString>,
     info: Option<SharedString>,
     source_path: Option<SharedString>,
@@ -437,6 +438,7 @@ pub struct Markdown {
     autoscroll_request: Option<usize>,
     pressed_link: Option<SharedString>,
     wrapped_code_blocks: HashSet<usize>,
+    code_block_scroll_handles: HashMap<usize, ScrollHandle>,
 }
 
 impl Markdown {
@@ -469,6 +471,7 @@ impl Markdown {
             autoscroll_request: None,
             pressed_link: None,
             wrapped_code_blocks: HashSet::new(),
+            code_block_scroll_handles: HashMap::new(),
         };
         this.schedule_parse(cx);
         this
@@ -504,6 +507,20 @@ impl Markdown {
     /// Returns whether the published document trails the canonical source.
     pub fn is_parsing(&self) -> bool {
         self.pending_parse.is_some() || self.parsed.source.as_ref() != self.source
+    }
+
+    /// Returns the persistent horizontal scroll handle for one unwrapped code block.
+    fn code_block_scroll_handle(&mut self, source_start: usize) -> ScrollHandle {
+        self.code_block_scroll_handles
+            .entry(source_start)
+            .or_default()
+            .clone()
+    }
+
+    /// Drops scroll state for code blocks that are no longer horizontally scrollable.
+    fn retain_code_block_scroll_handles(&mut self, active: &HashSet<usize>) {
+        self.code_block_scroll_handles
+            .retain(|source_start, _| active.contains(source_start));
     }
 
     /// Returns canonical source offsets for every parsed root block.
@@ -851,6 +868,7 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
                     .then(|| render_mermaid_data_uri(&code_text))
                     .flatten();
                     let code_text: SharedString = code_text.into();
+                    let display_code = code_block_display_text(&code_text);
                     let highlight = if let Some(info) = info.clone() {
                         super::node::CodeBlock::new_fenced(
                             code_text.clone(),
@@ -868,6 +886,7 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
                     blocks.push(ParsedBlock::Code(ParsedCodeBlock {
                         source: start..range.end,
                         code: code_text,
+                        display_code,
                         language,
                         info,
                         source_path,
@@ -1161,6 +1180,14 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
         headings: Arc::new(headings),
         footnotes: Arc::new(footnotes),
     }
+}
+
+/// Removes only the terminal newline introduced before a Markdown closing fence.
+fn code_block_display_text(code: &SharedString) -> SharedString {
+    code.strip_suffix('\n').map_or_else(
+        || code.clone(),
+        |display| SharedString::from(display.to_string()),
+    )
 }
 
 fn render_mermaid_data_uri(source: &str) -> Option<SharedString> {
@@ -2025,6 +2052,7 @@ fn render_code_block(
     style: &MarkdownStyle,
     renderer: &CodeBlockRenderer,
     wrapped: bool,
+    scroll_handle: Option<&ScrollHandle>,
     markdown: &Entity<Markdown>,
 ) -> (AnyElement, RenderedLine) {
     let mut code_style = style.base_text_style.clone();
@@ -2033,7 +2061,8 @@ fn render_code_block(
         font_size: style.inline_code.font_size,
         ..Default::default()
     });
-    let text = block.code.clone();
+    let text = block.display_code.clone();
+    let display_len = text.len();
     let mut runs = Vec::new();
     let mut cursor = 0;
     for (range, highlight) in block.highlight.styles(&style.syntax) {
@@ -2087,7 +2116,7 @@ fn render_code_block(
                         text,
                         source: block.source.clone(),
                         mappings: vec![SegmentMapping {
-                            rendered: 0..block.code.len(),
+                            rendered: 0..display_len,
                             source: block.source.clone(),
                         }]
                         .into(),
@@ -2103,7 +2132,6 @@ fn render_code_block(
                 .w_full()
                 .min_w_0()
                 .mb_3()
-                .p_2()
                 .rounded_lg()
                 .bg(style.rule_color.opacity(0.08));
             container.style().text = text_refinement(&code_style);
@@ -2114,13 +2142,27 @@ fn render_code_block(
                     .border_1()
                     .border_color(style.rule_color);
             }
-            if style.code_block_overflow_x_scroll && !wrapped {
-                container = container.overflow_x_scroll();
-            }
-            container = if wrapped {
-                container.whitespace_normal()
+            let content = if let Some(scroll_handle) = scroll_handle {
+                div()
+                    .id(("markdown-code-content", block.source.start))
+                    .flex()
+                    .w_full()
+                    .min_w_0()
+                    .p_2()
+                    .whitespace_nowrap()
+                    .overflow_x_scroll()
+                    .restrict_scroll_to_axis()
+                    .track_scroll(scroll_handle)
+                    .child(styled_text)
             } else {
-                container.whitespace_nowrap()
+                div()
+                    .id(("markdown-code-content", block.source.start))
+                    .w_full()
+                    .min_w_0()
+                    .p_2()
+                    .when(wrapped, |this| this.whitespace_normal())
+                    .when(!wrapped, |this| this.whitespace_nowrap())
+                    .child(styled_text)
             };
 
             let actions = h_flex()
@@ -2191,10 +2233,11 @@ fn render_code_block(
                     },
                 );
             let _ = context;
-            container
-                .child(actions)
-                .child(styled_text)
-                .into_any_element()
+            container = container.child(content).child(actions);
+            if let Some(scroll_handle) = scroll_handle {
+                container = container.horizontal_scrollbar(scroll_handle);
+            }
+            container.into_any_element()
         }
     };
     (
@@ -2204,7 +2247,7 @@ fn render_code_block(
             text,
             source: block.source.clone(),
             mappings: vec![SegmentMapping {
-                rendered: 0..block.code.len(),
+                rendered: 0..display_len,
                 source: block.source.clone(),
             }]
             .into(),
@@ -2245,6 +2288,7 @@ impl Element for MarkdownElement {
         root.style().refine(&self.style.container_style);
         root.style().text = text_refinement(&self.style.base_text_style);
         let mut rendered = RenderedText::default();
+        let mut active_code_block_scroll_handles = HashSet::new();
 
         for block in parsed.blocks.iter() {
             match block {
@@ -2277,16 +2321,28 @@ impl Element for MarkdownElement {
                             &self.style,
                             &self.code_block_renderer,
                             wrapped_code_blocks.contains(&block.source.start),
+                            None,
                             &self.markdown,
                         );
                         rendered.lines.push(line);
                         continue;
                     }
+                    let wrapped = wrapped_code_blocks.contains(&block.source.start);
+                    let scroll_handle = (self.style.code_block_overflow_x_scroll
+                        && !wrapped
+                        && block.mermaid_data_uri.is_none())
+                    .then(|| {
+                        active_code_block_scroll_handles.insert(block.source.start);
+                        self.markdown.update(cx, |markdown, _| {
+                            markdown.code_block_scroll_handle(block.source.start)
+                        })
+                    });
                     let (element, line) = render_code_block(
                         block,
                         &self.style,
                         &self.code_block_renderer,
-                        wrapped_code_blocks.contains(&block.source.start),
+                        wrapped,
+                        scroll_handle.as_ref(),
                         &self.markdown,
                     );
                     root = root.child(element);
@@ -2303,6 +2359,10 @@ impl Element for MarkdownElement {
                 }
             }
         }
+
+        self.markdown.update(cx, |markdown, _| {
+            markdown.retain_code_block_scroll_handles(&active_code_block_scroll_handles);
+        });
 
         let mut element = root.into_any_element();
         let layout = element.request_layout(window, cx);
@@ -2597,6 +2657,22 @@ impl IntoElement for MarkdownElement {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
+
+    use gpui::{Context, Render, ScrollDelta, ScrollWheelEvent, VisualTestContext};
+
+    struct CodeBlockScrollTestRoot {
+        markdown: Entity<Markdown>,
+    }
+
+    impl Render for CodeBlockScrollTestRoot {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(220.)).child(MarkdownElement::new(
+                self.markdown.clone(),
+                MarkdownStyle::themed(MarkdownFont::Agent, window, cx),
+            ))
+        }
+    }
 
     #[test]
     fn parser_preserves_ordered_start_callout_and_code_info() {
@@ -2635,6 +2711,22 @@ mod tests {
             ParsedBlock::Code(ParsedCodeBlock { language: Some(language), info: Some(info), .. })
                 if language.as_ref() == "rust" && info.as_ref() == "rust src/main.rs"
         )));
+    }
+
+    #[test]
+    fn code_block_display_trims_one_terminal_newline_without_changing_copy_source() {
+        let parsed = parse_markdown(
+            "```rust\nlet value = 1;\n\n```".into(),
+            MarkdownOptions::default(),
+        );
+        let ParsedBlock::Code(block) = &parsed.blocks[0] else {
+            panic!("expected code block");
+        };
+
+        assert_eq!(block.code.as_ref(), "let value = 1;\n\n");
+        assert_eq!(block.display_code.as_ref(), "let value = 1;\n");
+        assert_eq!(code_block_display_text(&"plain".into()).as_ref(), "plain");
+        assert_eq!(code_block_display_text(&"two\n\n".into()).as_ref(), "two\n");
     }
 
     #[test]
@@ -2729,6 +2821,85 @@ mod tests {
             assert_eq!(markdown.parsed.source.as_ref(), "base one two 三");
             assert!(!markdown.is_parsing());
         });
+    }
+
+    #[gpui::test]
+    fn code_block_scroll_handles_reuse_state_and_clear_inactive_blocks(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("", cx)));
+        let first = markdown.update(cx, |markdown, _| markdown.code_block_scroll_handle(7));
+        first.set_offset(point(px(-24.), px(0.)));
+
+        let reused = markdown.update(cx, |markdown, _| markdown.code_block_scroll_handle(7));
+        assert_eq!(reused.offset().x, px(-24.));
+
+        markdown.update(cx, |markdown, _| {
+            markdown.retain_code_block_scroll_handles(&HashSet::new());
+        });
+        let replaced = markdown.update(cx, |markdown, _| markdown.code_block_scroll_handle(7));
+        assert_eq!(replaced.offset().x, px(0.));
+    }
+
+    #[gpui::test]
+    fn long_code_block_tracks_horizontal_scroll_without_vertical_remapping(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let markdown_slot = Rc::new(RefCell::new(None));
+        let slot = markdown_slot.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let markdown = cx.new(|cx| {
+                Markdown::new(
+                    "```text\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\n```",
+                    cx,
+                )
+            });
+            *slot.borrow_mut() = Some(markdown.clone());
+            let content = cx.new(|_| CodeBlockScrollTestRoot { markdown });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        let markdown = markdown_slot
+            .borrow()
+            .clone()
+            .expect("markdown entity should be captured");
+        let scroll_handle = markdown.read_with(cx, |markdown, _| {
+            markdown
+                .code_block_scroll_handles
+                .values()
+                .next()
+                .cloned()
+                .expect("code block scroll handle")
+        });
+        assert!(scroll_handle.max_offset().x > px(0.));
+
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(20.), px(20.)),
+            delta: ScrollDelta::Pixels(point(px(-40.), px(0.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert!(scroll_handle.offset().x < px(0.));
+
+        let horizontal_offset = scroll_handle.offset().x;
+        cx.simulate_event(ScrollWheelEvent {
+            position: point(px(20.), px(20.)),
+            delta: ScrollDelta::Pixels(point(px(0.), px(-40.))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert_eq!(scroll_handle.offset().x, horizontal_offset);
     }
 
     #[test]
