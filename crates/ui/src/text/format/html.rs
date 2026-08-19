@@ -83,35 +83,96 @@ pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument
 
 /// Parses one inline HTML image tag without constructing a full Markdown document.
 pub(crate) fn parse_inline_image(source: &str) -> Option<ImageNode> {
-    fn find_image(node: &Rc<Node>) -> Option<ImageNode> {
-        if let NodeData::Element {
-            ref name,
-            ref attrs,
-            ..
-        } = node.data
-            && name.local == local_name!("img")
-        {
-            let src = attr_value(attrs, local_name!("src"))?;
-            let (width, height) = attr_width_height(attrs);
-            return Some(ImageNode {
-                url: src.into(),
-                link: None,
-                title: attr_value(attrs, local_name!("title")).map(Into::into),
-                alt: attr_value(attrs, local_name!("alt")).map(Into::into),
-                width,
-                height,
-            });
-        }
+    let attrs = inline_tag_attributes(source, "img")?;
+    let styles = attrs
+        .get("style")
+        .map(|style| inline_style_attributes(style))
+        .unwrap_or_default();
+    let dimension = |name: &str| {
+        attrs
+            .get(name)
+            .or_else(|| styles.get(name))
+            .and_then(|value| value_to_length(value))
+    };
+    Some(ImageNode {
+        url: attrs.get("src")?.clone().into(),
+        link: None,
+        title: attrs.get("title").cloned().map(Into::into),
+        alt: attrs.get("alt").cloned().map(Into::into),
+        width: dimension("width"),
+        height: dimension("height"),
+    })
+}
 
-        node.children.borrow().iter().find_map(find_image)
+/// Extracts the destination from one inline HTML anchor tag.
+pub(crate) fn parse_inline_link(source: &str) -> Option<SharedString> {
+    inline_tag_attributes(source, "a")?
+        .remove("href")
+        .map(Into::into)
+}
+
+/// Scans one standalone opening tag without allocating an HTML DOM.
+fn inline_tag_attributes(source: &str, expected_tag: &str) -> Option<HashMap<String, String>> {
+    let source = source.trim().strip_prefix('<')?.strip_suffix('>')?.trim();
+    if source.starts_with('/') {
+        return None;
+    }
+    let tag_end = source
+        .find(|character: char| character.is_ascii_whitespace() || character == '/')
+        .unwrap_or(source.len());
+    if !source[..tag_end].eq_ignore_ascii_case(expected_tag) {
+        return None;
     }
 
-    let mut cursor = std::io::Cursor::new(cleanup_html(source));
-    let dom = parse_document(RcDom::default(), ParseOpts::default())
-        .from_utf8()
-        .read_from(&mut cursor)
-        .ok()?;
-    find_image(&dom.document)
+    let mut attrs = HashMap::new();
+    let mut rest = source[tag_end..].trim_start();
+    while !rest.is_empty() && rest != "/" {
+        let key_end = rest
+            .find(|character: char| {
+                character.is_ascii_whitespace() || character == '=' || character == '/'
+            })
+            .unwrap_or(rest.len());
+        if key_end == 0 {
+            rest = rest[1..].trim_start();
+            continue;
+        }
+        let key = rest[..key_end].to_ascii_lowercase();
+        rest = rest[key_end..].trim_start();
+        if !rest.starts_with('=') {
+            attrs.insert(key, String::new());
+            continue;
+        }
+        rest = rest[1..].trim_start();
+        let (value, remaining) = match rest.chars().next() {
+            Some(quote @ ('\'' | '"')) => {
+                let value_start = quote.len_utf8();
+                let value_end = rest[value_start..]
+                    .find(quote)
+                    .map(|index| value_start + index)
+                    .unwrap_or(rest.len());
+                let remaining = rest.get(value_end + quote.len_utf8()..).unwrap_or_default();
+                (&rest[value_start..value_end], remaining)
+            }
+            Some(_) => {
+                let value_end = rest
+                    .find(|character: char| character.is_ascii_whitespace() || character == '/')
+                    .unwrap_or(rest.len());
+                (&rest[..value_end], &rest[value_end..])
+            }
+            None => ("", ""),
+        };
+        attrs.insert(key, value.to_string());
+        rest = remaining.trim_start();
+    }
+    Some(attrs)
+}
+
+fn inline_style_attributes(source: &str) -> HashMap<String, String> {
+    source
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .map(|(key, value)| (key.trim().to_ascii_lowercase(), value.trim().to_string()))
+        .collect()
 }
 
 fn cleanup_html(source: &str) -> Vec<u8> {
@@ -230,7 +291,7 @@ fn attr_width_height(
     (width, height)
 }
 
-fn parse_table_row(table: &mut Table, node: &Rc<Node>) {
+fn parse_table_row(table: &mut Table, node: &Rc<Node>, header_section: bool) {
     let mut row = TableRow::default();
     let mut count = 0;
     for child in node.children.borrow().iter() {
@@ -245,7 +306,12 @@ fn parse_table_row(table: &mut Table, node: &Rc<Node>) {
                 }
 
                 count += 1;
-                parse_table_cell(&mut row, child, attrs);
+                parse_table_cell(
+                    &mut row,
+                    child,
+                    attrs,
+                    header_section || name.local == local_name!("th"),
+                );
             }
             _ => {}
         }
@@ -260,15 +326,41 @@ fn parse_table_cell(
     row: &mut node::TableRow,
     node: &Rc<Node>,
     attrs: &RefCell<Vec<html5ever::Attribute>>,
+    is_header: bool,
 ) {
     let mut paragraph = Paragraph::default();
     for child in node.children.borrow().iter() {
         parse_paragraph(&mut paragraph, child);
     }
     let width = attr_width_height(attrs).0;
+    let styles = style_attrs(attrs);
+    let alignment = attr_value(attrs, local_name!("align"))
+        .or_else(|| styles.get("text-align").cloned())
+        .map(
+            |alignment| match alignment.trim().to_ascii_lowercase().as_str() {
+                "center" => node::ColumnumnAlign::Center,
+                "right" => node::ColumnumnAlign::Right,
+                _ => node::ColumnumnAlign::Left,
+            },
+        )
+        .unwrap_or(if is_header {
+            node::ColumnumnAlign::Center
+        } else {
+            node::ColumnumnAlign::Left
+        });
     let table_cell = node::TableCell {
         children: paragraph,
         width,
+        col_span: attr_value(attrs, local_name!("colspan"))
+            .and_then(|span| span.parse().ok())
+            .unwrap_or(1)
+            .max(1),
+        row_span: attr_value(attrs, local_name!("rowspan"))
+            .and_then(|span| span.parse().ok())
+            .unwrap_or(1)
+            .max(1),
+        is_header,
+        alignment,
     };
     row.children.push(table_cell);
 }
@@ -363,6 +455,16 @@ fn parse_paragraph(paragraph: &mut Paragraph, node: &Rc<Node>) {
             paragraph.push_str(&part);
         }
         NodeData::Element { name, attrs, .. } => match name.local {
+            local_name!("br") => paragraph.push_str("\n"),
+            local_name!("script")
+            | local_name!("style")
+            | local_name!("iframe")
+            | local_name!("object")
+            | local_name!("embed")
+            | local_name!("form")
+            | local_name!("audio")
+            | local_name!("video")
+            | local_name!("canvas") => {}
             local_name!("em") | local_name!("i") => {
                 merge_children_with_mark(node, paragraph, Some(TextMark::default().italic()));
             }
@@ -538,7 +640,10 @@ fn parse_node(
                 Some(BlockNode::List {
                     children,
                     ordered,
-                    start: None,
+                    start: ordered
+                        .then(|| attr_value(attrs, local_name!("start")))
+                        .flatten()
+                        .and_then(|start| start.parse().ok()),
                     span: None,
                 })
             }
@@ -584,12 +689,13 @@ fn parse_node(
                             if name.local == local_name!("tbody")
                                 || name.local == local_name!("thead") =>
                         {
+                            let header_section = name.local == local_name!("thead");
                             for sub_child in child.children.borrow().iter() {
-                                parse_table_row(&mut table, &sub_child);
+                                parse_table_row(&mut table, &sub_child, header_section);
                             }
                         }
                         _ => {
-                            parse_table_row(&mut table, &child);
+                            parse_table_row(&mut table, &child, false);
                         }
                     }
                 }
@@ -614,7 +720,15 @@ fn parse_node(
                     span: None,
                 })
             }
-            local_name!("style") | local_name!("script") => None,
+            local_name!("style")
+            | local_name!("script")
+            | local_name!("iframe")
+            | local_name!("object")
+            | local_name!("embed")
+            | local_name!("form")
+            | local_name!("audio")
+            | local_name!("video")
+            | local_name!("canvas") => None,
             _ => {
                 if BLOCK_ELEMENTS.contains(&name.local.trim()) {
                     let mut children: Vec<BlockNode> = vec![];

@@ -3,6 +3,7 @@ use gpui::App;
 mod column;
 mod data_table;
 mod delegate;
+mod grid;
 mod loading;
 mod state;
 mod table;
@@ -10,6 +11,7 @@ mod table;
 pub use column::*;
 pub use data_table::*;
 pub use delegate::*;
+pub use grid::*;
 pub use state::*;
 pub use table::*;
 

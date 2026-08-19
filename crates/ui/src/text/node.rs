@@ -847,6 +847,10 @@ pub(crate) struct TableRow {
 pub(crate) struct TableCell {
     pub children: Paragraph,
     pub width: Option<DefiniteLength>,
+    pub col_span: usize,
+    pub row_span: usize,
+    pub is_header: bool,
+    pub alignment: ColumnumnAlign,
 }
 
 impl Paragraph {
