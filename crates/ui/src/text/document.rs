@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use gpui::{
-    App, InteractiveElement as _, IntoElement, ListState, ParentElement as _, SharedString,
-    Styled as _, Window, div, prelude::FluentBuilder as _,
+    App, InteractiveElement as _, IntoElement, ParentElement as _, ScrollAnchor, SharedString,
+    StatefulInteractiveElement as _, Styled as _, Window, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
@@ -18,6 +18,33 @@ use crate::{
 pub(crate) struct ParsedDocument {
     pub(crate) source: SharedString,
     pub(crate) blocks: Vec<Arc<BlockNode>>,
+    pub(crate) events: Arc<[MarkdownSourceEvent]>,
+    pub(crate) root_block_starts: Arc<[usize]>,
+    pub(crate) heading_slugs: Arc<HashMap<SharedString, usize>>,
+    pub(crate) footnote_definitions: Arc<HashMap<SharedString, usize>>,
+}
+
+/// One parser event tied to its canonical Markdown byte range.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MarkdownSourceEvent {
+    pub(crate) range: Range<usize>,
+    pub(crate) kind: MarkdownSourceEventKind,
+}
+
+/// Stable event categories retained after parser lifetimes end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MarkdownSourceEventKind {
+    Start,
+    End,
+    Text,
+    Code,
+    Html,
+    SoftBreak,
+    HardBreak,
+    Rule,
+    TaskListMarker,
+    FootnoteReference,
+    Math,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -26,6 +53,7 @@ pub(crate) struct NodeRenderOptions {
     pub(crate) in_list: bool,
     pub(crate) todo: bool,
     pub(crate) ordered: bool,
+    pub(crate) ordered_start: u64,
     pub(crate) depth: usize,
     pub(crate) is_last: bool,
 }
@@ -54,6 +82,16 @@ impl ParsedDocument {
         text
     }
 
+    pub(super) fn selected_source(&self) -> Option<&str> {
+        let mut ranges = Vec::new();
+        for block in &self.blocks {
+            block.selected_source_ranges(&mut ranges);
+        }
+        let start = ranges.iter().map(|range| range.start).min()?;
+        let end = ranges.iter().map(|range| range.end).max()?;
+        self.source.get(start..end)
+    }
+
     /// Synchronously clear the selection stored in every inline state.
     ///
     /// This mirrors the [`selected_text`](Self::selected_text) traversal so the
@@ -80,24 +118,30 @@ impl ParsedDocument {
 
     pub(super) fn render_root(
         &self,
-        list_state: Option<ListState>,
+        scroll_anchors: &[ScrollAnchor],
         node_cx: &NodeContext,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        let Some(list_state) = list_state else {
-            let blocks_len = self.blocks.len();
-            return div()
-                .id("document")
-                .when_some(
-                    node_cx
-                        .markdown_style
-                        .element_style(MarkdownElementKind::Document),
-                    |this, style| this.refine_style(style),
-                )
-                .children(self.blocks.iter().enumerate().map(move |(ix, node)| {
-                    let is_last = ix + 1 == blocks_len;
-                    node.render_block(
+        let blocks_len = self.blocks.len();
+        div()
+            .id("document")
+            .refine_style(node_cx.markdown_style.base_text_style())
+            .when_some(
+                node_cx
+                    .markdown_style
+                    .element_style(MarkdownElementKind::Document),
+                |this, style| this.refine_style(style),
+            )
+            .children(self.blocks.iter().enumerate().map(move |(ix, node)| {
+                let is_last = ix + 1 == blocks_len;
+                div()
+                    .id(("root-block", ix))
+                    .w_full()
+                    .when_some(scroll_anchors.get(ix).cloned(), |this, anchor| {
+                        this.anchor_scroll(Some(anchor))
+                    })
+                    .child(node.render_block(
                         NodeRenderOptions {
                             ix,
                             is_last,
@@ -106,51 +150,7 @@ impl ParsedDocument {
                         node_cx,
                         window,
                         cx,
-                    )
-                }));
-        };
-
-        let options = NodeRenderOptions {
-            is_last: true,
-            ..Default::default()
-        };
-
-        let blocks = &self.blocks;
-
-        if list_state.item_count() != blocks.len() {
-            list_state.reset(blocks.len());
-        }
-
-        div()
-            .id("document")
-            .size_full()
-            .when_some(
-                node_cx
-                    .markdown_style
-                    .element_style(MarkdownElementKind::Document),
-                |this, style| this.refine_style(style),
-            )
-            .child(
-                gpui::list(list_state, {
-                    let node_cx = node_cx.clone();
-                    let blocks = blocks.clone();
-                    move |ix, window, cx| {
-                        let is_last = ix + 1 == blocks.len();
-                        blocks[ix]
-                            .render_block(
-                                NodeRenderOptions {
-                                    ix,
-                                    is_last,
-                                    ..options
-                                },
-                                &node_cx,
-                                window,
-                                cx,
-                            )
-                            .into_any_element()
-                    }
-                })
-                .size_full(),
-            )
+                    ))
+            }))
     }
 }

@@ -25,11 +25,10 @@ use hearth_gpui::{
     input::{Input, InputState},
     select::{Select, SelectState},
     table::{Column, DataTable, TableDelegate, TableState},
-    text::{TextView, markdown},
     v_flex,
 };
 
-use crate::{TestAction, section};
+use crate::{TestAction, markdown, section};
 
 pub struct DialogStory {
     focus_handle: FocusHandle,
@@ -350,7 +349,10 @@ impl DialogStory {
                             .show_overlay(dialog_overlay)
                             .dismiss_on_overlay_click(overlay_closable)
                             .title("Dialog with scrollbar")
-                            .child(markdown(include_str!("../../../../README.md")))
+                            .child(markdown(
+                                "dialog-scrollable-markdown",
+                                include_str!("../../../../README.md"),
+                            ))
                             .footer(|_, _| {
                                 DialogFooter::new()
                                     .gap_2()
@@ -509,17 +511,12 @@ impl DialogStory {
                                     .p_4()
                                     .child(DialogTitle::new().child("TextView Dialog")),
                             )
-                            .child(
-                                v_flex().px_4().pb_4().gap_3().child(
-                                    TextView::markdown(
-                                        "dialog-textview",
-                                        "This is a dialog with a selectable \
+                            .child(v_flex().px_4().pb_4().gap_3().child(markdown(
+                                "dialog-textview",
+                                "This is a dialog with a selectable \
                                         TextView in it. This text should be \
                                         selectable.",
-                                    )
-                                    .selectable(true),
-                                ),
-                            )
+                            )))
                             .child(
                                 DialogFooter::new()
                                     .p_4()

@@ -228,13 +228,11 @@ SettingItem::new(
 ### Markdown 描述
 
 ```rust
-use hearth_gpui::text::markdown;
-
 SettingItem::new(
     "Documentation",
     SettingField::element(...)
 )
-.description(markdown("Rust doc for the `hearth-gpui` crate."))
+.description("Rust docs for the hearth-gpui crate.")
 ```
 
 ### 禁用状态

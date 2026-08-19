@@ -23,7 +23,7 @@ use hearth_gpui::{
     menu::PopupMenu,
     notification::Notification,
     scroll::{ScrollableElement as _, ScrollbarShow},
-    text::markdown,
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
     v_flex,
 };
 use serde::{Deserialize, Serialize};
@@ -37,6 +37,32 @@ mod title_bar;
 pub use crate::title_bar::AppTitleBar;
 pub use gallery::Gallery;
 pub use stories::*;
+
+/// Story-only adapter that keeps Markdown state stable across renders.
+#[derive(IntoElement)]
+struct StoryMarkdown {
+    id: SharedString,
+    source: SharedString,
+}
+
+impl RenderOnce for StoryMarkdown {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let source = self.source.clone();
+        let markdown = window.use_keyed_state(self.id, cx, move |_, cx| Markdown::new(source, cx));
+        MarkdownElement::new(
+            markdown,
+            MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+        )
+    }
+}
+
+/// Renders persistent Markdown in stories without exposing a source-only core constructor.
+fn markdown(id: impl Into<SharedString>, source: impl Into<SharedString>) -> StoryMarkdown {
+    StoryMarkdown {
+        id: id.into(),
+        source: source.into(),
+    }
+}
 
 rust_i18n::i18n!("locales", fallback = "en");
 
@@ -244,6 +270,7 @@ pub fn init(cx: &mut App) {
                                     content
                                         .title("About")
                                         .description_element(markdown(
+                                            "about-markdown",
                                             "Hearth GPUI Storybook\n\n\
                                             Version 0.1.0\n\n\
                                             https://jonzhang3.github.io/hearth-gpui",

@@ -13,10 +13,11 @@ use hearth_gpui::{
     checkbox::Checkbox,
     description_list::{DescriptionItem, DescriptionList},
     dock::PanelControl,
-    text::TextView,
     v_flex,
 };
 use serde::Deserialize;
+
+use crate::markdown;
 
 #[derive(Action, Clone, PartialEq, Eq, Deserialize)]
 #[action(namespace = description_list_story, no_json)]
@@ -196,7 +197,10 @@ impl Render for DescriptionListStory {
                             }
 
                             DescriptionItem::new(label)
-                                .value(TextView::markdown(ix, value).into_any_element())
+                                .value(
+                                    markdown(format!("description-list-markdown-{ix}"), value)
+                                        .into_any_element(),
+                                )
                                 .span(span)
                         },
                     )),

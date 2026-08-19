@@ -77,6 +77,7 @@ pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument
     Ok(ParsedDocument {
         source: source.to_string().into(),
         blocks: vec![Arc::new(node)],
+        ..Default::default()
     })
 }
 
@@ -504,6 +505,7 @@ fn parse_node(
                 Some(BlockNode::List {
                     children,
                     ordered,
+                    start: None,
                     span: None,
                 })
             }
@@ -575,6 +577,7 @@ fn parse_node(
                 let children = consume_children_nodes(node, paragraph, cx);
                 Some(BlockNode::Blockquote {
                     children,
+                    kind: None,
                     span: None,
                 })
             }
@@ -779,7 +782,8 @@ mod tests {
                         ..Default::default()
                     })],
                     ..Default::default()
-                }))]
+                }))],
+                ..Default::default()
             }
         );
 
@@ -800,7 +804,8 @@ mod tests {
                         ..Default::default()
                     })],
                     ..Default::default()
-                }))]
+                }))],
+                ..Default::default()
             }
         );
     }

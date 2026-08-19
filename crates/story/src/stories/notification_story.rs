@@ -15,11 +15,10 @@ use hearth_gpui::{
     h_flex,
     menu::{DropdownMenu as _, PopupMenuItem},
     notification::{Notification, NotificationType},
-    text::markdown,
     v_flex,
 };
 
-use crate::section;
+use crate::{markdown, section};
 
 const NOTIFICATION_MARKDOWN: &str = r#"
 This is a custom notification.
@@ -435,7 +434,8 @@ impl Render for NotificationStory {
                         .on_click(cx.listener(|_, _, window, cx| {
                             window.push_notification(
                                 Notification::new().content(|_, _, _| {
-                                    markdown(NOTIFICATION_MARKDOWN).into_any_element()
+                                    markdown("notification-custom-markdown", NOTIFICATION_MARKDOWN)
+                                        .into_any_element()
                                 }),
                                 cx,
                             )

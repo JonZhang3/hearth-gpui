@@ -17,7 +17,6 @@ use hearth_gpui::{
         NumberFieldOptions, RenderOptions, SettingField, SettingFieldElement, SettingGroup,
         SettingItem, SettingPage, Settings,
     },
-    text::markdown,
     v_flex,
 };
 
@@ -477,9 +476,7 @@ impl SettingsStory {
                                 "https://docs.rs/hearth-gpui"
                             )),
                         )
-                        .description(markdown(
-                            "Rust doc for the `hearth-gpui` crate.",
-                        )),
+                        .description("Rust docs for the hearth-gpui crate."),
                         SettingItem::new(
                             "Website",
                             SettingField::render(|options, _window, _cx| {

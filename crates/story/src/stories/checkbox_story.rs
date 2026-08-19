@@ -9,11 +9,9 @@ use gpui::{
     Window, div, px,
 };
 
-use hearth_gpui::{
-    ActiveTheme, Disableable as _, Sizable, checkbox::Checkbox, h_flex, text::markdown, v_flex,
-};
+use hearth_gpui::{ActiveTheme, Disableable as _, Sizable, checkbox::Checkbox, h_flex, v_flex};
 
-use crate::section;
+use crate::{markdown, section};
 
 pub struct CheckboxStory {
     focus_handle: gpui::FocusHandle,
@@ -223,6 +221,7 @@ impl Render for CheckboxStory {
                             div()
                                 .text_color(cx.theme().muted_foreground)
                                 .child(markdown(
+                                    "checkbox-rich-description-markdown",
                                     "The [long long label](https://github.com) \
                             text used **Markdown**, \
                             it should wrap when the text is too long.",

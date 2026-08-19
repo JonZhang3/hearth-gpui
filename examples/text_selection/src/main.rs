@@ -13,13 +13,14 @@ use gpui::{prelude::FluentBuilder as _, *};
 use hearth_gpui::{
     button::Button,
     input::{Input, InputState},
-    text::TextView,
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
     *,
 };
 use hearth_gpui_assets::Assets;
 
 struct ChatExample {
     input: Entity<InputState>,
+    messages: Vec<Entity<Markdown>>,
 }
 
 impl ChatExample {
@@ -29,10 +30,19 @@ impl ChatExample {
                 InputState::new(window, cx)
                     .placeholder("Type here (selection must NOT start from here)")
             }),
+            messages: [
+                "**Hello!** How can I help you today?",
+                "I want to select text *across* multiple bubbles.",
+                "Sure — selection is local to each Markdown entity, then press `cmd-c` to copy it.",
+                "Nice, it keeps source-mapped selection stable.",
+            ]
+            .into_iter()
+            .map(|source| cx.new(|cx| Markdown::new(source, cx)))
+            .collect(),
         }
     }
 
-    fn bubble(&self, ix: usize, text: &str, mine: bool, cx: &App) -> impl IntoElement {
+    fn bubble(&self, ix: usize, mine: bool, window: &Window, cx: &App) -> impl IntoElement {
         div().flex().when(mine, |this| this.justify_end()).child(
             div()
                 .max_w(px(420.))
@@ -43,34 +53,24 @@ impl ChatExample {
                 } else {
                     cx.theme().muted
                 })
-                // `selectable(true)` opts this TextView into window-level
-                // selection, so a drag started anywhere can extend into it.
-                .child(TextView::markdown(("msg", ix), text).selectable(true)),
+                .child(MarkdownElement::new(
+                    self.messages[ix].clone(),
+                    MarkdownStyle::themed(MarkdownFont::Agent, window, cx),
+                )),
         )
     }
 }
 
 impl Render for ChatExample {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .p_4()
             .gap_3()
-            .child(self.bubble(0, "**Hello!** How can I help you today?", false, cx))
-            .child(self.bubble(
-                1,
-                "I want to select text *across* multiple bubbles.",
-                true,
-                cx,
-            ))
-            .child(self.bubble(
-                2,
-                "Sure — drag from anywhere, even from the blank space between \
-                 bubbles, then press `cmd-c` to copy everything.",
-                false,
-                cx,
-            ))
-            .child(self.bubble(3, "Nice, it also keeps the top-to-bottom order.", true, cx))
+            .child(self.bubble(0, false, window, cx))
+            .child(self.bubble(1, true, window, cx))
+            .child(self.bubble(2, false, window, cx))
+            .child(self.bubble(3, true, window, cx))
             .child(div().flex_1())
             .child(Button::new("noop").label("Clicking me must not start selection"))
             .child(Input::new(&self.input))

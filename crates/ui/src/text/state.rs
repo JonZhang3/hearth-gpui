@@ -8,9 +8,9 @@ use std::{
 };
 
 use gpui::{
-    App, AppContext as _, Bounds, Context, FocusHandle, FollowMode, IntoElement, KeyBinding,
-    ListState, ParentElement as _, Pixels, Point, Render, SharedString, Styled as _, Task, Window,
-    prelude::FluentBuilder as _, px,
+    App, AppContext as _, Bounds, Context, FocusHandle, IntoElement, KeyBinding,
+    ParentElement as _, Pixels, Point, Render, ScrollAnchor, ScrollHandle, SharedString,
+    Styled as _, Task, Window, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
@@ -19,8 +19,9 @@ use crate::{
     input::{self, SelectAll},
     scroll::AutoScroll,
     text::{
-        CodeBlockActionsFn, MarkdownBlockRenderers, MarkdownExtensions, MarkdownLinkClickFn,
-        MarkdownLinkHandler, MarkdownResourcePolicy, MarkdownStyle, TextViewStyle,
+        CodeBlockActionsFn, LegacyMarkdownStyle, MarkdownBlockRenderers, MarkdownExtensions,
+        MarkdownLinkClickFn, MarkdownLinkHandler, MarkdownOptions, MarkdownResourcePolicy,
+        MarkdownStyleProfile, TextViewStyle,
         document::ParsedDocument,
         format,
         node::{self, NodeContext},
@@ -35,7 +36,7 @@ const MAX_COALESCED_UPDATES_PER_PARSE: usize = 64;
 
 /// Controls how provider deltas are batched and when an implicit stream settles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct StreamingMarkdownConfig {
+pub(crate) struct StreamingMarkdownConfig {
     /// Minimum delay between progressive Markdown parses during an explicit stream.
     pub parse_interval: Duration,
     /// Idle delay used by the backwards-compatible implicit streaming path.
@@ -77,20 +78,24 @@ pub(super) enum TextViewFormat {
 pub struct TextViewState {
     pub(super) focus_handle: FocusHandle,
     pub(super) entity_id: gpui::EntityId,
-    pub(super) list_state: ListState,
 
     /// The bounds of the text view
     bounds: Bounds<Pixels>,
 
     pub(super) selectable: bool,
-    pub(super) scrollable: bool,
-    pub(super) follow_tail: bool,
+    scroll_handle: Option<ScrollHandle>,
+    root_scroll_anchors: Vec<ScrollAnchor>,
+    pending_scroll_block: Option<usize>,
     pub(super) text_view_style: TextViewStyle,
     pub(super) code_block_actions: Option<std::sync::Arc<CodeBlockActionsFn>>,
     pub(super) markdown_extensions: Arc<MarkdownExtensions>,
-    pub(super) markdown_style: Arc<MarkdownStyle>,
+    pub(super) markdown_style: Arc<LegacyMarkdownStyle>,
     pub(super) markdown_block_renderers: Arc<MarkdownBlockRenderers>,
     pub(super) markdown_resource_policy: MarkdownResourcePolicy,
+    markdown_options: MarkdownOptions,
+    markdown_style_profile: MarkdownStyleProfile,
+    search_matches: Arc<Vec<std::ops::Range<usize>>>,
+    active_search_match: Option<usize>,
     pub(super) on_link_click: Option<Arc<MarkdownLinkClickFn>>,
 
     pub(super) is_selecting: bool,
@@ -129,7 +134,7 @@ pub struct TextViewState {
 
 impl TextViewState {
     /// Create a Markdown TextViewState.
-    pub fn markdown(text: &str, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn markdown(text: &str, cx: &mut Context<Self>) -> Self {
         Self::new(TextViewFormat::Markdown, text, cx)
     }
 
@@ -155,20 +160,8 @@ impl TextViewState {
                             return;
                         }
 
-                        let known_changed = parsed_update.changed_blocks;
                         match parsed_update.result {
                             Ok(content) => {
-                                if let Some(changed) = known_changed.filter(|changed| {
-                                    changed.old_len == state.parsed_content.document.blocks.len()
-                                }) {
-                                    remeasure_known_blocks(&state.list_state, changed);
-                                } else {
-                                    remeasure_changed_blocks(
-                                        &state.list_state,
-                                        &state.parsed_content.document,
-                                        &content.document,
-                                    );
-                                }
                                 state.parsed_content = content;
                                 state.rendered_revision = parsed_update.revision;
                                 state.parsed_error = None;
@@ -211,19 +204,19 @@ impl TextViewState {
             selected_text_override: None,
             select_all: false,
             selectable: false,
-            scrollable: false,
-            follow_tail: false,
-            // Measure all blocks (not just visible ones) so the scrollbar
-            // thumb size stays stable. Without this, off-screen blocks count
-            // as zero height until scrolled into view, which makes the
-            // scrollbar jitter as more blocks get measured during scrolling.
-            list_state: ListState::new(0, gpui::ListAlignment::Top, px(1000.)).measure_all(),
+            scroll_handle: None,
+            root_scroll_anchors: Vec::new(),
+            pending_scroll_block: None,
             text_view_style: TextViewStyle::default(),
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
             markdown_block_renderers: Arc::default(),
             markdown_resource_policy: MarkdownResourcePolicy::default(),
+            markdown_options: MarkdownOptions::default(),
+            markdown_style_profile: MarkdownStyleProfile::Agent,
+            search_matches: Arc::default(),
+            active_search_match: None,
             on_link_click: None,
             is_selecting: false,
             auto_scroll: AutoScroll::default(),
@@ -257,6 +250,48 @@ impl TextViewState {
         self.parsed_content.document.source.clone()
     }
 
+    /// Return the complete received source, including provider deltas waiting
+    /// for the next progressive parse.
+    pub(crate) fn complete_source(&self) -> SharedString {
+        self.text.clone().into()
+    }
+
+    /// Return whether a newer Markdown revision is waiting to be rendered.
+    pub(crate) fn is_parsing(&self) -> bool {
+        self.rendered_revision < self.revision || !self.streaming_pending.is_empty()
+    }
+
+    pub(crate) fn heading_offset(&self, slug: &str) -> Option<usize> {
+        self.parsed_content
+            .document
+            .heading_slugs
+            .get(slug)
+            .copied()
+    }
+
+    pub(crate) fn footnote_definition_offset(&self, label: &str) -> Option<usize> {
+        self.parsed_content
+            .document
+            .footnote_definitions
+            .get(label)
+            .copied()
+    }
+
+    pub(crate) fn root_block_starts(&self) -> Arc<[usize]> {
+        self.parsed_content.document.root_block_starts.clone()
+    }
+
+    /// Scroll to the root Markdown block containing the canonical source offset.
+    pub(crate) fn scroll_to_source_index(&mut self, source_index: usize, cx: &mut Context<Self>) {
+        let starts = &self.parsed_content.document.root_block_starts;
+        self.pending_scroll_block = Some(
+            starts
+                .partition_point(|start| *start <= source_index)
+                .saturating_sub(1),
+        );
+        cx.notify();
+    }
+
     /// Set whether the text is selectable, default false.
     pub fn selectable(mut self, selectable: bool) -> Self {
         self.selectable = selectable;
@@ -269,42 +304,31 @@ impl TextViewState {
         cx.notify();
     }
 
-    /// Set whether the text is selectable, default false.
-    pub fn scrollable(mut self, scrollable: bool) -> Self {
-        self.scrollable = scrollable;
-        self
+    /// Connect navigation and selection auto-scroll to the host-owned scroll area.
+    pub(crate) fn set_scroll_handle(
+        &mut self,
+        scroll_handle: Option<ScrollHandle>,
+        cx: &mut Context<Self>,
+    ) {
+        let availability_changed = self.scroll_handle.is_some() != scroll_handle.is_some();
+        self.scroll_handle = scroll_handle;
+        if availability_changed {
+            self.root_scroll_anchors.clear();
+            cx.notify();
+        }
     }
 
-    /// Set whether the text is selectable, default false.
-    pub fn set_scrollable(&mut self, scrollable: bool, cx: &mut Context<Self>) {
-        if !scrollable {
-            self.reset_selection();
-        }
-        self.scrollable = scrollable;
-        cx.notify();
-    }
-
-    /// Enable or disable native tail-following for a scrollable text view.
-    pub fn set_follow_tail(&mut self, follow: bool, cx: &mut Context<Self>) {
-        if self.follow_tail == follow {
-            return;
-        }
-        self.follow_tail = follow;
-        self.list_state.set_follow_mode(if follow {
-            FollowMode::Tail
-        } else {
-            FollowMode::Normal
-        });
-        cx.notify();
+    pub(super) fn has_scroll_handle(&self) -> bool {
+        self.scroll_handle.is_some()
     }
 
     /// Start an explicit LLM streaming session with the default batching policy.
-    pub fn begin_streaming(&mut self, cx: &mut Context<Self>) {
+    pub(crate) fn begin_streaming(&mut self, cx: &mut Context<Self>) {
         self.begin_streaming_with_config(StreamingMarkdownConfig::default(), cx);
     }
 
     /// Start an explicit LLM streaming session with a custom batching policy.
-    pub fn begin_streaming_with_config(
+    pub(crate) fn begin_streaming_with_config(
         &mut self,
         config: StreamingMarkdownConfig,
         cx: &mut Context<Self>,
@@ -382,6 +406,40 @@ impl TextViewState {
         }
     }
 
+    /// Replace optional Markdown behavior and reparse the canonical source.
+    pub(crate) fn set_markdown_options(
+        &mut self,
+        options: MarkdownOptions,
+        cx: &mut Context<Self>,
+    ) {
+        if self.markdown_options == options {
+            return;
+        }
+        self.markdown_options = options;
+        self.parsed_content.node_cx.markdown_options = options;
+        if self.format == TextViewFormat::Markdown {
+            let text = self.text.clone();
+            self.increment_update(&text, UpdateKind::Replace, cx);
+        }
+    }
+
+    /// Replace the built-in Markdown profile and reparse profile-sensitive breaks.
+    pub(crate) fn set_markdown_style_profile(
+        &mut self,
+        profile: MarkdownStyleProfile,
+        cx: &mut Context<Self>,
+    ) {
+        if self.markdown_style_profile == profile {
+            return;
+        }
+        self.markdown_style_profile = profile;
+        self.parsed_content.node_cx.markdown_style_profile = profile;
+        if self.format == TextViewFormat::Markdown {
+            let text = self.text.clone();
+            self.increment_update(&text, UpdateKind::Replace, cx);
+        }
+    }
+
     /// Return the selected text.
     pub fn selected_text(&self) -> String {
         if self.select_all {
@@ -393,6 +451,74 @@ impl TextViewState {
         }
 
         self.parsed_content.document.selected_text()
+    }
+
+    pub(crate) fn selected_source(&self) -> Option<&str> {
+        self.parsed_content.document.selected_source()
+    }
+
+    /// Find literal query occurrences in canonical source and update rendered highlights.
+    pub(crate) fn search(
+        &mut self,
+        query: &str,
+        case_sensitive: bool,
+        cx: &mut Context<Self>,
+    ) -> usize {
+        let matches = if query.is_empty() {
+            Vec::new()
+        } else {
+            regex::RegexBuilder::new(&regex::escape(query))
+                .case_insensitive(!case_sensitive)
+                .build()
+                .map(|pattern| {
+                    pattern
+                        .find_iter(&self.text)
+                        .map(|matched| matched.range())
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let count = matches.len();
+        self.search_matches = Arc::new(matches);
+        self.active_search_match = (count > 0).then_some(0);
+        cx.notify();
+        count
+    }
+
+    /// Replace source-indexed search ranges and select one active result.
+    pub(crate) fn set_search_highlights(
+        &mut self,
+        highlights: Vec<std::ops::Range<usize>>,
+        active: Option<usize>,
+        cx: &mut Context<Self>,
+    ) {
+        self.active_search_match = active.filter(|index| *index < highlights.len());
+        self.search_matches = Arc::new(highlights);
+        cx.notify();
+    }
+
+    /// Remove every source-indexed search highlight.
+    pub(crate) fn clear_search_highlights(&mut self, cx: &mut Context<Self>) {
+        if self.search_matches.is_empty() && self.active_search_match.is_none() {
+            return;
+        }
+        self.search_matches = Arc::default();
+        self.active_search_match = None;
+        cx.notify();
+    }
+
+    pub(crate) fn search_highlights(&self) -> &[std::ops::Range<usize>] {
+        &self.search_matches
+    }
+
+    pub(crate) fn active_search_match(&self) -> Option<usize> {
+        self.active_search_match
+    }
+
+    /// Select the emphasized occurrence among the current search results.
+    pub(crate) fn set_active_search_match(&mut self, index: Option<usize>, cx: &mut Context<Self>) {
+        self.active_search_match = index.filter(|index| *index < self.search_matches.len());
+        cx.notify();
     }
 
     fn increment_update(&mut self, text: &str, kind: UpdateKind, cx: &mut Context<Self>) {
@@ -423,11 +549,6 @@ impl TextViewState {
         if kind == UpdateKind::Replace {
             match parse_content(self.format, ParsedContent::default(), text, &update_options) {
                 Ok(content) => {
-                    remeasure_changed_blocks(
-                        &self.list_state,
-                        &self.parsed_content.document,
-                        &content.document,
-                    );
                     self.parsed_content = content;
                     self.rendered_revision = self.revision;
                     self.settled_source_revision = self.source_revision;
@@ -602,14 +723,6 @@ impl TextViewState {
         cx.notify();
     }
 
-    pub(super) fn scroll_offset(&self) -> Point<Pixels> {
-        if self.scrollable {
-            self.list_state.scroll_px_offset_for_scrollbar()
-        } else {
-            Point::default()
-        }
-    }
-
     /// Select all rendered text in this view.
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         self.multi_click_selection = None;
@@ -626,8 +739,7 @@ impl TextViewState {
         kind: TextViewMultiClickKind,
         selected_text: String,
     ) {
-        let scroll_offset = self.scroll_offset();
-        let pos = pos - self.bounds.origin - scroll_offset;
+        let pos = pos - self.bounds.origin;
         self.multi_click_selection = Some(TextViewMultiClickSelection { pos, kind });
         self.selected_text_override = Some(selected_text);
         self.select_all = false;
@@ -636,8 +748,17 @@ impl TextViewState {
     }
 
     pub(super) fn set_auto_scroll(&mut self, delta: Option<Pixels>, cx: &mut Context<Self>) {
+        if self.scroll_handle.is_none() {
+            self.auto_scroll.stop();
+            return;
+        }
         self.auto_scroll.set(delta, cx, |delta, state, cx| {
-            state.list_state.scroll_by(delta);
+            let Some(handle) = &state.scroll_handle else {
+                return;
+            };
+            let mut offset = handle.offset();
+            offset.y = (offset.y - delta).clamp(-handle.max_offset().y, px(0.));
+            handle.set_offset(offset);
             cx.notify();
         });
     }
@@ -693,9 +814,8 @@ impl TextViewState {
     }
 
     pub(crate) fn multi_click_selection(&self) -> Option<TextViewMultiClickSelection> {
-        let scroll_offset = self.scroll_offset();
         self.multi_click_selection.map(|selection| {
-            let pos = selection.pos + scroll_offset + self.bounds.origin;
+            let pos = selection.pos + self.bounds.origin;
             TextViewMultiClickSelection { pos, ..selection }
         })
     }
@@ -728,17 +848,33 @@ impl Render for TextViewState {
             on_click: self.on_link_click.clone(),
         };
         node_cx.source = document.source.clone();
+        node_cx.search_matches = self.search_matches.clone();
+        node_cx.active_search_match = self.active_search_match;
         node_cx.style = self.text_view_style.clone();
 
+        if self.root_scroll_anchors.len() != document.blocks.len() {
+            self.root_scroll_anchors = self
+                .scroll_handle
+                .as_ref()
+                .map(|handle| {
+                    (0..document.blocks.len())
+                        .map(|_| ScrollAnchor::for_handle(handle.clone()))
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+        if let Some(ix) = self.pending_scroll_block
+            && let Some(anchor) = self.root_scroll_anchors.get(ix)
+        {
+            anchor.scroll_to(window, cx);
+            self.pending_scroll_block = None;
+        }
+
         v_flex()
-            .size_full()
+            .w_full()
             .map(|this| match &mut self.parsed_error {
                 None => this.child(document.render_root(
-                    if self.scrollable {
-                        Some(self.list_state.clone())
-                    } else {
-                        None
-                    },
+                    &self.root_scroll_anchors,
                     &node_cx,
                     window,
                     cx,
@@ -779,7 +915,6 @@ struct UpdateFuture {
     source: String,
     epoch: usize,
     content: ParsedContent,
-    published_content: ParsedContent,
     rx: Pin<Box<Receiver<UpdateOptions>>>,
     tx_result: Sender<ParsedUpdate>,
 }
@@ -795,7 +930,6 @@ impl UpdateFuture {
             source: String::new(),
             epoch: 0,
             content: Default::default(),
-            published_content: Default::default(),
             rx: Box::pin(rx),
             tx_result,
         }
@@ -813,7 +947,6 @@ impl Future for UpdateFuture {
                         self.epoch = options.epoch;
                         self.source = options.pending_text;
                         self.content = options.seed_content.take().unwrap_or_default();
-                        self.published_content = self.content.clone();
                         continue;
                     }
                     let hit_coalesce_budget =
@@ -822,23 +955,15 @@ impl Future for UpdateFuture {
                         self.epoch = options.epoch;
                         self.source = options.pending_text;
                         self.content = options.seed_content.take().unwrap_or_default();
-                        self.published_content = self.content.clone();
                         continue;
                     }
 
                     let res = self.parse_update(&options);
-                    let changed = res.as_ref().ok().map(|content| {
-                        changed_blocks(&self.published_content.document, &content.document)
-                    });
-                    if let Ok(content) = &res {
-                        self.published_content = content.clone();
-                    }
                     _ = self.tx_result.try_send(ParsedUpdate {
                         revision: options.revision,
                         epoch: options.epoch,
                         kind: options.kind,
                         result: res,
-                        changed_blocks: changed,
                     });
                     if hit_coalesce_budget {
                         cx.waker().wake_by_ref();
@@ -878,7 +1003,6 @@ impl UpdateFuture {
             self.epoch = options.epoch;
             self.source.clear();
             self.content = ParsedContent::default();
-            self.published_content = ParsedContent::default();
         }
 
         match options.kind {
@@ -924,6 +1048,8 @@ fn streaming_display_content(
         offset: span.start,
         link_refs: canonical.node_cx.link_refs.clone(),
         markdown_extensions: options.markdown_extensions.clone(),
+        markdown_options: canonical.node_cx.markdown_options,
+        markdown_style_profile: canonical.node_cx.markdown_style_profile,
         ..NodeContext::default()
     };
     let Ok(mut display_tail) = format::markdown::parse(&repair.markdown, &mut display_node_cx)
@@ -989,63 +1115,6 @@ struct ParsedUpdate {
     epoch: usize,
     kind: UpdateKind,
     result: Result<ParsedContent, SharedString>,
-    changed_blocks: Option<ChangedBlocks>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct ChangedBlocks {
-    start: usize,
-    old_len: usize,
-    new_len: usize,
-}
-
-/// Keep measured list heights aligned with changed streaming blocks.
-fn remeasure_changed_blocks(
-    list_state: &ListState,
-    previous: &ParsedDocument,
-    next: &ParsedDocument,
-) {
-    let unchanged_prefix = previous
-        .blocks
-        .iter()
-        .zip(&next.blocks)
-        .take_while(|(old, new)| old == new)
-        .count();
-    let old_len = previous.blocks.len();
-    let new_len = next.blocks.len();
-
-    if old_len != new_len {
-        list_state.splice(unchanged_prefix..old_len, new_len - unchanged_prefix);
-    } else if unchanged_prefix < new_len {
-        list_state.remeasure_items(unchanged_prefix..new_len);
-    }
-}
-
-/// Apply a parser-provided changed suffix without comparing block contents on the UI thread.
-fn remeasure_known_blocks(list_state: &ListState, changed: ChangedBlocks) {
-    if changed.old_len != changed.new_len {
-        list_state.splice(
-            changed.start..changed.old_len,
-            changed.new_len - changed.start,
-        );
-    } else if changed.start < changed.new_len {
-        list_state.remeasure_items(changed.start..changed.new_len);
-    }
-}
-
-/// Find the changed suffix while preferring the parser's shared block identity.
-fn changed_blocks(previous: &ParsedDocument, next: &ParsedDocument) -> ChangedBlocks {
-    let start = previous
-        .blocks
-        .iter()
-        .zip(&next.blocks)
-        .take_while(|(old, new)| Arc::ptr_eq(old, new) || old == new)
-        .count();
-    ChangedBlocks {
-        start,
-        old_len: previous.blocks.len(),
-        new_len: next.blocks.len(),
-    }
 }
 
 fn merge_pending_options(options: &mut UpdateOptions, rx: &Receiver<UpdateOptions>) -> bool {
@@ -1074,78 +1143,24 @@ fn parse_content(
     complete_source: &str,
     options: &UpdateOptions,
 ) -> Result<ParsedContent, SharedString> {
-    let previous_link_refs = content.node_cx.link_refs.clone();
     let mut node_cx = NodeContext {
-        link_refs: if options.kind == UpdateKind::Append {
-            previous_link_refs.clone()
-        } else {
-            HashMap::new()
-        },
         markdown_extensions: options.markdown_extensions.clone(),
+        markdown_options: content.node_cx.markdown_options,
+        markdown_style_profile: content.node_cx.markdown_style_profile,
         ..NodeContext::default()
     };
 
-    let append = options.kind == UpdateKind::Append;
-    let mut previous_tail = None;
-    let mut source = String::new();
-
-    if append
-        && let Some(last_block) = content.document.blocks.pop()
-        && let Some(span) = last_block.span()
-    {
-        previous_tail = Some(last_block);
-        node_cx.offset = span.start;
-        source.push_str(&complete_source[span.start..]);
-    } else if source.is_empty() {
-        source = complete_source.to_string();
-    }
-
-    // The Markdown parser must see definitions in the same source in order to
-    // recognize shortcut and collapsed references. Existing definitions do not
-    // require a full parse for ordinary text, but a tail containing `[` may use
-    // one of them and therefore falls back to the canonical source.
-    let requires_full_parse = append && !previous_link_refs.is_empty() && source.contains('[');
-    if requires_full_parse {
-        node_cx = NodeContext {
-            markdown_extensions: options.markdown_extensions.clone(),
-            ..NodeContext::default()
-        };
-        source = complete_source.to_string();
-        previous_tail = None;
-    }
-
+    // `pulldown-cmark` resolves document-wide references and can reclassify a
+    // preceding paragraph when a table row, setext underline, or definition
+    // arrives. Parse the canonical source in the background, then recover the
+    // unchanged Arc prefix. This keeps source semantics exact while preserving
+    // stable rendered identity and cached layout for all unaffected blocks.
     let mut new_document = match format {
-        TextViewFormat::Markdown => format::markdown::parse(&source, &mut node_cx),
-        TextViewFormat::Html => format::html::parse(&source, &mut node_cx),
+        TextViewFormat::Markdown => format::markdown::parse(complete_source, &mut node_cx),
+        TextViewFormat::Html => format::html::parse(complete_source, &mut node_cx),
     }?;
-
-    if let Some(previous_tail) = previous_tail.as_ref()
-        && let Some(current_tail) = new_document.blocks.first_mut()
-    {
-        Arc::make_mut(current_tail).reuse_runtime_state_from(previous_tail.as_ref());
-    }
-
-    // Only a changed definition map can alter already-published reference links.
-    // Existing definitions are seeded into the suffix parser so ordinary appends
-    // remain incremental after a document has introduced reference definitions.
-    if append && (requires_full_parse || node_cx.link_refs != previous_link_refs) {
-        node_cx = NodeContext {
-            markdown_extensions: options.markdown_extensions.clone(),
-            ..NodeContext::default()
-        };
-        new_document = match format {
-            TextViewFormat::Markdown => format::markdown::parse(complete_source, &mut node_cx),
-            TextViewFormat::Html => format::html::parse(complete_source, &mut node_cx),
-        }?;
-        reuse_unchanged_prefix(&content.document, &mut new_document);
-        content.document = new_document;
-    } else if append {
-        content.document.source = complete_source.to_string().into();
-        content.document.blocks.extend(new_document.blocks);
-    } else {
-        reuse_unchanged_prefix(&content.document, &mut new_document);
-        content.document = new_document;
-    }
+    reuse_unchanged_prefix(&content.document, &mut new_document);
+    content.document = new_document;
     content.node_cx = node_cx;
 
     Ok(content)
@@ -1154,6 +1169,7 @@ fn parse_content(
 fn reuse_unchanged_prefix(previous: &ParsedDocument, next: &mut ParsedDocument) {
     for (old, new) in previous.blocks.iter().zip(next.blocks.iter_mut()) {
         if old != new {
+            Arc::make_mut(new).reuse_runtime_state_from(old);
             break;
         }
         *new = old.clone();
@@ -1163,10 +1179,7 @@ fn reuse_unchanged_prefix(previous: &ParsedDocument, next: &mut ParsedDocument) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::{
-        MarkdownNode,
-        node::{BlockNode, Paragraph},
-    };
+    use crate::text::MarkdownNode;
     use gpui::TestAppContext;
 
     #[test]
@@ -1218,6 +1231,24 @@ mod tests {
         state.read_with(cx, |state, _| {
             assert_eq!(state.text, "base tail");
             assert_eq!(state.source().as_ref(), "base tail");
+        });
+    }
+
+    #[gpui::test]
+    fn search_highlights_use_canonical_source_ranges(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("Alpha alpha", cx)));
+        cx.run_until_parked();
+
+        state.update(cx, |state, cx| {
+            assert_eq!(state.search("alpha", false, cx), 2);
+            assert_eq!(state.search_highlights(), &[0..5, 6..11]);
+            assert_eq!(state.active_search_match(), Some(0));
+            state.set_active_search_match(Some(1), cx);
+            assert_eq!(state.active_search_match(), Some(1));
+            state.clear_search_highlights(cx);
+            assert!(state.search_highlights().is_empty());
+            assert_eq!(state.active_search_match(), None);
         });
     }
 
@@ -1310,35 +1341,6 @@ mod tests {
     }
 
     #[test]
-    fn changed_block_range_prefers_shared_prefix_and_tracks_length_changes() {
-        let shared = Arc::new(BlockNode::Paragraph(Paragraph::new("stable".to_string())));
-        let previous = ParsedDocument {
-            blocks: vec![
-                shared.clone(),
-                Arc::new(BlockNode::HorizontalRule { span: None }),
-            ],
-            ..Default::default()
-        };
-        let next = ParsedDocument {
-            blocks: vec![
-                shared,
-                Arc::new(BlockNode::Paragraph(Paragraph::new("tail".to_string()))),
-                Arc::new(BlockNode::HorizontalRule { span: None }),
-            ],
-            ..Default::default()
-        };
-
-        assert_eq!(
-            changed_blocks(&previous, &next),
-            ChangedBlocks {
-                start: 1,
-                old_len: 2,
-                new_len: 3,
-            }
-        );
-    }
-
-    #[test]
     fn appending_a_reference_use_after_a_definition_matches_canonical_parse() {
         let extensions = Arc::new(MarkdownExtensions::default());
         let initial_source = "[docs]: https://example.com\n\nStart";
@@ -1406,7 +1408,7 @@ mod tests {
             },
         )
         .unwrap();
-        let stable = initial.document.blocks[1].clone();
+        let stable = initial.document.blocks[0].clone();
         let complete = format!("{initial_source} text");
         let streamed = parse_content(
             TextViewFormat::Markdown,
@@ -1437,42 +1439,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(Arc::ptr_eq(&stable, &streamed.document.blocks[1]));
+        assert!(Arc::ptr_eq(&stable, &streamed.document.blocks[0]));
         assert_eq!(streamed.document, canonical.document);
-    }
-
-    #[test]
-    fn failed_mdx_chunk_is_retained_for_the_next_append() {
-        let (_tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, _rx_result) = unbounded::<ParsedUpdate>();
-        let extensions = Arc::new(MarkdownExtensions::default().mdx());
-        let mut future = UpdateFuture::new(TextViewFormat::Markdown, rx, tx_result);
-
-        let incomplete = UpdateOptions {
-            revision: 1,
-            epoch: 1,
-            pending_text: "{value".to_string(),
-            kind: UpdateKind::Append,
-            markdown_extensions: extensions.clone(),
-            seed_content: None,
-        };
-        assert!(future.parse_update(&incomplete).is_err());
-        assert_eq!(future.source, "{value");
-        assert!(future.content.document.source.is_empty());
-
-        let completed = future
-            .parse_update(&UpdateOptions {
-                revision: 2,
-                epoch: 1,
-                pending_text: "}".to_string(),
-                kind: UpdateKind::Append,
-                markdown_extensions: extensions,
-                seed_content: None,
-            })
-            .expect("completed MDX expression should parse without waiting for settle");
-
-        assert_eq!(future.source, "{value}");
-        assert_eq!(completed.document.source.as_ref(), "{value}");
     }
 
     #[test]
@@ -1610,7 +1578,7 @@ mod tests {
             *display.document.blocks[0],
             node::BlockNode::Paragraph(_)
         ));
-        assert_eq!(display.document.text(), "heading\n---\n");
+        assert_eq!(display.document.text(), "heading\n—\n");
         assert!(!display.document.text().contains('\u{200B}'));
         assert_eq!(display.document.source.as_ref(), source);
 
@@ -1658,52 +1626,6 @@ mod tests {
             &options,
         );
         assert_eq!(display.document, canonical.document);
-    }
-
-    #[test]
-    fn failed_replace_resets_the_previous_epoch_parser_baseline() {
-        let (_tx, rx) = unbounded::<UpdateOptions>();
-        let (tx_result, _rx_result) = unbounded::<ParsedUpdate>();
-        let extensions = Arc::new(MarkdownExtensions::default().mdx());
-        let mut future = UpdateFuture::new(TextViewFormat::Markdown, rx, tx_result);
-
-        future
-            .parse_update(&UpdateOptions {
-                revision: 1,
-                epoch: 1,
-                pending_text: "previous document".to_string(),
-                kind: UpdateKind::Replace,
-                markdown_extensions: extensions.clone(),
-                seed_content: None,
-            })
-            .expect("initial document");
-        assert_eq!(future.content.document.source.as_ref(), "previous document");
-
-        assert!(
-            future
-                .parse_update(&UpdateOptions {
-                    revision: 2,
-                    epoch: 2,
-                    pending_text: "{next".to_string(),
-                    kind: UpdateKind::Replace,
-                    markdown_extensions: extensions.clone(),
-                    seed_content: None,
-                })
-                .is_err()
-        );
-        assert!(future.content.document.source.is_empty());
-
-        let completed = future
-            .parse_update(&UpdateOptions {
-                revision: 3,
-                epoch: 2,
-                pending_text: "}".to_string(),
-                kind: UpdateKind::Append,
-                markdown_extensions: extensions,
-                seed_content: None,
-            })
-            .expect("new epoch should recover without the previous source");
-        assert_eq!(completed.document.source.as_ref(), "{next}");
     }
 
     #[test]
@@ -1861,18 +1783,6 @@ mod tests {
         );
     }
 
-    #[gpui::test]
-    fn follow_tail_uses_the_native_list_follow_mode(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("", cx)));
-
-        state.update(cx, |state, cx| state.set_follow_tail(true, cx));
-        assert!(state.read_with(cx, |state, _| state.list_state.is_following_tail()));
-
-        state.update(cx, |state, cx| state.set_follow_tail(false, cx));
-        assert!(!state.read_with(cx, |state, _| state.list_state.is_following_tail()));
-    }
-
     #[test]
     fn update_options_merge_keeps_latest_full_text() {
         let mut options = UpdateOptions {
@@ -1983,20 +1893,18 @@ mod tests {
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("$TSLA.US", cx)));
         cx.run_until_parked();
 
-        let extensions = MarkdownExtensions::default().block_parser(|node, cx| {
-            let markdown::mdast::Node::Paragraph(paragraph) = node else {
+        let extensions = MarkdownExtensions::default().block_parser(|event, cx| {
+            let pulldown_cmark::Event::Start(pulldown_cmark::Tag::Paragraph) = event.event() else {
                 return None;
             };
-            let [markdown::mdast::Node::Text(text)] = paragraph.children.as_slice() else {
-                return None;
-            };
-            let symbol = text.value.strip_prefix('$')?.to_string();
+            let source = cx.event_source(event)?;
+            let symbol = source.strip_prefix('$')?.to_string();
             let node_text = format!("${symbol}");
 
             Some(
                 MarkdownNode::new("ticker", symbol)
                     .text(node_text)
-                    .markdown(cx.node_source(node).unwrap_or_default()),
+                    .markdown(source),
             )
         });
 

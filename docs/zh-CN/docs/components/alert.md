@@ -102,14 +102,19 @@ Alert::new("maintenance-banner")
 `title` 和 `description` 会保留普通字符串并生成可访问性信息。任意 GPUI 元素使用 `title_element` 或 `description_element`。由于任意元素无法可靠还原为文本，需要通过 `aria_label` 概括所有重要内容。
 
 ```rust
+let description = cx.new(|cx| Markdown::new(
+    "Please correct the following errors:\n- Email address is required\n- Password must be at least 8 characters",
+    cx,
+));
+let description = MarkdownElement::new(
+    description,
+    MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+);
+
 Alert::new("validation-error")
     .destructive()
     .title("Validation failed")
-    .description_element(markdown(
-        "Please correct the following errors:\n\
-        - Email address is required\n\
-        - Password must be at least 8 characters"
-    ))
+    .description_element(description)
     .aria_label(
         "Validation failed. Email address is required. Password must be at least 8 characters."
     )

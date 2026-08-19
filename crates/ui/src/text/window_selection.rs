@@ -143,7 +143,7 @@ pub struct WindowTextSelection {
 /// A selection endpoint, content-anchored to a TextView.
 ///
 /// `point` is always stored in the view's content coordinates (relative to its
-/// `bounds().origin` and `scroll_offset()`), even when the press landed in
+/// `bounds().origin`), even when the press landed in
 /// blank space: in that case the endpoint is proxy-anchored to the nearest view
 /// in document flow (see [`Root::text_selection_endpoint`]) and `inside` is
 /// false. This keeps the selection following the content when an outer
@@ -171,14 +171,14 @@ impl SelectionEndpoint {
     ///
     /// Whether the endpoint was a true hit or proxy-anchored from blank space,
     /// `point` is in the view's content coordinates, so resolving uses the
-    /// view's current `bounds().origin + scroll_offset()` (refreshed every
+    /// view's current `bounds().origin` (refreshed every
     /// frame in prepaint) and the endpoint follows the content as it moves.
     fn resolve(&self, cx: &App) -> Option<Point<Pixels>> {
         match &self.view {
             Some(view) => {
                 let state = view.upgrade()?;
                 let state = state.read(cx);
-                Some(self.point + state.scroll_offset() + state.bounds().origin)
+                Some(self.point + state.bounds().origin)
             }
             None => Some(self.point),
         }
@@ -442,7 +442,7 @@ impl Root {
             .and_then(|v| v.upgrade())
         {
             view.update(cx, |state, cx| {
-                if state.scrollable {
+                if state.has_scroll_handle() {
                     let delta = AutoScroll::compute_delta(position.y, state.bounds());
                     state.set_auto_scroll(delta, cx);
                 }
@@ -549,7 +549,7 @@ impl Root {
             let state = entity.read(cx);
             let inside_text = state.selection_geometry_contains(position);
             return SelectionEndpoint {
-                point: position - state.bounds().origin - state.scroll_offset(),
+                point: position - state.bounds().origin,
                 view: Some(view),
                 inside: true,
                 inside_text,
@@ -596,7 +596,7 @@ impl Root {
                     Some(entity) => {
                         let state = entity.read(cx);
                         SelectionEndpoint {
-                            point: position - state.bounds().origin - state.scroll_offset(),
+                            point: position - state.bounds().origin,
                             view: Some(view),
                             inside: false,
                             inside_text: false,

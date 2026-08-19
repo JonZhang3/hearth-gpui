@@ -11,10 +11,10 @@ use gpui::{
 };
 use hearth_gpui::{
     ActiveTheme as _, IconName, Sizable as _, alert::Alert, button::Button, dock::PanelControl,
-    text::markdown, v_flex,
+    v_flex,
 };
 
-use crate::section;
+use crate::{markdown, section};
 
 pub struct AlertStory {
     banner_visible: bool,
@@ -141,6 +141,7 @@ impl Render for AlertStory {
                         .icon(IconName::TriangleAlert)
                         .title("Unable to process your payment")
                         .description_element(markdown(
+                            "alert-long-content-markdown",
                             "Please verify your **billing information** and try again.\n\
                             - Check your card details\n\
                             - Ensure sufficient funds\n\

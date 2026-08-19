@@ -4,12 +4,14 @@ use hearth_gpui::{
     highlighter::Language,
     input::{Input, InputState, TabSize},
     resizable::h_resizable,
+    scroll::ScrollableElement as _,
     text::html,
 };
 use hearth_gpui_assets::Assets;
 
 pub struct Example {
     input_state: Entity<InputState>,
+    scroll_handle: ScrollHandle,
     _subscribe: Subscription,
 }
 
@@ -37,6 +39,7 @@ impl Example {
 
         Self {
             input_state,
+            scroll_handle: ScrollHandle::new(),
             _subscribe,
         }
     }
@@ -64,10 +67,23 @@ impl Render for Example {
                     .into_any(),
             )
             .child(
-                html(self.input_state.read(cx).value().clone())
-                    .p_5()
-                    .scrollable(true)
-                    .selectable(true)
+                div()
+                    .relative()
+                    .size_full()
+                    .child(
+                        div()
+                            .id("html-preview-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .child(
+                                html(self.input_state.read(cx).value().clone())
+                                    .scroll_handle(self.scroll_handle.clone())
+                                    .p_5()
+                                    .selectable(true),
+                            ),
+                    )
+                    .vertical_scrollbar(&self.scroll_handle)
                     .into_any(),
             )
     }

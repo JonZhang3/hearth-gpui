@@ -1,13 +1,21 @@
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, Render, Styled as _, Window, px,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _,
+    ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _, Window,
+    div, px,
 };
 
-use hearth_gpui::{dock::PanelControl, text::markdown};
+use hearth_gpui::{
+    dock::PanelControl,
+    scroll::ScrollableElement as _,
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
+};
 
 use crate::Story;
 
 pub struct WelcomeStory {
     focus_handle: FocusHandle,
+    scroll_handle: ScrollHandle,
+    markdown: Entity<Markdown>,
 }
 
 impl WelcomeStory {
@@ -18,6 +26,8 @@ impl WelcomeStory {
     fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
             focus_handle: cx.focus_handle(),
+            scroll_handle: ScrollHandle::new(),
+            markdown: cx.new(|cx| Markdown::new(include_str!("../../../../README.md"), cx)),
         }
     }
 }
@@ -53,12 +63,27 @@ impl Focusable for WelcomeStory {
 impl Render for WelcomeStory {
     fn render(
         &mut self,
-        _: &mut gpui::Window,
-        _: &mut gpui::Context<Self>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
-        markdown(include_str!("../../../../README.md"))
-            .px_4()
-            .scrollable(true)
-            .selectable(true)
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .id("welcome-markdown-scroll")
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.scroll_handle)
+                    .child(
+                        MarkdownElement::new(
+                            self.markdown.clone(),
+                            MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+                        )
+                        .scroll_handle(self.scroll_handle.clone())
+                        .px_4(),
+                    ),
+            )
+            .vertical_scrollbar(&self.scroll_handle)
     }
 }

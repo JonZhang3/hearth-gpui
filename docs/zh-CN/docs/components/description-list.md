@@ -117,17 +117,20 @@ DescriptionList::horizontal()
 ### 富文本内容
 
 ```rust
-use hearth_gpui::text::markdown;
+let description = cx.new(|cx| Markdown::new(
+    "UI components for building **fantastic** desktop applications.",
+    cx,
+));
+let description = MarkdownElement::new(
+    description,
+    MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+);
 
 DescriptionList::new()
     .columns(2)
     .children([
         DescriptionItem::new("Name").value("Hearth GPUI"),
-        DescriptionItem::new("Description").value(
-            markdown(
-                "UI components for building **fantastic** desktop applications.",
-            ).into_any_element()
-        ),
+        DescriptionItem::new("Description").value(description.into_any_element()),
     ])
 ```
 

@@ -18,7 +18,7 @@ use gpui::{
 
 use crate::{
     ActiveTheme, StyledExt as _,
-    text::{TextView, TextViewStyle},
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
 };
 
 pub(crate) enum ContextMenu {
@@ -45,26 +45,25 @@ impl ContextMenu {
 pub(super) fn render_markdown(
     id: impl Into<ElementId>,
     markdown: impl Into<SharedString>,
-    _: &mut Window,
+    window: &mut Window,
     cx: &mut App,
-) -> TextView {
-    TextView::markdown(id, markdown)
-        .style(
-            TextViewStyle::default()
-                .paragraph_gap(rems(0.5))
-                .heading_font_size(|level, rem_size| match level {
-                    1..=3 => rem_size * 1,
-                    4 => rem_size * 0.9,
-                    _ => rem_size * 0.8,
-                })
-                .code_block(
-                    StyleRefinement::default()
-                        .bg(cx.theme().transparent)
-                        .p_0()
-                        .text_size(px(11.)),
-                ),
-        )
-        .selectable(true)
+) -> MarkdownElement {
+    let id = id.into();
+    let source = markdown.into();
+    let initial_source = source.clone();
+    let state = window.use_keyed_state(id, cx, move |_, cx| Markdown::new(initial_source, cx));
+    if state.read(cx).source() != source {
+        state.update(cx, |markdown, cx| markdown.replace(source, cx));
+    }
+
+    let mut style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+    style.base_text_style.font_size = px(12.).into();
+    style.base_text_style.line_height = rems(1.35).into();
+    style.code_block = StyleRefinement::default()
+        .bg(cx.theme().transparent)
+        .p_0()
+        .text_size(px(11.));
+    MarkdownElement::new(state, style)
 }
 
 pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {

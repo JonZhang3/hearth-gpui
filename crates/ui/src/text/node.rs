@@ -4,16 +4,20 @@
 use std::{
     collections::HashMap,
     ops::Range,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use gpui::{
-    AnyElement, App, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half, HighlightStyle,
-    Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow, ParentElement, Role,
-    ScrollHandle, SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _,
-    WhiteSpace, Window, div, img, prelude::FluentBuilder as _, px, relative, rems,
+    AnyElement, App, AppContext as _, DefiniteLength, Div, ElementId, FontStyle, FontWeight, Half,
+    HighlightStyle, Hsla, InteractiveElement as _, IntoElement, Length, ObjectFit, Overflow,
+    ParentElement, RenderImage, Role, ScrollHandle, SharedString, SharedUri,
+    StatefulInteractiveElement, Styled, StyledImage as _, WhiteSpace, Window, div, img,
+    prelude::FluentBuilder as _, px, relative, rems,
 };
-use markdown::mdast;
+use pulldown_cmark::{Alignment, BlockQuoteKind};
 use ropey::Rope;
 
 use crate::{
@@ -22,9 +26,10 @@ use crate::{
     input::{InputEdit, RopeExt as _},
     scroll::horizontal_scroll_area,
     text::{
-        CodeBlockActionsFn, MarkdownBlockKind, MarkdownBlockRenderContext, MarkdownBlockRenderers,
-        MarkdownElementKind, MarkdownExtensions, MarkdownHeadingLevel, MarkdownInlineKind,
-        MarkdownLinkHandler, MarkdownNode, MarkdownStyle, MarkdownTextStyle,
+        CodeBlockActionsFn, LegacyMarkdownStyle, MarkdownBlockKind, MarkdownBlockRenderContext,
+        MarkdownBlockRenderers, MarkdownElementKind, MarkdownExtensions, MarkdownHeadingLevel,
+        MarkdownInlineKind, MarkdownLinkHandler, MarkdownNode, MarkdownOptions,
+        MarkdownStyleProfile, MarkdownTextStyle,
         document::NodeRenderOptions,
         inline::{Inline, InlineLink, InlineState},
         inline_flow::InlineBoxStyle,
@@ -52,12 +57,14 @@ pub(crate) enum BlockNode {
     },
     Blockquote {
         children: Vec<BlockNode>,
+        kind: Option<BlockQuoteKind>,
         span: Option<Span>,
     },
     List {
         /// Only contains ListItem, others will be ignored
         children: Vec<BlockNode>,
         ordered: bool,
+        start: Option<u64>,
         span: Option<Span>,
     },
     ListItem {
@@ -79,6 +86,7 @@ pub(crate) enum BlockNode {
         span: Option<Span>,
     },
     /// Use for to_markdown get raw definition
+    #[allow(dead_code)]
     Definition {
         identifier: SharedString,
         url: SharedString,
@@ -110,7 +118,7 @@ impl BlockNode {
 
         match self {
             Self::Root { children, span }
-            | Self::Blockquote { children, span }
+            | Self::Blockquote { children, span, .. }
             | Self::List { children, span, .. }
             | Self::ListItem { children, span, .. } => {
                 clamp(span, source_len);
@@ -291,6 +299,46 @@ impl BlockNode {
 
     pub(super) fn selected_text(&self) -> String {
         self.text_by_kind(BlockTextKind::Selected)
+    }
+
+    pub(super) fn selected_source_ranges(&self, ranges: &mut Vec<Range<usize>>) {
+        match self {
+            Self::Root { children, .. }
+            | Self::Blockquote { children, .. }
+            | Self::List { children, .. }
+            | Self::ListItem { children, .. } => {
+                for child in children {
+                    child.selected_source_ranges(ranges);
+                }
+            }
+            Self::Paragraph(paragraph)
+            | Self::Heading {
+                children: paragraph,
+                ..
+            } => {
+                paragraph.selected_source_ranges(ranges);
+            }
+            Self::Table(table) => {
+                for row in &table.children {
+                    for cell in &row.children {
+                        cell.children.selected_source_ranges(ranges);
+                    }
+                }
+            }
+            Self::CodeBlock(code) => {
+                if code.selected_text().is_empty() {
+                    return;
+                }
+                if let Some(span) = code.span {
+                    ranges.push(span.start..span.end);
+                }
+            }
+            Self::Custom(_)
+            | Self::Break { .. }
+            | Self::HorizontalRule { .. }
+            | Self::Definition { .. }
+            | Self::Unknown => {}
+        }
     }
 
     fn text_by_kind(&self, kind: BlockTextKind) -> String {
@@ -554,6 +602,7 @@ pub(crate) struct InlineNode {
     pub(crate) custom: Option<MarkdownNode>,
     /// The text styles, each tuple contains the range of the text and the style.
     pub(crate) marks: Vec<(Range<usize>, TextMark)>,
+    pub(crate) source_range: Option<Range<usize>>,
 
     state: Arc<Mutex<InlineState>>,
 }
@@ -564,6 +613,7 @@ impl PartialEq for InlineNode {
             && self.image == other.image
             && self.custom == other.custom
             && self.marks == other.marks
+            && self.source_range == other.source_range
     }
 }
 
@@ -574,6 +624,7 @@ impl InlineNode {
             image: None,
             custom: None,
             marks: vec![],
+            source_range: None,
             state: Arc::new(Mutex::new(InlineState::default())),
         }
     }
@@ -593,6 +644,12 @@ impl InlineNode {
 
     pub(crate) fn marks(mut self, marks: Vec<(Range<usize>, TextMark)>) -> Self {
         self.marks = marks;
+        self
+    }
+
+    /// Attach the canonical source range represented by this inline node.
+    pub(crate) fn source_range(mut self, range: Range<usize>) -> Self {
+        self.source_range = Some(range);
         self
     }
 }
@@ -673,6 +730,36 @@ impl Paragraph {
         text
     }
 
+    fn selected_source_ranges(&self, ranges: &mut Vec<Range<usize>>) {
+        if let Ok(state) = self.state.lock()
+            && let Some(selection) = &state.selection
+        {
+            let mut rendered_offset = 0;
+            for child in &self.children {
+                let child_end = rendered_offset + child.text.len();
+                let start = selection.start.max(rendered_offset).min(child_end);
+                let end = selection.end.max(rendered_offset).min(child_end);
+                if start < end {
+                    push_mapped_source_range(
+                        ranges,
+                        child,
+                        (start - rendered_offset)..(end - rendered_offset),
+                    );
+                }
+                rendered_offset = child_end;
+            }
+            return;
+        }
+
+        for child in &self.children {
+            if let Ok(state) = child.state.lock()
+                && let Some(selection) = &state.selection
+            {
+                push_mapped_source_range(ranges, child, (*selection).into());
+            }
+        }
+    }
+
     pub(super) fn text(&self) -> String {
         let mut text = String::new();
         for node in self.children.iter() {
@@ -694,6 +781,21 @@ impl Paragraph {
         if let Ok(mut state) = self.state.lock() {
             state.selection = None;
         }
+    }
+}
+
+fn push_mapped_source_range(
+    ranges: &mut Vec<Range<usize>>,
+    node: &InlineNode,
+    rendered: Range<usize>,
+) {
+    let Some(source) = &node.source_range else {
+        return;
+    };
+    if source.end.saturating_sub(source.start) == node.text.len() {
+        ranges.push((source.start + rendered.start)..(source.start + rendered.end));
+    } else if !rendered.is_empty() {
+        ranges.push(source.clone());
     }
 }
 
@@ -725,13 +827,13 @@ pub(crate) enum ColumnumnAlign {
     Right,
 }
 
-impl From<mdast::AlignKind> for ColumnumnAlign {
-    fn from(value: mdast::AlignKind) -> Self {
+impl From<Alignment> for ColumnumnAlign {
+    fn from(value: Alignment) -> Self {
         match value {
-            mdast::AlignKind::None => ColumnumnAlign::Left,
-            mdast::AlignKind::Left => ColumnumnAlign::Left,
-            mdast::AlignKind::Center => ColumnumnAlign::Center,
-            mdast::AlignKind::Right => ColumnumnAlign::Right,
+            Alignment::None => ColumnumnAlign::Left,
+            Alignment::Left => ColumnumnAlign::Left,
+            Alignment::Center => ColumnumnAlign::Center,
+            Alignment::Right => ColumnumnAlign::Right,
         }
     }
 }
@@ -870,14 +972,21 @@ impl std::fmt::Debug for CachedCodeBlockStyles {
 #[derive(Debug, Clone)]
 pub struct CodeBlock {
     lang: Option<SharedString>,
+    info: Option<SharedString>,
+    source_path: Option<SharedString>,
     styles: Arc<Mutex<Option<CachedCodeBlockStyles>>>,
     state: Arc<Mutex<InlineState>>,
+    mermaid: Arc<MermaidRenderCache>,
     pub span: Option<Span>,
 }
 
 impl PartialEq for CodeBlock {
     fn eq(&self, other: &Self) -> bool {
-        self.lang == other.lang && self.code() == other.code() && self.span == other.span
+        self.lang == other.lang
+            && self.code() == other.code()
+            && self.span == other.span
+            && self.info == other.info
+            && self.source_path == other.source_path
     }
 }
 
@@ -885,6 +994,16 @@ impl CodeBlock {
     /// Get the language of the code block.
     pub fn lang(&self) -> Option<SharedString> {
         self.lang.clone()
+    }
+
+    /// Return the complete trimmed fenced info string.
+    pub fn info(&self) -> Option<SharedString> {
+        self.info.clone()
+    }
+
+    /// Return a fenced source path when the info string identifies a path.
+    pub fn source_path(&self) -> Option<SharedString> {
+        self.source_path.clone()
     }
 
     /// Get the code content of the code block.
@@ -906,11 +1025,36 @@ impl CodeBlock {
         }
 
         Self {
+            info: lang.clone(),
             lang,
+            source_path: None,
             styles: Arc::new(Mutex::new(None)),
             state,
+            mermaid: Arc::default(),
             span: span.map(|s| s.into()),
         }
+    }
+
+    /// Create a fenced code block while retaining its complete info string.
+    pub(crate) fn new_fenced(
+        code: SharedString,
+        info: SharedString,
+        span: Option<impl Into<Span>>,
+    ) -> Self {
+        let trimmed = info.trim();
+        let source_path = trimmed.contains('/').then(|| trimmed.to_string().into());
+        let lang = source_path.is_none().then(|| {
+            trimmed
+                .split_ascii_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_string()
+                .into()
+        });
+        let mut block = Self::new(code, lang, span);
+        block.info = (!trimmed.is_empty()).then(|| trimmed.to_string().into());
+        block.source_path = source_path;
+        block
     }
 
     pub(crate) fn styles(
@@ -1023,6 +1167,36 @@ impl CodeBlock {
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
+        if self.lang.as_deref() == Some("mermaid")
+            && node_cx.markdown_options.render_mermaid_diagrams
+            && self.is_closed_fenced_block(node_cx)
+            && is_supported_mermaid_diagram(&self.code())
+        {
+            return self.render_mermaid(options, node_cx, window, cx);
+        }
+        self.render_source(options, node_cx, window, cx)
+    }
+
+    /// Return whether the canonical source contains a closing fence.
+    fn is_closed_fenced_block(&self, node_cx: &NodeContext) -> bool {
+        let Some(span) = self.span else {
+            return false;
+        };
+        let Some(source) = node_cx.source.get(span.start..span.end) else {
+            return false;
+        };
+        source.lines().next_back().is_some_and(|line| {
+            line.trim_start().starts_with("```") || line.trim_start().starts_with("~~~")
+        })
+    }
+
+    fn render_source(
+        &self,
+        options: &NodeRenderOptions,
+        node_cx: &NodeContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
         let style = &node_cx.style;
 
         div()
@@ -1077,6 +1251,168 @@ impl CodeBlock {
             )
             .into_any_element()
     }
+
+    /// Render Mermaid off the UI thread and cache the rasterized SVG for this
+    /// source node. The original code remains visible until rendering succeeds.
+    fn render_mermaid(
+        &self,
+        options: &NodeRenderOptions,
+        node_cx: &NodeContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> AnyElement {
+        let dark = cx.theme().is_dark();
+        let theme_cache = self.mermaid.for_theme(dark);
+        if let Some(result) = theme_cache.result.get() {
+            return match result {
+                Ok(image) => div()
+                    .w_full()
+                    .min_w_0()
+                    .when(!options.is_last, |this| {
+                        this.pb(node_cx.style.paragraph_gap)
+                    })
+                    .child(
+                        div().w_full().min_w_0().overflow_hidden().child(
+                            img(image.clone())
+                                .object_fit(ObjectFit::Contain)
+                                .max_w_full(),
+                        ),
+                    )
+                    .into_any_element(),
+                Err(error) => div()
+                    .w_full()
+                    .min_w_0()
+                    .child(self.render_source(options, node_cx, window, cx))
+                    .child(
+                        div()
+                            .mt_1()
+                            .text_xs()
+                            .text_color(cx.theme().danger)
+                            .child(error.to_string()),
+                    )
+                    .into_any_element(),
+            };
+        }
+
+        if !theme_cache.started.swap(true, Ordering::AcqRel) {
+            let source = self.code().to_string();
+            let cache = theme_cache;
+            let svg_renderer = cx.svg_renderer();
+            cx.spawn(async move |cx| {
+                let result = cx
+                    .background_spawn(async move {
+                        let svg = render_mermaid_svg(&source, dark)?;
+                        svg_renderer
+                            .render_single_frame(svg.as_bytes(), 1.0)
+                            .map_err(|error| error.to_string())
+                    })
+                    .await
+                    .map_err(SharedString::from);
+                _ = cache.result.set(result);
+                _ = cx.update(|cx| cx.refresh_windows());
+            })
+            .detach();
+        }
+
+        self.render_source(options, node_cx, window, cx)
+    }
+}
+
+/// Convert Mermaid source into an SVG accepted by GPUI's `resvg` renderer.
+fn render_mermaid_svg(source: &str, dark: bool) -> Result<String, String> {
+    const MAX_CACHED_DIAGRAMS: usize = 64;
+    static CACHE: OnceLock<Mutex<HashMap<(String, bool), Result<String, String>>>> =
+        OnceLock::new();
+
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = (source.to_string(), dark);
+    if let Ok(cache) = cache.lock()
+        && let Some(result) = cache.get(&key)
+    {
+        return result.clone();
+    }
+
+    let profile = merman::render::HostThemeProfile::from_preset(if dark {
+        merman::render::HostThemePreset::EditorDark
+    } else {
+        merman::render::HostThemePreset::EditorLight
+    });
+    let result = merman::render::HeadlessRenderer::new()
+        .with_vendored_text_measurer()
+        .with_host_theme(&profile)
+        .render_svg_sync(source)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "Mermaid source did not contain a diagram".to_string());
+
+    if let Ok(mut cache) = cache.lock() {
+        if cache.len() >= MAX_CACHED_DIAGRAMS {
+            cache.clear();
+        }
+        cache.insert(key, result.clone());
+    }
+    result
+}
+
+/// Restrict Mermaid rendering to the diagram types verified by Zed's viewer.
+fn is_supported_mermaid_diagram(source: &str) -> bool {
+    const SUPPORTED_PREFIXES: &[&str] = &[
+        "flowchart",
+        "graph",
+        "sequenceDiagram",
+        "classDiagram",
+        "stateDiagram",
+        "stateDiagram-v2",
+        "erDiagram",
+        "gantt",
+        "pie",
+        "gitGraph",
+        "mindmap",
+        "timeline",
+        "quadrantChart",
+        "xychart-beta",
+        "journey",
+    ];
+    let first_token = source
+        .trim_start()
+        .split(char::is_whitespace)
+        .next()
+        .unwrap_or_default();
+    SUPPORTED_PREFIXES
+        .iter()
+        .any(|prefix| first_token.eq_ignore_ascii_case(prefix))
+}
+
+#[derive(Default)]
+struct MermaidRenderCache {
+    themes: Mutex<HashMap<bool, Arc<MermaidThemeRenderCache>>>,
+}
+
+impl MermaidRenderCache {
+    /// Return independent light and dark raster state so theme changes never reuse stale colors.
+    fn for_theme(&self, dark: bool) -> Arc<MermaidThemeRenderCache> {
+        self.themes
+            .lock()
+            .map(|mut themes| themes.entry(dark).or_default().clone())
+            .unwrap_or_default()
+    }
+}
+
+#[derive(Default)]
+struct MermaidThemeRenderCache {
+    started: AtomicBool,
+    result: OnceLock<Result<Arc<RenderImage>, SharedString>>,
+}
+
+impl std::fmt::Debug for MermaidRenderCache {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MermaidRenderCache")
+            .field(
+                "theme_count",
+                &self.themes.lock().map(|themes| themes.len()),
+            )
+            .finish()
+    }
 }
 
 /// Return the longest shared UTF-8 boundary between cached and current code.
@@ -1104,13 +1440,18 @@ pub(crate) struct NodeContext {
     pub(crate) style: TextViewStyle,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     pub(crate) markdown_extensions: Arc<MarkdownExtensions>,
-    pub(crate) markdown_style: Arc<MarkdownStyle>,
+    pub(crate) markdown_options: MarkdownOptions,
+    pub(crate) markdown_style_profile: MarkdownStyleProfile,
+    pub(crate) markdown_style: Arc<LegacyMarkdownStyle>,
     pub(crate) markdown_block_renderers: Arc<MarkdownBlockRenderers>,
     pub(crate) source: SharedString,
+    pub(crate) search_matches: Arc<Vec<Range<usize>>>,
+    pub(crate) active_search_match: Option<usize>,
     pub(crate) link_handler: MarkdownLinkHandler,
 }
 
 impl NodeContext {
+    #[allow(dead_code)]
     pub(super) fn add_ref(&mut self, identifier: SharedString, link: LinkMark) {
         self.link_refs.insert(identifier, link);
     }
@@ -1211,6 +1552,11 @@ fn append_resolved_inline_styles(
         boundaries.push(range.start.min(text_len));
         boundaries.push(range.end.min(text_len));
     }
+    let search_ranges = mapped_search_ranges(inline_node, node_cx);
+    for (range, _) in &search_ranges {
+        boundaries.push(range.start);
+        boundaries.push(range.end);
+    }
     boundaries.sort_unstable();
     boundaries.dedup();
 
@@ -1270,6 +1616,12 @@ fn append_resolved_inline_styles(
             });
             node_cx.refine_inline(MarkdownInlineKind::Link, &mut style);
         }
+        if let Some((_, active)) = search_ranges
+            .iter()
+            .find(|(range, _)| range.start <= local_range.start && range.end >= local_range.end)
+        {
+            style.background_color = Some(accent.opacity(if *active { 0.55 } else { 0.3 }));
+        }
 
         if style == HighlightStyle::default() {
             continue;
@@ -1287,9 +1639,41 @@ fn append_resolved_inline_styles(
     }
 }
 
+/// Map canonical-source search ranges into one rendered inline text node.
+fn mapped_search_ranges(
+    inline_node: &InlineNode,
+    node_cx: &NodeContext,
+) -> Vec<(Range<usize>, bool)> {
+    let Some(source) = &inline_node.source_range else {
+        return Vec::new();
+    };
+    let source_len = source.end.saturating_sub(source.start);
+    node_cx
+        .search_matches
+        .iter()
+        .enumerate()
+        .filter_map(|(index, matched)| {
+            let start = source.start.max(matched.start);
+            let end = source.end.min(matched.end);
+            if start >= end {
+                return None;
+            }
+            let range = if source_len == inline_node.text.len() {
+                (start - source.start)..(end - source.start)
+            } else {
+                0..inline_node.text.len()
+            };
+            Some((range, node_cx.active_search_match == Some(index)))
+        })
+        .collect()
+}
+
 impl PartialEq for NodeContext {
     fn eq(&self, other: &Self) -> bool {
-        self.link_refs == other.link_refs && self.style == other.style
+        self.link_refs == other.link_refs
+            && self.style == other.style
+            && self.search_matches == other.search_matches
+            && self.active_search_match == other.active_search_match
         // Note: code_block_actions and markdown_extensions are intentionally
         // not compared (closures can't be compared)
     }
@@ -1902,7 +2286,11 @@ impl BlockNode {
                                 .element_style(MarkdownElementKind::ListMarker),
                             |this, style| this.refine_style(style),
                         )
-                        .child(list_item_prefix(ix, options.ordered, options.depth)),
+                        .child(list_item_prefix(
+                            ix.saturating_add(options.ordered_start.saturating_sub(1) as usize),
+                            options.ordered,
+                            options.depth,
+                        )),
                 )
             })
             .when_some(checked, |this, checked| {
@@ -2439,13 +2827,17 @@ impl BlockNode {
             .unwrap_or_default()
             .to_string()
             .into();
-        let (heading_level, code_language, task_checked) = match self {
-            Self::Heading { level, .. } => {
-                (Some(MarkdownHeadingLevel::from_depth(*level)), None, None)
-            }
-            Self::CodeBlock(code) => (None, code.lang(), None),
-            Self::ListItem { checked, .. } => (None, None, *checked),
-            _ => (None, None, None),
+        let (heading_level, code_language, code_info, code_source_path, task_checked) = match self {
+            Self::Heading { level, .. } => (
+                Some(MarkdownHeadingLevel::from_depth(*level)),
+                None,
+                None,
+                None,
+                None,
+            ),
+            Self::CodeBlock(code) => (None, code.lang(), code.info(), code.source_path(), None),
+            Self::ListItem { checked, .. } => (None, None, None, None, *checked),
+            _ => (None, None, None, None, None),
         };
         let context = MarkdownBlockRenderContext {
             kind,
@@ -2454,6 +2846,8 @@ impl BlockNode {
             text: self.text().trim_end().to_string().into(),
             heading_level,
             code_language,
+            code_info,
+            code_source_path,
             task_checked,
             default,
         };
@@ -2545,7 +2939,7 @@ impl BlockNode {
                     .child(children.render(node_cx, window, cx))
                     .into_any_element()
             }
-            BlockNode::Blockquote { children, .. } => div()
+            BlockNode::Blockquote { children, kind, .. } => div()
                 .w_full()
                 .pb(mb)
                 .child(
@@ -2554,7 +2948,15 @@ impl BlockNode {
                         .w_full()
                         .text_color(cx.theme().muted_foreground)
                         .border_l_3()
-                        .border_color(cx.theme().secondary_active)
+                        .border_color(match kind {
+                            Some(BlockQuoteKind::Note | BlockQuoteKind::Important) => {
+                                cx.theme().info
+                            }
+                            Some(BlockQuoteKind::Tip) => cx.theme().success,
+                            Some(BlockQuoteKind::Warning) => cx.theme().warning,
+                            Some(BlockQuoteKind::Caution) => cx.theme().danger,
+                            None => cx.theme().secondary_active,
+                        })
                         .px_4()
                         .when_some(
                             node_cx
@@ -2572,7 +2974,10 @@ impl BlockNode {
                 )
                 .into_any_element(),
             BlockNode::List {
-                children, ordered, ..
+                children,
+                ordered,
+                start,
+                ..
             } => v_flex()
                 .id((if *ordered { "ol" } else { "ul" }, ix))
                 .w_full()
@@ -2598,6 +3003,7 @@ impl BlockNode {
                             NodeRenderOptions {
                                 ix,
                                 ordered: *ordered,
+                                ordered_start: start.unwrap_or(1),
                                 ..options
                             },
                             node_cx,
@@ -2655,7 +3061,24 @@ impl BlockNode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::hsla;
+    use gpui::{TestAppContext, hsla};
+
+    #[test]
+    fn mermaid_source_renders_to_resvg_safe_svg() {
+        let svg = render_mermaid_svg("flowchart LR\n  A --> B", false).unwrap();
+
+        assert!(svg.contains("<svg"));
+        assert!(svg.contains("</svg>"));
+    }
+
+    #[test]
+    fn mermaid_theme_changes_with_application_appearance() {
+        let source = "flowchart LR\n  A --> B";
+        let light = render_mermaid_svg(source, false).unwrap();
+        let dark = render_mermaid_svg(source, true).unwrap();
+
+        assert_ne!(light, dark);
+    }
 
     #[cfg(feature = "tree-sitter")]
     use crate::{
@@ -2663,7 +3086,7 @@ mod tests {
         text::{TextView, TextViewState},
     };
     #[cfg(feature = "tree-sitter")]
-    use gpui::{AppContext as _, Context, Entity, Render, TestAppContext, VisualTestContext};
+    use gpui::{Context, Entity, Render, VisualTestContext};
 
     #[cfg(feature = "tree-sitter")]
     fn cached_highlight_theme(block: &CodeBlock) -> Option<Arc<HighlightTheme>> {
@@ -2694,7 +3117,7 @@ mod tests {
         let plain_color = hsla(0.1, 0.7, 0.4, 1.);
         let link_color = hsla(0.6, 0.8, 0.5, 1.);
         let background = hsla(0.2, 0.3, 0.8, 1.);
-        let markdown_style = MarkdownStyle::default()
+        let markdown_style = LegacyMarkdownStyle::default()
             .inline(
                 MarkdownInlineKind::Plain,
                 MarkdownTextStyle::default()
@@ -2750,6 +3173,61 @@ mod tests {
         assert_eq!(highlights[1].1.underline, None);
         assert_eq!(links.len(), 1);
         assert_eq!(links[0].range, 6..10);
+    }
+
+    #[test]
+    fn source_search_ranges_map_to_rendered_inline_offsets() {
+        let inline_node = InlineNode::new("value").source_range(10..15);
+        let node_cx = NodeContext {
+            search_matches: Arc::new(vec![12..14, 20..24]),
+            active_search_match: Some(0),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            mapped_search_ranges(&inline_node, &node_cx),
+            vec![(2..4, true)]
+        );
+    }
+
+    #[gpui::test]
+    fn built_in_profile_keeps_plain_text_on_the_lightweight_inline_path(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        cx.update(|cx| {
+            for profile in [
+                MarkdownStyleProfile::Agent,
+                MarkdownStyleProfile::Editor,
+                MarkdownStyleProfile::Preview,
+            ] {
+                let style = LegacyMarkdownStyle::for_profile(profile, cx);
+                assert!(style.base_text_style().text.line_height.is_some());
+                assert!(
+                    style
+                        .element_style(MarkdownElementKind::Paragraph)
+                        .is_some_and(|style| style.text.line_height.is_some()),
+                    "built-in profiles must retain Zed's paragraph line-height override"
+                );
+                assert!(
+                    style.inline_style(MarkdownInlineKind::Plain).is_none(),
+                    "built-in body typography must not create an atomic Plain box"
+                );
+            }
+
+            let node_cx = NodeContext {
+                markdown_style: Arc::new(LegacyMarkdownStyle::for_profile(
+                    MarkdownStyleProfile::Agent,
+                    cx,
+                )),
+                ..Default::default()
+            };
+            let plain = Paragraph::new("plain **semantic** text".to_string());
+            assert!(!plain.should_render_inline_flow(&node_cx, cx));
+
+            let mut code = Paragraph::new(String::new());
+            code.children =
+                vec![InlineNode::new("code").marks(vec![(0..4, TextMark::default().code())])];
+            assert!(code.should_render_inline_flow(&node_cx, cx));
+        });
     }
 
     #[test]

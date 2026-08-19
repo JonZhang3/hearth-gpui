@@ -1,21 +1,34 @@
+#[allow(dead_code)]
 mod document;
 mod format;
 mod inline;
 mod inline_flow;
+// Legacy Markdown hooks remain private only while HTML still shares the old document tree.
+#[allow(dead_code, unused_imports)]
 mod markdown_ext;
+mod markdown_renderer;
+#[allow(dead_code)]
 mod node;
 pub(crate) mod selection;
+#[allow(dead_code)]
 mod state;
 mod streaming;
+#[allow(dead_code)]
 mod style;
+#[allow(dead_code)]
 mod text_view;
 mod utils;
 mod window_selection;
 
 use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window};
-pub use markdown_ext::*;
+pub(crate) use markdown_ext::*;
+pub use markdown_renderer::{
+    BlockQuoteKindColors, CodeBlockRenderContext, CodeBlockRenderer, CopyAsMarkdown,
+    CopyButtonVisibility, HeadingLevelStyles, Markdown, MarkdownElement, MarkdownFont,
+    MarkdownOptions, MarkdownStyle, WrapButtonVisibility,
+};
 pub use state::*;
-pub use streaming::{StreamingTextPacer, StreamingTextPacerConfig};
+pub(crate) use style::MarkdownStyleProfile;
 pub use style::*;
 pub use text_view::*;
 pub(crate) use window_selection::TextSelectionController;
@@ -24,13 +37,6 @@ pub(crate) use window_selection::{SelectionScope, SelectionScopeElement};
 
 pub(crate) fn init(cx: &mut App) {
     state::init(cx);
-}
-
-/// Create a new markdown text view with code location as id.
-#[track_caller]
-pub fn markdown(source: impl Into<SharedString>) -> TextView {
-    let id: ElementId = ElementId::CodeLocation(*std::panic::Location::caller());
-    TextView::markdown(id, source)
 }
 
 /// Create a new html text view with code location as id.

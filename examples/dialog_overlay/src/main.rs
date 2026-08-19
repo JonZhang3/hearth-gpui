@@ -2,36 +2,47 @@
 // Changes:
 // - Enabled application-owned title-bar dragging for the custom dialog-overlay window.
 use gpui::*;
-use hearth_gpui::{button::*, menu::ContextMenuExt, text::TextView, *};
+use hearth_gpui::{
+    button::*,
+    menu::ContextMenuExt,
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
+    *,
+};
 use hearth_gpui_assets::Assets;
 
 actions!(class_menu, [Open, Delete, Export, Info]);
 
-pub struct HelloWorld;
+pub struct HelloWorld {
+    behind_markdown: Entity<Markdown>,
+}
 
 impl HelloWorld {
     fn show_dialog(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.open_dialog(cx, move |dialog, _, _| {
+        window.open_dialog(cx, move |dialog, window, cx| {
+            let markdown = cx.new(|cx| Markdown::new(
+                "Select **this** text, then drag the mouse *out of the dialog* over the paragraph behind it. The text behind must NOT get selected",
+                cx,
+            ));
             dialog.title("Selectable dialog").child(
-                TextView::markdown(
-                    "dialog-text",
-                    "Select **this** text, then drag the mouse *out of the dialog* over \
-                     the paragraph behind it. The text behind must NOT get selected",
+                MarkdownElement::new(
+                    markdown,
+                    MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
                 )
-                .selectable(true),
             )
         });
     }
 
     fn show_sheet(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
-        window.open_sheet(cx, move |sheet, _, _| {
+        window.open_sheet(cx, move |sheet, window, cx| {
+            let markdown = cx.new(|cx| Markdown::new(
+                "Select **this** text, then drag the mouse *out of the sheet* over the paragraph behind it. The text behind must NOT get selected",
+                cx,
+            ));
             sheet.title("Selectable Sheet").child(
-                TextView::markdown(
-                    "sheet-text",
-                    "Select **this** text, then drag the mouse *out of the sheet* over \
-                     the paragraph behind it. The text behind must NOT get selected",
+                MarkdownElement::new(
+                    markdown,
+                    MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
                 )
-                .selectable(true),
             )
         });
     }
@@ -68,15 +79,10 @@ impl Render for HelloWorld {
                     // Selectable text behind the modals. Open a dialog/sheet,
                     // select its text, drag the mouse out over this paragraph,
                     // and confirm this text is NOT selected.
-                    .child(
-                        TextView::markdown(
-                            "behind-text",
-                            "**Background text** behind the modals. While a dialog or \
-                             sheet is open, a selection started inside it must not \
-                             extend onto this paragraph.",
-                        )
-                        .selectable(true),
-                    )
+                    .child(MarkdownElement::new(
+                        self.behind_markdown.clone(),
+                        MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+                    ))
                     .child(
                         div()
                             .id("second-area")
@@ -121,7 +127,12 @@ fn main() {
                     ..Default::default()
                 },
                 |window, cx| {
-                    let view = cx.new(|_| HelloWorld);
+            let view = cx.new(|cx| HelloWorld {
+                behind_markdown: cx.new(|cx| Markdown::new(
+                    "**Background text** behind the modals. While a dialog or sheet is open, a selection started inside it must not extend onto this paragraph.",
+                    cx,
+                )),
+            });
                     // This first level on the window, should be a Root.
                     cx.new(|cx| Root::new(view, window, cx))
                 },

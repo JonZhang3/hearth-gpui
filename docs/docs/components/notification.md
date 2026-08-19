@@ -164,7 +164,7 @@ Notification::new()
 ### Custom Content
 
 ```rust
-use hearth_gpui::text::markdown;
+use hearth_gpui::text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle};
 
 let markdown_content = r#"
 ## Accessibility
@@ -179,7 +179,11 @@ Notification exposes an AccessKit Alert role. Its title, or message when no titl
 
 Notification::new()
     .content(|_, window, cx| {
-        markdown(markdown_content).into_any_element()
+        let markdown = cx.new(|cx| Markdown::new(markdown_content, cx));
+        MarkdownElement::new(
+            markdown,
+            MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+        ).into_any_element()
     })
 ```
 
@@ -280,7 +284,7 @@ Notification::warning("System maintenance will begin in 30 minutes.")
 ### Batch Operation Results
 
 ```rust
-use hearth_gpui::text::markdown;
+use hearth_gpui::text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle};
 
 let results_content = r#"
 ## Batch Operation Complete
@@ -295,7 +299,11 @@ let results_content = r#"
 Notification::success("Batch operation completed with some failures.")
     .title("Operation Results")
     .content(|window, cx| {
-        markdown(results_content).into_any_element()
+        let markdown = cx.new(|cx| Markdown::new(results_content, cx));
+        MarkdownElement::new(
+            markdown,
+            MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+        ).into_any_element()
     })
     .autohide(false)
 ```

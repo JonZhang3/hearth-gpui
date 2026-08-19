@@ -102,14 +102,19 @@ Alert::new("maintenance-banner")
 `title` and `description` retain ordinary strings for accessibility metadata. Use `title_element` or `description_element` for arbitrary GPUI elements. Because arbitrary elements cannot be converted back to text reliably, provide an `aria_label` that summarizes all important content.
 
 ```rust
+let description = cx.new(|cx| Markdown::new(
+    "Please correct the following errors:\n- Email address is required\n- Password must be at least 8 characters",
+    cx,
+));
+let description = MarkdownElement::new(
+    description,
+    MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+);
+
 Alert::new("validation-error")
     .destructive()
     .title("Validation failed")
-    .description_element(markdown(
-        "Please correct the following errors:\n\
-        - Email address is required\n\
-        - Password must be at least 8 characters"
-    ))
+    .description_element(description)
     .aria_label(
         "Validation failed. Email address is required. Password must be at least 8 characters."
     )

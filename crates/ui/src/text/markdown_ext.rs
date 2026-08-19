@@ -2,6 +2,7 @@ use std::{
     any::Any,
     collections::HashMap,
     fmt,
+    ops::Range,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -9,32 +10,53 @@ use std::{
 };
 
 use gpui::{AnyElement, App, IntoElement, SharedString, Window};
-use markdown::{ParseOptions, mdast};
 
 use crate::text::node::Span;
 
 static MARKDOWN_EXTENSIONS_REVISION: AtomicU64 = AtomicU64::new(1);
 
-/// Re-export of the Markdown AST types used by custom parsers.
-pub use markdown::mdast as markdown_ast;
+/// The parser event type used by Markdown extensions.
+pub use pulldown_cmark::Event as MarkdownEvent;
+/// The parser start-tag type used by Markdown extensions.
+pub use pulldown_cmark::Tag as MarkdownTag;
+/// The parser end-tag type used by Markdown extensions.
+pub use pulldown_cmark::TagEnd as MarkdownTagEnd;
 
-/// Type for a custom Markdown block parser.
-///
-/// Parsers run during Markdown AST conversion, often on a background task. They
-/// must not depend on [`Window`] or [`App`]; return parsed, reusable data in a
-/// [`MarkdownNode`] and render it later with a block renderer.
-pub type MarkdownBlockParserFn =
-    dyn for<'a> Fn(&mdast::Node, &MarkdownParseContext<'a>) -> Option<MarkdownNode> + Send + Sync;
+/// One source-mapped `pulldown-cmark` event presented to an extension.
+#[derive(Clone, Debug)]
+pub struct MarkdownParseEvent<'a> {
+    event: MarkdownEvent<'a>,
+    range: Range<usize>,
+}
 
-/// Type for a custom Markdown block renderer.
+impl<'a> MarkdownParseEvent<'a> {
+    pub(crate) fn new(event: MarkdownEvent<'a>, range: Range<usize>) -> Self {
+        Self { event, range }
+    }
+
+    /// Return the parser event.
+    pub fn event(&self) -> &MarkdownEvent<'a> {
+        &self.event
+    }
+
+    /// Return the byte range in the parsed source fragment.
+    pub fn range(&self) -> Range<usize> {
+        self.range.clone()
+    }
+}
+
+/// Type for a custom Markdown parser.
+pub type MarkdownBlockParserFn = dyn for<'a> Fn(&MarkdownParseEvent<'a>, &MarkdownParseContext<'a>) -> Option<MarkdownNode>
+    + Send
+    + Sync;
+
+/// Type for a custom Markdown renderer.
 pub type MarkdownBlockRenderFn =
     dyn Fn(&MarkdownNode, &mut Window, &mut App) -> AnyElement + Send + Sync;
 
 /// A reusable Markdown extension that parses and renders one custom node.
 pub trait MarkdownPlugin: Send + Sync + 'static {
     /// Whether this plugin produces block-level nodes.
-    ///
-    /// Plugins are inline by default. Return `true` for a block-level node.
     fn is_block(&self) -> bool {
         false
     }
@@ -42,10 +64,14 @@ pub trait MarkdownPlugin: Send + Sync + 'static {
     /// Stable name for nodes produced by this plugin.
     fn name(&self) -> &str;
 
-    /// Convert an mdast node into a custom Markdown node.
-    fn parse(&self, node: &mdast::Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode>;
+    /// Convert one source-mapped parser event into a custom node.
+    fn parse(
+        &self,
+        event: &MarkdownParseEvent<'_>,
+        cx: &MarkdownParseContext<'_>,
+    ) -> Option<MarkdownNode>;
 
-    /// Render a custom Markdown node produced by this plugin.
+    /// Render a custom node produced by this plugin.
     fn render(&self, node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl IntoElement;
 }
 
@@ -65,16 +91,20 @@ impl<'a> MarkdownParseContext<'a> {
         self.source
     }
 
-    /// Byte offset of `source` in the full document when parsing an appended
-    /// fragment.
+    /// Byte offset of the fragment in the complete document.
     pub fn offset(&self) -> usize {
         self.offset
     }
 
-    /// Source slice for a specific mdast node.
-    pub fn node_source(&self, node: &mdast::Node) -> Option<&'a str> {
-        let position = node.position()?;
-        self.source.get(position.start.offset..position.end.offset)
+    /// Source slice covered by a parser event.
+    pub fn event_source(&self, event: &MarkdownParseEvent<'_>) -> Option<&'a str> {
+        self.source.get(event.range())
+    }
+
+    /// Absolute source range covered by a parser event.
+    pub fn event_range(&self, event: &MarkdownParseEvent<'_>) -> Range<usize> {
+        let range = event.range();
+        self.offset + range.start..self.offset + range.end
     }
 }
 
@@ -171,10 +201,9 @@ impl PartialEq for MarkdownNode {
     }
 }
 
-/// Registry for custom Markdown parsing and rendering.
+/// Registry for custom event parsing and rendering.
 #[derive(Clone, Default)]
 pub struct MarkdownExtensions {
-    enable_mdx: bool,
     block_parsers: Vec<Arc<MarkdownBlockParserFn>>,
     block_renderers: HashMap<SharedString, Arc<MarkdownBlockRenderFn>>,
     inline_parsers: Vec<Arc<MarkdownBlockParserFn>>,
@@ -183,20 +212,10 @@ pub struct MarkdownExtensions {
 }
 
 impl MarkdownExtensions {
-    /// Enable MDX JSX/expression constructs.
-    ///
-    /// This disables raw HTML constructs because `markdown-rs` gives HTML
-    /// priority over MDX when both are enabled.
-    pub fn mdx(mut self) -> Self {
-        self.enable_mdx = true;
-        self.bump_revision();
-        self
-    }
-
-    /// Register a parser for block-level Markdown AST nodes.
+    /// Register a parser for block-level Markdown events.
     pub fn block_parser<F>(mut self, parser: F) -> Self
     where
-        F: for<'a> Fn(&mdast::Node, &MarkdownParseContext<'a>) -> Option<MarkdownNode>
+        F: for<'a> Fn(&MarkdownParseEvent<'a>, &MarkdownParseContext<'a>) -> Option<MarkdownNode>
             + Send
             + Sync
             + 'static,
@@ -226,7 +245,7 @@ impl MarkdownExtensions {
         let renderer = plugin;
 
         if parser.is_block() {
-            let mut extensions = self.block_parser(move |node, cx| parser.parse(node, cx));
+            let mut extensions = self.block_parser(move |event, cx| parser.parse(event, cx));
             extensions.push_block_renderer(name, move |node, window, cx| {
                 renderer.render(node, window, cx).into_any_element()
             });
@@ -235,7 +254,7 @@ impl MarkdownExtensions {
             let mut extensions = self;
             extensions
                 .inline_parsers
-                .push(Arc::new(move |node, cx| parser.parse(node, cx)));
+                .push(Arc::new(move |event, cx| parser.parse(event, cx)));
             extensions.inline_renderers.insert(
                 name,
                 Arc::new(move |node, window, cx| {
@@ -253,7 +272,7 @@ impl MarkdownExtensions {
 
     pub(crate) fn push_block_parser<F>(&mut self, parser: F)
     where
-        F: for<'a> Fn(&mdast::Node, &MarkdownParseContext<'a>) -> Option<MarkdownNode>
+        F: for<'a> Fn(&MarkdownParseEvent<'a>, &MarkdownParseContext<'a>) -> Option<MarkdownNode>
             + Send
             + Sync
             + 'static,
@@ -274,30 +293,14 @@ impl MarkdownExtensions {
         self.bump_revision();
     }
 
-    pub(crate) fn parse_options(&self) -> ParseOptions {
-        let mut options = ParseOptions::gfm();
-        if self.enable_mdx {
-            options.constructs.html_flow = false;
-            options.constructs.html_text = false;
-            options.constructs.mdx_expression_flow = true;
-            options.constructs.mdx_expression_text = true;
-            options.constructs.mdx_jsx_flow = true;
-            options.constructs.mdx_jsx_text = true;
-        }
-        options
-    }
-
     pub(crate) fn parse_block(
         &self,
-        node: &mdast::Node,
+        event: &MarkdownParseEvent<'_>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
-        for parser in &self.block_parsers {
-            if let Some(node) = parser(node, cx) {
-                return Some(node);
-            }
-        }
-        None
+        self.block_parsers
+            .iter()
+            .find_map(|parser| parser(event, cx))
     }
 
     pub(crate) fn render_block(
@@ -313,15 +316,12 @@ impl MarkdownExtensions {
 
     pub(crate) fn parse_inline(
         &self,
-        node: &mdast::Node,
+        event: &MarkdownParseEvent<'_>,
         cx: &MarkdownParseContext<'_>,
     ) -> Option<MarkdownNode> {
-        for parser in &self.inline_parsers {
-            if let Some(node) = parser(node, cx) {
-                return Some(node);
-            }
-        }
-        None
+        self.inline_parsers
+            .iter()
+            .find_map(|parser| parser(event, cx))
     }
 
     pub(crate) fn render_inline(

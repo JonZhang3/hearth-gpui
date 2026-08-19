@@ -16,11 +16,10 @@ use hearth_gpui::{
     h_flex,
     radio::{RadioGroup, RadioGroupItem},
     switch::Switch,
-    text::markdown,
     v_flex,
 };
 
-use crate::section;
+use crate::{markdown, section};
 
 pub struct GroupBoxStory {
     focus_handle: gpui::FocusHandle,
@@ -164,6 +163,7 @@ impl Render for GroupBoxStory {
                                 .border_2(),
                         )
                         .child(markdown(
+                            "group-box-custom-style-markdown",
                             "You can use `title_style` to customize the style \
                                 of the title. \n \
                                 And any style in `GroupBox` will apply to the content container.",

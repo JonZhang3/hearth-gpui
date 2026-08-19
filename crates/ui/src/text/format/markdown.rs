@@ -1,771 +1,1056 @@
-use std::{ops::Range, sync::Arc};
+use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use gpui::SharedString;
-use markdown::mdast::{self, Node};
+use linkify::{LinkFinder, LinkKind};
+use pulldown_cmark::{
+    BlockQuoteKind, CodeBlockKind, Event, HeadingLevel, MetadataBlockKind, Options, Parser, Tag,
+    TagEnd,
+};
 
 use crate::text::{
-    document::ParsedDocument,
-    markdown_ext::MarkdownParseContext,
+    MarkdownOptions,
+    document::{MarkdownSourceEvent, MarkdownSourceEventKind, ParsedDocument},
+    markdown_ext::{MarkdownParseContext, MarkdownParseEvent},
     node::{
-        self, BlockNode, CodeBlock, ImageNode, InlineNode, LinkMark, NodeContext, Paragraph, Span,
-        Table, TableRow, TextMark,
+        BlockNode, CodeBlock, ImageNode, InlineNode, LinkMark, NodeContext, Paragraph, Span, Table,
+        TableCell, TableRow, TextMark,
     },
 };
 
-/// Parse Markdown into a tree of nodes.
+const BASE_PARSE_OPTIONS: Options = Options::ENABLE_TABLES
+    .union(Options::ENABLE_FOOTNOTES)
+    .union(Options::ENABLE_STRIKETHROUGH)
+    .union(Options::ENABLE_TASKLISTS)
+    .union(Options::ENABLE_SMART_PUNCTUATION)
+    .union(Options::ENABLE_HEADING_ATTRIBUTES)
+    .union(Options::ENABLE_PLUSES_DELIMITED_METADATA_BLOCKS)
+    .union(Options::ENABLE_OLD_FOOTNOTES)
+    .union(Options::ENABLE_GFM)
+    .union(Options::ENABLE_SUPERSCRIPT)
+    .union(Options::ENABLE_SUBSCRIPT);
+
+/// Build the parser extension set for one Markdown document.
+pub(crate) fn parse_options(options: MarkdownOptions) -> Options {
+    if options.render_metadata_blocks {
+        BASE_PARSE_OPTIONS.union(Options::ENABLE_YAML_STYLE_METADATA_BLOCKS)
+    } else {
+        BASE_PARSE_OPTIONS
+    }
+}
+
+/// Parse Markdown into Hearth's source-mapped document model.
+///
+/// `pulldown-cmark` supplies a streaming event interface. The conversion keeps
+/// parser details private so rendering, selection, and incremental updates all
+/// continue to use the same deep document module.
+#[stacksafe::stacksafe]
 pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument, SharedString> {
     cx.source = source.to_string().into();
-    let options = cx.markdown_extensions.parse_options();
-    markdown::to_mdast(&source, &options)
-        .map(|n| ast_to_document(source, n, cx))
-        .map_err(|e| e.to_string().into())
+    if cx.markdown_options.parse_links_only {
+        return Ok(parse_links_only(source, cx));
+    }
+    let options = cx.markdown_options;
+    let mut builder = DocumentBuilder::new(source, cx);
+    for (event, range) in Parser::new_ext(source, parse_options(options)).into_offset_iter() {
+        if let Err(error) = builder.consume(event, range) {
+            tracing::warn!(
+                ?error,
+                "recovering from unsupported Markdown event sequence"
+            );
+        }
+    }
+    Ok(builder.finish_or_literal())
 }
 
-fn parse_table_row(table: &mut Table, node: &mdast::TableRow, cx: &mut NodeContext) {
-    let mut row = TableRow::default();
-    node.children.iter().for_each(|c| {
-        match c {
-            Node::TableCell(cell) => {
-                parse_table_cell(&mut row, cell, cx);
-            }
-            _ => {}
-        };
-    });
-    table.children.push(row);
-}
-
-fn parse_table_cell(row: &mut node::TableRow, node: &mdast::TableCell, cx: &mut NodeContext) {
+fn parse_links_only(source: &str, cx: &NodeContext) -> ParsedDocument {
     let mut paragraph = Paragraph::default();
-    node.children.iter().for_each(|c| {
-        parse_paragraph(&mut paragraph, c, cx);
-    });
-    let table_cell = node::TableCell {
-        children: paragraph,
-        ..Default::default()
-    };
-    row.children.push(table_cell);
-}
-
-/// Push a text run with its existing `marks` plus `new_mark` across the full
-/// run.
-///
-/// If the last mark already covers the full run, merge into it. Otherwise add a
-/// new full-run mark. Empty runs are skipped so callers can flush freely.
-fn push_merged(
-    paragraph: &mut Paragraph,
-    text: String,
-    marks: Vec<(Range<usize>, TextMark)>,
-    new_mark: TextMark,
-) {
-    if text.is_empty() {
-        return;
-    }
-
-    let mut node = InlineNode::new(text).marks(marks);
-    let len = node.text.len();
-    if let Some(last) = node.marks.last_mut()
-        && last.0.start == 0
-        && last.0.end == len
-    {
-        last.1.merge(new_mark);
-    } else {
-        node.marks.push((0..len, new_mark));
-    }
-    paragraph.push(node);
-}
-
-/// Parse `children` and apply `mark` across each emitted text run.
-///
-/// Nested child marks are kept and shifted to match the combined text for the
-/// current run, which lets nested emphasis like `**_x_**` render as both bold
-/// and italic. Inline images split the run and are emitted as sibling image
-/// nodes. The return value is the plain text from all children, for callers that
-/// need to pass text back to their parent node.
-fn merge_children_with_mark(
-    paragraph: &mut Paragraph,
-    children: &[mdast::Node],
-    mark: TextMark,
-    cx: &mut NodeContext,
-) -> String {
-    let mut text = String::new();
-    let mut merged_text = String::new();
-    let mut merged_marks = Vec::new();
-
-    for child in children {
-        let mut child_paragraph = Paragraph::default();
-        let child_text = parse_paragraph(&mut child_paragraph, child, cx);
-        text.push_str(&child_text);
-
-        for node in child_paragraph.children {
-            if let Some(custom) = node.custom {
-                push_merged(
-                    paragraph,
-                    std::mem::take(&mut merged_text),
-                    std::mem::take(&mut merged_marks),
-                    mark.clone(),
-                );
-                paragraph.push(InlineNode::custom(custom));
-                continue;
-            }
-            let merged_offset = merged_text.len();
-            merged_text.push_str(&node.text);
-
-            for (range, child_mark) in node.marks {
-                merged_marks.push((
-                    range.start + merged_offset..range.end + merged_offset,
-                    child_mark,
-                ));
-            }
-
-            if let Some(mut image) = node.image {
-                if let Some(link_mark) = mark.link.clone() {
-                    image.link = Some(link_mark);
-                }
-
-                // GPUI InteractiveText does not support inline images, so
-                // flush the accumulated text run and emit the image as its
-                // own sibling InlineNode.
-                push_merged(
-                    paragraph,
-                    std::mem::take(&mut merged_text),
-                    std::mem::take(&mut merged_marks),
-                    mark.clone(),
-                );
-                paragraph.push(InlineNode::image(image));
-            }
+    let mut finder = LinkFinder::new();
+    finder.kinds(&[LinkKind::Url]);
+    let mut cursor = 0;
+    for link in finder.links(source) {
+        if cursor < link.start() {
+            paragraph.push(InlineNode::new(&source[cursor..link.start()]));
         }
-    }
-
-    push_merged(paragraph, merged_text, merged_marks, mark);
-    text
-}
-
-fn append_inline_html_blocks(paragraph: &mut Paragraph, blocks: Vec<BlockNode>) -> Option<String> {
-    let mut text = String::new();
-
-    for block in blocks {
-        match block {
-            BlockNode::Root { children, .. } => {
-                text.push_str(&append_inline_html_blocks(paragraph, children)?);
-            }
-            BlockNode::Paragraph(html_paragraph) => {
-                text.push_str(&html_paragraph.text());
-                for child in html_paragraph.children {
-                    paragraph.push(child);
-                }
-            }
-            BlockNode::Break { .. } => {
-                text.push('\n');
-                paragraph.push(InlineNode::new("\n"));
-            }
-            _ => return None,
-        }
-    }
-
-    Some(text)
-}
-
-fn parse_paragraph(paragraph: &mut Paragraph, node: &mdast::Node, cx: &mut NodeContext) -> String {
-    let parse_cx = MarkdownParseContext::new(&cx.source, cx.offset);
-    if let Some(mut custom) = cx.markdown_extensions.parse_inline(node, &parse_cx) {
-        custom.set_span(new_span(node.position().cloned(), cx));
-        let text = custom.as_text().to_string();
-        paragraph.push(InlineNode::custom(custom));
-        return text;
-    }
-
-    let span = node.position().map(|pos| Span {
-        start: cx.offset + pos.start.offset,
-        end: cx.offset + pos.end.offset,
-    });
-    if let Some(span) = span {
-        paragraph.set_span(span);
-    }
-
-    let mut text = String::new();
-
-    match node {
-        Node::Paragraph(val) => {
-            val.children.iter().for_each(|c| {
-                text.push_str(&parse_paragraph(paragraph, c, cx));
-            });
-        }
-        Node::Text(val) => {
-            text = val.value.clone();
-            paragraph.push_str(&val.value)
-        }
-        Node::Emphasis(val) => {
-            text = merge_children_with_mark(
-                paragraph,
-                &val.children,
-                TextMark::default().italic(),
-                cx,
-            );
-        }
-        Node::Strong(val) => {
-            text =
-                merge_children_with_mark(paragraph, &val.children, TextMark::default().bold(), cx);
-        }
-        Node::Delete(val) => {
-            text = merge_children_with_mark(
-                paragraph,
-                &val.children,
-                TextMark::default().strikethrough(),
-                cx,
-            );
-        }
-        Node::InlineCode(val) => {
-            text = val.value.clone();
-            paragraph.push(
-                InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default().code())]),
-            );
-        }
-        Node::Link(val) => {
-            let link_mark = Some(LinkMark {
-                url: val.url.clone().into(),
-                title: val.title.clone().map(|s| s.into()),
+        paragraph.push(InlineNode::new(link.as_str()).marks(vec![(
+            0..link.as_str().len(),
+            TextMark::default().link(LinkMark {
+                url: link.as_str().to_string().into(),
                 ..Default::default()
-            });
-
-            text = merge_children_with_mark(
-                paragraph,
-                &val.children,
-                TextMark {
-                    link: link_mark,
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
-        Node::Image(raw) => {
-            paragraph.push_image(ImageNode {
-                url: raw.url.clone().into(),
-                title: raw.title.clone().map(|t| t.into()),
-                alt: Some(raw.alt.clone().into()),
-                ..Default::default()
-            });
-        }
-        Node::InlineMath(raw) => {
-            text = raw.value.clone();
-            paragraph.push(
-                InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default().code())]),
-            );
-        }
-        Node::MdxTextExpression(raw) => {
-            text = raw.value.clone();
-            paragraph
-                .push(InlineNode::new(&text).marks(vec![(0..text.len(), TextMark::default())]));
-        }
-        Node::Html(val) => match super::html::parse(&val.value, cx) {
-            Ok(el) => {
-                if let Some(inline_text) = append_inline_html_blocks(
-                    paragraph,
-                    el.blocks.into_iter().map(Arc::unwrap_or_clone).collect(),
-                ) {
-                    text = inline_text;
-                } else {
-                    if cfg!(debug_assertions) {
-                        tracing::warn!("unsupported inline html tag: {:#?}", val.value);
-                    }
-                }
-            }
-            Err(err) => {
-                if cfg!(debug_assertions) {
-                    tracing::warn!("failed parsing html: {:#?}", err);
-                }
-
-                text.push_str(&val.value);
-            }
-        },
-        Node::FootnoteReference(foot) => {
-            let prefix = format!("[{}]", foot.identifier);
-            paragraph.push(InlineNode::new(&prefix).marks(vec![(
-                0..prefix.len(),
-                TextMark {
-                    italic: true,
-                    footnote_reference: true,
-                    ..Default::default()
-                },
-            )]));
-        }
-        Node::LinkReference(link) => {
-            let link_mark = LinkMark {
-                url: "".into(),
-                title: link.label.clone().map(Into::into),
-                identifier: Some(link.identifier.clone().into()),
-            };
-
-            text = merge_children_with_mark(
-                paragraph,
-                &link.children,
-                TextMark {
-                    link: Some(link_mark),
-                    ..Default::default()
-                },
-                cx,
-            );
-        }
-        _ => {
-            if cfg!(debug_assertions) {
-                tracing::warn!("unsupported inline node: {:#?}", node);
-            }
-        }
+            }),
+        )]));
+        cursor = link.end();
     }
-
-    text
-}
-
-fn ast_to_document(source: &str, root: mdast::Node, cx: &mut NodeContext) -> ParsedDocument {
-    let root = match root {
-        Node::Root(r) => r,
-        _ => panic!("expected root node"),
-    };
-
-    let blocks = root
-        .children
-        .into_iter()
-        .map(|c| Arc::new(ast_to_node(source, c, cx)))
-        .collect();
+    if cursor < source.len() {
+        paragraph.push(InlineNode::new(&source[cursor..]));
+    }
+    paragraph.set_span(Span {
+        start: cx.offset,
+        end: cx.offset + source.len(),
+    });
     ParsedDocument {
         source: source.to_string().into(),
-        blocks,
+        blocks: vec![Arc::new(BlockNode::Paragraph(paragraph))],
+        ..Default::default()
     }
 }
 
-fn new_span(pos: Option<markdown::unist::Position>, cx: &NodeContext) -> Option<Span> {
-    let pos = pos?;
-
-    Some(Span {
-        start: cx.offset + pos.start.offset,
-        end: cx.offset + pos.end.offset,
-    })
+#[derive(Debug)]
+enum Frame {
+    Root(Vec<BlockNode>),
+    Paragraph {
+        paragraph: Paragraph,
+        span: Span,
+    },
+    Heading {
+        level: u8,
+        paragraph: Paragraph,
+        span: Span,
+    },
+    Blockquote {
+        children: Vec<BlockNode>,
+        kind: Option<BlockQuoteKind>,
+        span: Span,
+    },
+    List {
+        children: Vec<BlockNode>,
+        ordered: bool,
+        start: Option<u64>,
+        span: Span,
+    },
+    Item {
+        children: Vec<BlockNode>,
+        inline: Paragraph,
+        checked: Option<bool>,
+        span: Span,
+    },
+    CodeBlock {
+        code: String,
+        language: Option<SharedString>,
+        info: Option<SharedString>,
+        span: Span,
+    },
+    HtmlBlock {
+        html: String,
+        span: Span,
+    },
+    Metadata {
+        text: String,
+        kind: MetadataBlockKind,
+        span: Span,
+    },
+    Footnote {
+        label: SharedString,
+        children: Vec<BlockNode>,
+        span: Span,
+    },
+    Table {
+        table: Table,
+        span: Span,
+    },
+    TableRow(TableRow),
+    TableCell(Paragraph),
 }
 
-fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockNode {
-    let span = new_span(value.position().cloned(), cx);
-    let parse_cx = MarkdownParseContext::new(source, cx.offset);
-    if let Some(mut node) = cx.markdown_extensions.parse_block(&value, &parse_cx) {
-        node.set_span(span);
-        return BlockNode::Custom(node);
+struct ImageCapture {
+    url: SharedString,
+    title: Option<SharedString>,
+    alt: String,
+}
+
+struct DocumentBuilder<'a, 'cx> {
+    source: &'a str,
+    cx: &'cx mut NodeContext,
+    frames: Vec<Frame>,
+    marks: Vec<TextMark>,
+    image: Option<ImageCapture>,
+    skipped_custom_depth: usize,
+    events: Vec<MarkdownSourceEvent>,
+    footnote_definitions: HashMap<SharedString, usize>,
+    heading_slugs: HashMap<SharedString, usize>,
+    heading_slug_counts: HashMap<String, usize>,
+}
+
+impl<'a, 'cx> DocumentBuilder<'a, 'cx> {
+    fn new(source: &'a str, cx: &'cx mut NodeContext) -> Self {
+        Self {
+            source,
+            cx,
+            frames: vec![Frame::Root(Vec::new())],
+            marks: Vec::new(),
+            image: None,
+            skipped_custom_depth: 0,
+            events: Vec::new(),
+            footnote_definitions: HashMap::new(),
+            heading_slugs: HashMap::new(),
+            heading_slug_counts: HashMap::new(),
+        }
     }
 
-    match value {
-        Node::Root(_) => unreachable!("node::Root should be handled separately"),
-        Node::Paragraph(val) => {
-            let mut paragraph = Paragraph::default();
-            val.children.iter().for_each(|c| {
-                parse_paragraph(&mut paragraph, c, cx);
-            });
-            paragraph.span = new_span(val.position, cx);
-            BlockNode::Paragraph(paragraph)
-        }
-        Node::Blockquote(val) => {
-            let children = val
-                .children
-                .into_iter()
-                .map(|c| ast_to_node(source, c, cx))
-                .collect();
-            BlockNode::Blockquote {
-                children,
-                span: new_span(val.position, cx),
+    fn consume(&mut self, event: Event<'a>, range: Range<usize>) -> Result<(), SharedString> {
+        self.events.push(MarkdownSourceEvent {
+            range: (self.cx.offset + range.start)..(self.cx.offset + range.end),
+            kind: source_event_kind(&event),
+        });
+        if self.skipped_custom_depth > 0 {
+            match event {
+                Event::Start(_) => self.skipped_custom_depth += 1,
+                Event::End(_) => self.skipped_custom_depth -= 1,
+                _ => {}
             }
+            return Ok(());
         }
-        Node::List(list) => {
-            let children = list
-                .children
-                .into_iter()
-                .map(|c| ast_to_node(source, c, cx))
-                .collect();
-            BlockNode::List {
-                ordered: list.ordered,
-                children,
-                span: new_span(list.position, cx),
-            }
-        }
-        Node::ListItem(val) => {
-            let children = val
-                .children
-                .into_iter()
-                .map(|c| ast_to_node(source, c, cx))
-                .collect();
-            BlockNode::ListItem {
-                children,
-                spread: val.spread,
-                checked: val.checked,
-                span: new_span(val.position, cx),
-            }
-        }
-        Node::Break(val) => BlockNode::Break {
-            html: false,
-            span: new_span(val.position, cx),
-        },
-        Node::Code(raw) => BlockNode::CodeBlock(CodeBlock::new(
-            raw.value.into(),
-            raw.lang.map(|s| s.into()),
-            new_span(raw.position, cx),
-        )),
-        Node::Heading(val) => {
-            let mut paragraph = Paragraph::default();
-            val.children.iter().for_each(|c| {
-                parse_paragraph(&mut paragraph, c, cx);
-            });
 
-            BlockNode::Heading {
-                level: val.depth,
-                children: paragraph,
-                span: new_span(val.position, cx),
-            }
+        let extension_event = MarkdownParseEvent::new(event.clone(), range.clone());
+        let parse_cx = MarkdownParseContext::new(self.source, self.cx.offset);
+
+        if matches!(event, Event::Start(_))
+            && let Some(mut custom) = self
+                .cx
+                .markdown_extensions
+                .parse_block(&extension_event, &parse_cx)
+        {
+            custom.set_span(Some(self.span(range)));
+            self.push_block(BlockNode::Custom(custom));
+            self.skipped_custom_depth = 1;
+            return Ok(());
         }
-        Node::Math(val) => BlockNode::CodeBlock(CodeBlock::new(
-            val.value.into(),
-            None,
-            new_span(val.position, cx),
-        )),
-        Node::Html(val) => match super::html::parse(&val.value, cx) {
-            Ok(el) => BlockNode::Root {
-                children: el.blocks.into_iter().map(Arc::unwrap_or_clone).collect(),
-                span: new_span(val.position, cx),
-            },
-            Err(err) => {
-                if cfg!(debug_assertions) {
-                    tracing::warn!("error parsing html: {:#?}", err);
+
+        if !matches!(event, Event::Start(_) | Event::End(_))
+            && let Some(mut custom) = self
+                .cx
+                .markdown_extensions
+                .parse_inline(&extension_event, &parse_cx)
+        {
+            custom.set_span(Some(self.span(range)));
+            self.paragraph_mut()?.push(InlineNode::custom(custom));
+            return Ok(());
+        }
+
+        match event {
+            Event::Start(tag) => self.start(tag, range),
+            Event::End(tag) => self.end(tag),
+            Event::Text(text) => self.push_text_at(&text, Some(range)),
+            Event::Code(code) => {
+                let mut mark = self.combined_mark();
+                mark.code = true;
+                self.push_inline_text_at(&code, mark, Some(range))
+            }
+            Event::InlineMath(math) => {
+                let mut mark = self.combined_mark();
+                mark.code = true;
+                self.push_inline_text_at(&math, mark, Some(range))
+            }
+            Event::DisplayMath(math) => {
+                let span = self.span(range);
+                self.push_block(BlockNode::CodeBlock(CodeBlock::new(
+                    math.into_string().into(),
+                    Some("math".into()),
+                    Some(span),
+                )));
+                Ok(())
+            }
+            Event::Html(html) => {
+                if self.cx.markdown_options.parse_html {
+                    self.push_html(&html, range)
+                } else {
+                    self.push_text(&html)
                 }
-
-                BlockNode::Paragraph(Paragraph::new(val.value))
             }
-        },
-        Node::MdxFlowExpression(val) => BlockNode::CodeBlock(CodeBlock::new(
-            val.value.into(),
-            Some("mdx".into()),
-            new_span(val.position, cx),
-        )),
-        Node::Yaml(val) => BlockNode::CodeBlock(CodeBlock::new(
-            val.value.into(),
-            Some("yml".into()),
-            new_span(val.position, cx),
-        )),
-        Node::Toml(val) => BlockNode::CodeBlock(CodeBlock::new(
-            val.value.into(),
-            Some("toml".into()),
-            new_span(val.position, cx),
-        )),
-        Node::MdxJsxTextElement(val) => {
-            let mut paragraph = Paragraph::default();
-            val.children.iter().for_each(|c| {
-                parse_paragraph(&mut paragraph, c, cx);
-            });
-            paragraph.span = new_span(val.position, cx);
-            BlockNode::Paragraph(paragraph)
-        }
-        Node::MdxJsxFlowElement(val) => {
-            let mut paragraph = Paragraph::default();
-            val.children.iter().for_each(|c| {
-                parse_paragraph(&mut paragraph, c, cx);
-            });
-            paragraph.span = new_span(val.position, cx);
-            BlockNode::Paragraph(paragraph)
-        }
-        Node::ThematicBreak(val) => BlockNode::HorizontalRule {
-            span: new_span(val.position, cx),
-        },
-        Node::Table(val) => {
-            let mut table = Table::default();
-            table.column_aligns = val
-                .align
-                .clone()
-                .into_iter()
-                .map(|align| align.into())
-                .collect();
-            val.children.iter().for_each(|c| {
-                if let Node::TableRow(row) = c {
-                    parse_table_row(&mut table, row, cx);
+            Event::InlineHtml(html) => {
+                if self.cx.markdown_options.parse_html {
+                    self.push_inline_html(&html, range)
+                } else {
+                    self.push_text(&html)
                 }
-            });
-            table.span = new_span(val.position, cx);
-
-            BlockNode::Table(table)
-        }
-        Node::FootnoteDefinition(def) => {
-            let mut paragraph = Paragraph::default();
-            let prefix = format!("[{}]: ", def.identifier);
-            paragraph.push(InlineNode::new(&prefix).marks(vec![(
-                0..prefix.len(),
-                TextMark {
-                    italic: true,
+            }
+            Event::SoftBreak => self.push_text_at(
+                if self.cx.markdown_style_profile == crate::text::MarkdownStyleProfile::Agent {
+                    "\n"
+                } else {
+                    " "
+                },
+                Some(range),
+            ),
+            Event::HardBreak => self.push_text_at("\n", Some(range)),
+            Event::Rule => {
+                let span = self.span(range);
+                self.push_block(BlockNode::HorizontalRule { span: Some(span) });
+                Ok(())
+            }
+            Event::TaskListMarker(checked) => {
+                for frame in self.frames.iter_mut().rev() {
+                    if let Frame::Item {
+                        checked: item_checked,
+                        ..
+                    } = frame
+                    {
+                        *item_checked = Some(checked);
+                        break;
+                    }
+                }
+                Ok(())
+            }
+            Event::FootnoteReference(label) => {
+                let text = format!("[{label}]");
+                let mut mark = self.combined_mark();
+                mark.italic = true;
+                mark.footnote_reference = true;
+                mark.link = Some(LinkMark {
+                    url: format!("#fn-{label}").into(),
+                    identifier: Some(label.into_string().into()),
                     ..Default::default()
-                },
-            )]));
+                });
+                self.push_inline_text_at(&text, mark, Some(range))
+            }
+        }
+    }
 
-            def.children.iter().for_each(|c| {
-                parse_paragraph(&mut paragraph, c, cx);
+    fn start(&mut self, tag: Tag<'a>, range: Range<usize>) -> Result<(), SharedString> {
+        let span = self.span(range);
+        match tag {
+            Tag::Paragraph => self.frames.push(Frame::Paragraph {
+                paragraph: Paragraph::default(),
+                span,
+            }),
+            Tag::Heading { level, .. } => self.frames.push(Frame::Heading {
+                level: heading_level(level),
+                paragraph: Paragraph::default(),
+                span,
+            }),
+            Tag::BlockQuote(kind) => self.frames.push(Frame::Blockquote {
+                children: Vec::new(),
+                kind,
+                span,
+            }),
+            Tag::List(start) => self.frames.push(Frame::List {
+                children: Vec::new(),
+                ordered: start.is_some(),
+                start,
+                span,
+            }),
+            Tag::Item => self.frames.push(Frame::Item {
+                children: Vec::new(),
+                inline: Paragraph::default(),
+                checked: None,
+                span,
+            }),
+            Tag::CodeBlock(kind) => {
+                let (language, info) = match kind {
+                    CodeBlockKind::Indented => (None, None),
+                    CodeBlockKind::Fenced(info) => {
+                        let info: SharedString = info.trim().to_string().into();
+                        let language = info
+                            .split_ascii_whitespace()
+                            .next()
+                            .filter(|language| !language.is_empty() && !language.contains('/'))
+                            .map(|language| SharedString::from(language.to_string()));
+                        (language, Some(info))
+                    }
+                };
+                self.frames.push(Frame::CodeBlock {
+                    code: String::new(),
+                    language,
+                    info,
+                    span,
+                });
+            }
+            Tag::HtmlBlock => {
+                self.frames.push(Frame::HtmlBlock {
+                    html: String::new(),
+                    span,
+                });
+            }
+            Tag::MetadataBlock(kind) => self.frames.push(Frame::Metadata {
+                text: String::new(),
+                kind,
+                span,
+            }),
+            Tag::FootnoteDefinition(label) => self.frames.push(Frame::Footnote {
+                label: label.into_string().into(),
+                children: Vec::new(),
+                span,
+            }),
+            Tag::Table(alignments) => {
+                let table = Table {
+                    column_aligns: alignments.into_iter().map(Into::into).collect(),
+                    ..Default::default()
+                };
+                self.frames.push(Frame::Table { table, span });
+            }
+            Tag::TableHead => self.frames.push(Frame::TableRow(TableRow::default())),
+            Tag::TableRow => self.frames.push(Frame::TableRow(TableRow::default())),
+            Tag::TableCell => self.frames.push(Frame::TableCell(Paragraph::default())),
+            Tag::Emphasis => self.marks.push(TextMark::default().italic()),
+            Tag::Strong => self.marks.push(TextMark::default().bold()),
+            Tag::Strikethrough => self.marks.push(TextMark::default().strikethrough()),
+            Tag::Link {
+                dest_url, title, ..
+            } => self.marks.push(TextMark {
+                link: Some(LinkMark {
+                    url: dest_url.into_string().into(),
+                    title: (!title.is_empty()).then(|| title.into_string().into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            Tag::Image {
+                dest_url, title, ..
+            } => {
+                self.image = Some(ImageCapture {
+                    url: dest_url.into_string().into(),
+                    title: (!title.is_empty()).then(|| title.into_string().into()),
+                    alt: String::new(),
+                });
+            }
+            Tag::Superscript
+            | Tag::Subscript
+            | Tag::DefinitionList
+            | Tag::DefinitionListTitle
+            | Tag::DefinitionListDefinition => {}
+        }
+        Ok(())
+    }
+
+    fn end(&mut self, tag: TagEnd) -> Result<(), SharedString> {
+        match tag {
+            TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough | TagEnd::Link => {
+                self.marks.pop();
+                Ok(())
+            }
+            TagEnd::Image => {
+                if let Some(image) = self.image.take() {
+                    let link = self.combined_mark().link;
+                    self.paragraph_mut()?.push_image(ImageNode {
+                        url: image.url.to_string().into(),
+                        link,
+                        title: image.title,
+                        alt: Some(image.alt.into()),
+                        ..Default::default()
+                    });
+                }
+                Ok(())
+            }
+            TagEnd::Superscript
+            | TagEnd::Subscript
+            | TagEnd::DefinitionList
+            | TagEnd::DefinitionListTitle
+            | TagEnd::DefinitionListDefinition => Ok(()),
+            _ => self.close_frame(),
+        }
+    }
+
+    fn close_frame(&mut self) -> Result<(), SharedString> {
+        let frame = self
+            .frames
+            .pop()
+            .ok_or_else(|| SharedString::from("unbalanced Markdown parser event"))?;
+        match frame {
+            Frame::Root(_) => Err("attempted to close the Markdown root".into()),
+            Frame::Paragraph {
+                mut paragraph,
+                span,
+            } => {
+                paragraph.set_span(span);
+                self.push_block(BlockNode::Paragraph(paragraph));
+                Ok(())
+            }
+            Frame::Heading {
+                level,
+                mut paragraph,
+                span,
+            } => {
+                if self.cx.markdown_options.parse_heading_slugs {
+                    let text = paragraph.text();
+                    let base = heading_slug(&text);
+                    let count = self.heading_slug_counts.entry(base.clone()).or_insert(0);
+                    let slug = if *count == 0 {
+                        base.clone()
+                    } else {
+                        format!("{base}-{count}")
+                    };
+                    *count += 1;
+                    if !slug.is_empty() && *count <= 128 {
+                        let relative_start = span.start.saturating_sub(self.cx.offset);
+                        let relative_end = span.end.saturating_sub(self.cx.offset);
+                        let offset = self
+                            .source
+                            .get(relative_start..relative_end)
+                            .and_then(|heading_source| heading_source.find(&text))
+                            .map_or(span.start, |offset| span.start + offset);
+                        self.heading_slugs.insert(slug.into(), offset);
+                    }
+                }
+                paragraph.set_span(span);
+                self.push_block(BlockNode::Heading {
+                    level,
+                    children: paragraph,
+                    span: Some(span),
+                });
+                Ok(())
+            }
+            Frame::Blockquote {
+                children,
+                kind,
+                span,
+            } => {
+                self.push_block(BlockNode::Blockquote {
+                    children,
+                    kind,
+                    span: Some(span),
+                });
+                Ok(())
+            }
+            Frame::List {
+                children,
+                ordered,
+                start,
+                span,
+            } => {
+                self.push_block(BlockNode::List {
+                    children,
+                    ordered,
+                    start,
+                    span: Some(span),
+                });
+                Ok(())
+            }
+            Frame::Item {
+                mut children,
+                mut inline,
+                checked,
+                span,
+            } => {
+                if !inline.is_empty() {
+                    inline.set_span(span);
+                    children.insert(0, BlockNode::Paragraph(inline));
+                }
+                self.push_block(BlockNode::ListItem {
+                    children,
+                    spread: false,
+                    checked,
+                    span: Some(span),
+                });
+                Ok(())
+            }
+            Frame::CodeBlock {
+                code,
+                language,
+                info,
+                span,
+            } => {
+                let block = if let Some(info) = info {
+                    CodeBlock::new_fenced(code.into(), info, Some(span))
+                } else {
+                    CodeBlock::new(code.into(), language, Some(span))
+                };
+                self.push_block(BlockNode::CodeBlock(block));
+                Ok(())
+            }
+            Frame::HtmlBlock { html, span } => {
+                if self.cx.markdown_options.parse_html {
+                    self.push_html_block(&html, span);
+                } else {
+                    let mut paragraph = Paragraph::new(html);
+                    paragraph.set_span(span);
+                    self.push_block(BlockNode::Paragraph(paragraph));
+                }
+                Ok(())
+            }
+            Frame::Metadata { text, kind, span } => {
+                let language = match kind {
+                    MetadataBlockKind::YamlStyle => "yaml",
+                    MetadataBlockKind::PlusesStyle => "toml",
+                };
+                self.push_block(BlockNode::CodeBlock(CodeBlock::new(
+                    text.into(),
+                    Some(language.into()),
+                    Some(span),
+                )));
+                Ok(())
+            }
+            Frame::Footnote {
+                label,
+                children,
+                span,
+            } => {
+                self.footnote_definitions.insert(label.clone(), span.start);
+                let mut paragraph = Paragraph::default();
+                let prefix = format!("[{label}]: ");
+                paragraph.push(
+                    InlineNode::new(prefix.clone())
+                        .marks(vec![(0..prefix.len(), TextMark::default().italic())]),
+                );
+                for child in children {
+                    let text = child.text();
+                    if !text.is_empty() {
+                        paragraph.push_str(text.trim_end());
+                    }
+                }
+                paragraph.set_span(span);
+                self.push_block(BlockNode::Paragraph(paragraph));
+                Ok(())
+            }
+            Frame::Table { mut table, span } => {
+                table.span = Some(span);
+                self.push_block(BlockNode::Table(table));
+                Ok(())
+            }
+            Frame::TableRow(row) => {
+                match self.frames.last_mut() {
+                    Some(Frame::Table { table, .. }) => table.children.push(row),
+                    _ => return Err("table row outside table".into()),
+                }
+                Ok(())
+            }
+            Frame::TableCell(paragraph) => {
+                let Some(Frame::TableRow(row)) = self.frames.last_mut() else {
+                    return Err("table cell outside row".into());
+                };
+                row.children.push(TableCell {
+                    children: paragraph,
+                    ..Default::default()
+                });
+                Ok(())
+            }
+        }
+    }
+
+    fn push_text(&mut self, text: &str) -> Result<(), SharedString> {
+        self.push_text_at(text, None)
+    }
+
+    fn push_text_at(
+        &mut self,
+        text: &str,
+        source_range: Option<Range<usize>>,
+    ) -> Result<(), SharedString> {
+        if let Some(image) = &mut self.image {
+            image.alt.push_str(text);
+            return Ok(());
+        }
+        if let Some(frame) = self.frames.last_mut() {
+            match frame {
+                Frame::CodeBlock { code, .. }
+                | Frame::HtmlBlock { html: code, .. }
+                | Frame::Metadata { text: code, .. } => {
+                    code.push_str(text);
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        let mark = self.combined_mark();
+        if mark.link.is_some() || mark.code || text.trim().is_empty() {
+            return self.push_inline_text_at(text, mark, source_range);
+        }
+
+        let mut finder = LinkFinder::new();
+        finder.kinds(&[LinkKind::Url]);
+        let mut cursor = 0;
+        for link in finder.links(text) {
+            if cursor < link.start() {
+                self.push_inline_text_at(
+                    &text[cursor..link.start()],
+                    mark.clone(),
+                    source_range
+                        .as_ref()
+                        .map(|range| (range.start + cursor)..(range.start + link.start())),
+                )?;
+            }
+            let mut link_mark = mark.clone();
+            link_mark.link = Some(LinkMark {
+                url: link.as_str().to_string().into(),
+                ..Default::default()
             });
-            paragraph.span = new_span(def.position, cx);
-            BlockNode::Paragraph(paragraph)
+            self.push_inline_text_at(
+                link.as_str(),
+                link_mark,
+                source_range
+                    .as_ref()
+                    .map(|range| (range.start + link.start())..(range.start + link.end())),
+            )?;
+            cursor = link.end();
         }
-        Node::Definition(def) => {
-            cx.add_ref(
-                def.identifier.clone().into(),
-                LinkMark {
-                    url: def.url.clone().into(),
-                    identifier: Some(def.identifier.clone().into()),
-                    title: def.title.clone().map(Into::into),
-                },
-            );
+        if cursor < text.len() {
+            self.push_inline_text_at(
+                &text[cursor..],
+                mark,
+                source_range.map(|range| (range.start + cursor)..range.end),
+            )?;
+        }
+        Ok(())
+    }
 
-            BlockNode::Definition {
-                identifier: def.identifier.clone().into(),
-                url: def.url.clone().into(),
-                title: def.title.clone().map(|s| s.into()),
-                span: new_span(def.position, cx),
+    fn push_inline_text_at(
+        &mut self,
+        text: &str,
+        mark: TextMark,
+        source_range: Option<Range<usize>>,
+    ) -> Result<(), SharedString> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        let mut node = InlineNode::new(text.to_string()).marks(vec![(0..text.len(), mark)]);
+        if let Some(range) = source_range {
+            node = node.source_range((self.cx.offset + range.start)..(self.cx.offset + range.end));
+        }
+        self.paragraph_mut()?.push(node);
+        Ok(())
+    }
+
+    /// Accumulate block HTML until its frame closes; only standalone HTML is
+    /// eligible for inline conversion.
+    fn push_html(&mut self, html: &str, range: Range<usize>) -> Result<(), SharedString> {
+        if let Some(Frame::HtmlBlock {
+            html: block_html, ..
+        }) = self.frames.last_mut()
+        {
+            block_html.push_str(html);
+            return Ok(());
+        }
+        self.push_inline_html(html, range)
+    }
+
+    fn push_inline_html(&mut self, html: &str, range: Range<usize>) -> Result<(), SharedString> {
+        if html.trim_start().to_ascii_lowercase().starts_with("<br") {
+            return self.push_text("\n");
+        }
+
+        let mut html_cx = self.cx.clone();
+        html_cx.offset = self.cx.offset + range.start;
+        if let Ok(document) = super::html::parse(html, &mut html_cx) {
+            for block in document.blocks {
+                match Arc::unwrap_or_clone(block) {
+                    BlockNode::Paragraph(paragraph) => {
+                        for child in paragraph.children {
+                            self.paragraph_mut()?.push(child);
+                        }
+                    }
+                    BlockNode::Break { .. } => self.push_text("\n")?,
+                    _ => return self.push_text(html),
+                }
+            }
+            return Ok(());
+        }
+        self.push_text(html)
+    }
+
+    fn push_html_block(&mut self, html: &str, span: Span) {
+        let mut html_cx = self.cx.clone();
+        html_cx.offset = span.start;
+        match super::html::parse(html, &mut html_cx) {
+            Ok(document) => self.push_block(BlockNode::Root {
+                children: document
+                    .blocks
+                    .into_iter()
+                    .map(Arc::unwrap_or_clone)
+                    .collect(),
+                span: Some(span),
+            }),
+            Err(error) => {
+                tracing::warn!(?error, "failed to parse Markdown HTML block");
+                let mut paragraph = Paragraph::new(html.to_string());
+                paragraph.set_span(span);
+                self.push_block(BlockNode::Paragraph(paragraph));
             }
         }
-        _ => {
-            if cfg!(debug_assertions) {
-                tracing::warn!("unsupported node: {:#?}", value);
+    }
+
+    fn paragraph_mut(&mut self) -> Result<&mut Paragraph, SharedString> {
+        for frame in self.frames.iter_mut().rev() {
+            match frame {
+                Frame::Paragraph { paragraph, .. }
+                | Frame::Heading { paragraph, .. }
+                | Frame::TableCell(paragraph)
+                | Frame::Item {
+                    inline: paragraph, ..
+                } => return Ok(paragraph),
+                _ => {}
             }
-            BlockNode::Unknown
         }
+        Err("inline Markdown event outside a text container".into())
+    }
+
+    fn combined_mark(&self) -> TextMark {
+        let mut combined = TextMark::default();
+        for mark in &self.marks {
+            combined.merge(mark.clone());
+        }
+        combined
+    }
+
+    fn push_block(&mut self, block: BlockNode) {
+        for frame in self.frames.iter_mut().rev() {
+            match frame {
+                Frame::Root(children)
+                | Frame::Blockquote { children, .. }
+                | Frame::List { children, .. }
+                | Frame::Item { children, .. }
+                | Frame::Footnote { children, .. } => {
+                    children.push(block);
+                    return;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn span(&self, range: Range<usize>) -> Span {
+        Span {
+            start: self.cx.offset + range.start,
+            end: self.cx.offset + range.end,
+        }
+    }
+
+    fn finish(&mut self) -> Result<ParsedDocument, SharedString> {
+        while self.frames.len() > 1 {
+            self.close_frame()?;
+        }
+        let Some(Frame::Root(children)) = self.frames.pop() else {
+            return Err("missing Markdown root".into());
+        };
+        Ok(ParsedDocument {
+            source: self.source.to_string().into(),
+            root_block_starts: children
+                .iter()
+                .filter_map(BlockNode::span)
+                .map(|span| span.start)
+                .collect::<Vec<_>>()
+                .into(),
+            blocks: children.into_iter().map(Arc::new).collect(),
+            events: std::mem::take(&mut self.events).into(),
+            heading_slugs: Arc::new(std::mem::take(&mut self.heading_slugs)),
+            footnote_definitions: Arc::new(std::mem::take(&mut self.footnote_definitions)),
+        })
+    }
+
+    /// Finish the parser without exposing builder-state failures to the UI.
+    fn finish_or_literal(mut self) -> ParsedDocument {
+        match self.finish() {
+            Ok(document) => document,
+            Err(error) => {
+                tracing::warn!(?error, "falling back to literal Markdown text");
+                let mut paragraph = Paragraph::new(self.source.to_string());
+                paragraph.set_span(Span {
+                    start: self.cx.offset,
+                    end: self.cx.offset + self.source.len(),
+                });
+                ParsedDocument {
+                    source: self.source.to_string().into(),
+                    blocks: vec![Arc::new(BlockNode::Paragraph(paragraph))],
+                    events: std::mem::take(&mut self.events).into(),
+                    ..Default::default()
+                }
+            }
+        }
+    }
+}
+
+fn heading_slug(text: &str) -> String {
+    text.trim()
+        .chars()
+        .filter_map(|character| {
+            if character.is_alphanumeric() || character == '-' || character == '_' {
+                Some(character.to_lowercase().next().unwrap_or(character))
+            } else if character == ' ' {
+                Some('-')
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn source_event_kind(event: &Event<'_>) -> MarkdownSourceEventKind {
+    match event {
+        Event::Start(_) => MarkdownSourceEventKind::Start,
+        Event::End(_) => MarkdownSourceEventKind::End,
+        Event::Text(_) => MarkdownSourceEventKind::Text,
+        Event::Code(_) => MarkdownSourceEventKind::Code,
+        Event::Html(_) | Event::InlineHtml(_) => MarkdownSourceEventKind::Html,
+        Event::SoftBreak => MarkdownSourceEventKind::SoftBreak,
+        Event::HardBreak => MarkdownSourceEventKind::HardBreak,
+        Event::Rule => MarkdownSourceEventKind::Rule,
+        Event::TaskListMarker(_) => MarkdownSourceEventKind::TaskListMarker,
+        Event::FootnoteReference(_) => MarkdownSourceEventKind::FootnoteReference,
+        Event::InlineMath(_) | Event::DisplayMath(_) => MarkdownSourceEventKind::Math,
+    }
+}
+
+fn heading_level(level: HeadingLevel) -> u8 {
+    match level {
+        HeadingLevel::H1 => 1,
+        HeadingLevel::H2 => 2,
+        HeadingLevel::H3 => 3,
+        HeadingLevel::H4 => 4,
+        HeadingLevel::H5 => 5,
+        HeadingLevel::H6 => 6,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::ParentElement;
 
-    use crate::text::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
+    struct TestInlineBadgePlugin;
 
-    #[test]
-    fn test_nested_emphasis_merges_text_marks() {
-        let mut cx = NodeContext::default();
-        let document = parse("This has **_bold and italic_** text.", &mut cx).unwrap();
-
-        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
-            panic!("expected paragraph");
-        };
-
-        let bold_italic = paragraph
-            .children
-            .iter()
-            .find(|child| child.text.as_ref() == "bold and italic")
-            .expect("expected emphasized text");
-
-        assert!(
-            bold_italic
-                .marks
-                .iter()
-                .any(|(_, mark)| mark.bold && mark.italic),
-            "nested emphasis should produce a bold and italic mark"
-        );
-    }
-
-    #[test]
-    fn test_inline_html_image_stays_in_markdown_paragraph() {
-        let mut cx = NodeContext::default();
-        let document = parse(
-            r#"Before <img src="https://example.com/avatar.png" alt="Avatar" width="32" height="32" /> after."#,
-            &mut cx,
-        )
-        .unwrap();
-
-        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
-            panic!("expected paragraph");
-        };
-
-        assert_eq!(paragraph.children.len(), 3);
-        assert_eq!(paragraph.children[0].text.as_ref(), "Before ");
-        assert_eq!(paragraph.children[2].text.as_ref(), " after.");
-
-        let image = paragraph.children[1]
-            .image
-            .as_ref()
-            .expect("expected inline html image");
-        assert_eq!(image.url.as_ref(), "https://example.com/avatar.png");
-        assert_eq!(image.width, Some(gpui::px(32.).into()));
-        assert_eq!(image.height, Some(gpui::px(32.).into()));
-    }
-
-    #[test]
-    fn test_inline_html_image_without_size_stays_in_markdown_paragraph() {
-        let mut cx = NodeContext::default();
-        let document = parse(
-            r#"Before <img src="https://avatars.githubusercontent.com/u/5518"> after."#,
-            &mut cx,
-        )
-        .unwrap();
-
-        let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
-            panic!("expected paragraph");
-        };
-
-        assert_eq!(paragraph.children.len(), 3);
-        assert_eq!(paragraph.children[0].text.as_ref(), "Before ");
-        assert_eq!(paragraph.children[2].text.as_ref(), " after.");
-
-        let image = paragraph.children[1]
-            .image
-            .as_ref()
-            .expect("expected inline html image");
-        assert_eq!(
-            image.url.as_ref(),
-            "https://avatars.githubusercontent.com/u/5518"
-        );
-        assert_eq!(image.width, None);
-        assert_eq!(image.height, None);
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
-    struct Ticker {
-        symbol: String,
-    }
-
-    fn parse_ticker_block(node: &Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
-        let Node::Paragraph(paragraph) = node else {
-            return None;
-        };
-        let [Node::Text(text)] = paragraph.children.as_slice() else {
-            return None;
-        };
-        let symbol = text.value.strip_prefix('$')?.to_string();
-        let node_text = format!("${symbol}");
-
-        Some(
-            MarkdownNode::new("ticker", Ticker { symbol })
-                .text(node_text)
-                .markdown(cx.node_source(node).unwrap_or_default()),
-        )
-    }
-
-    #[test]
-    fn custom_block_parser_converts_ticker_syntax_to_custom_node() {
-        let extensions = MarkdownExtensions::default().block_parser(parse_ticker_block);
-
-        let mut cx = NodeContext {
-            markdown_extensions: extensions.into(),
-            ..NodeContext::default()
-        };
-        let document = parse("$TSLA.US", &mut cx).unwrap();
-
-        let BlockNode::Custom(node) = &*document.blocks[0] else {
-            panic!("expected custom markdown node");
-        };
-        assert_eq!(node.name(), "ticker");
-        assert_eq!(node.as_text(), "$TSLA.US");
-        assert_eq!(node.as_markdown(), "$TSLA.US");
-        assert_eq!(
-            node.data::<Ticker>(),
-            Some(&Ticker {
-                symbol: "TSLA.US".to_string()
-            })
-        );
-        assert_eq!(document.text(), "$TSLA.US\n");
-        assert_eq!(document.to_markdown(), "$TSLA.US");
-    }
-
-    struct TickerPlugin {
-        name: &'static str,
-    }
-
-    impl TickerPlugin {
-        fn new(name: &'static str) -> Self {
-            Self { name }
-        }
-    }
-
-    impl MarkdownPlugin for TickerPlugin {
-        fn is_block(&self) -> bool {
-            true
-        }
-
+    impl crate::text::MarkdownPlugin for TestInlineBadgePlugin {
         fn name(&self) -> &str {
-            self.name
+            "inline-badge"
         }
 
-        fn parse(&self, node: &Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
-            parse_ticker_block(node, cx)
-        }
-
-        fn render(
+        fn parse(
             &self,
-            node: &MarkdownNode,
-            _window: &mut gpui::Window,
-            _cx: &mut gpui::App,
-        ) -> impl gpui::IntoElement {
-            gpui::div().child(node.as_text().to_string())
-        }
-    }
-
-    #[test]
-    fn custom_block_plugin_registers_parser_and_renderer() {
-        let extensions = MarkdownExtensions::default().plugin(TickerPlugin::new("ticker"));
-
-        let mut cx = NodeContext {
-            markdown_extensions: extensions.into(),
-            ..NodeContext::default()
-        };
-        let document = parse("$TSLA.US", &mut cx).unwrap();
-
-        let BlockNode::Custom(node) = &*document.blocks[0] else {
-            panic!("expected custom markdown node");
-        };
-        assert_eq!(node.name(), "ticker");
-        assert_eq!(
-            node.data::<Ticker>(),
-            Some(&Ticker {
-                symbol: "TSLA.US".to_string()
-            })
-        );
-    }
-
-    struct InlineTickerPlugin;
-
-    impl MarkdownPlugin for InlineTickerPlugin {
-        fn name(&self) -> &str {
-            "inline-ticker"
-        }
-
-        fn parse(&self, node: &Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
-            let Node::InlineCode(code) = node else {
+            event: &crate::text::MarkdownParseEvent<'_>,
+            cx: &crate::text::MarkdownParseContext<'_>,
+        ) -> Option<crate::text::MarkdownNode> {
+            let Event::Code(code) = event.event() else {
                 return None;
             };
-            let symbol = code.value.strip_prefix('$')?.to_string();
+            let label = code.strip_prefix("badge:")?.trim().to_string();
             Some(
-                MarkdownNode::new("inline-ticker", Ticker { symbol })
-                    .text(code.value.clone())
-                    .markdown(cx.node_source(node).unwrap_or_default()),
+                crate::text::MarkdownNode::new("inline-badge", label.clone())
+                    .text(label)
+                    .markdown(cx.event_source(event).unwrap_or_default()),
             )
         }
 
         fn render(
             &self,
-            node: &MarkdownNode,
-            _window: &mut gpui::Window,
-            _cx: &mut gpui::App,
+            _: &crate::text::MarkdownNode,
+            _: &mut gpui::Window,
+            _: &mut gpui::App,
         ) -> impl gpui::IntoElement {
-            gpui::div().child(node.as_text().to_string())
+            gpui::div()
         }
     }
 
     #[test]
-    fn inline_plugin_converts_nodes_without_panicking() {
-        let extensions = MarkdownExtensions::default().plugin(InlineTickerPlugin);
-        let mut cx = NodeContext {
-            markdown_extensions: extensions.into(),
-            ..NodeContext::default()
-        };
-        let document = parse("Price: `$TSLA.US` now", &mut cx).unwrap();
-
+    fn parses_nested_emphasis_and_plain_urls() {
+        let mut cx = NodeContext::default();
+        let document = parse(
+            "This has **_nested_** text and https://example.com.",
+            &mut cx,
+        )
+        .unwrap();
         let BlockNode::Paragraph(paragraph) = &*document.blocks[0] else {
             panic!("expected paragraph");
         };
-        let custom = paragraph
-            .children
-            .iter()
-            .find_map(|child| child.custom.as_ref())
-            .expect("expected custom inline node");
-        assert_eq!(custom.name(), "inline-ticker");
-        assert_eq!(custom.as_text(), "$TSLA.US");
-        assert_eq!(custom.as_markdown(), "`$TSLA.US`");
-        assert_eq!(document.text(), "Price: $TSLA.US now\n");
+        assert!(paragraph.children.iter().any(|node| {
+            node.text.as_ref() == "nested"
+                && node.marks.iter().any(|(_, mark)| mark.bold && mark.italic)
+        }));
+        assert!(paragraph.children.iter().any(|node| {
+            node.text.as_ref() == "https://example.com"
+                && node.marks.iter().any(|(_, mark)| mark.link.is_some())
+        }));
+    }
+
+    #[test]
+    fn parses_tables_tasks_and_source_ranges() {
+        let source = "- [x] done\n\n| A | B |\n|:-|:-:|\n| 1 | 2 |";
+        let mut cx = NodeContext::default();
+        let document = parse(source, &mut cx).unwrap();
+        assert!(matches!(&*document.blocks[0], BlockNode::List { .. }));
+        assert!(matches!(&*document.blocks[1], BlockNode::Table(_)));
+        assert_eq!(document.source.as_ref(), source);
+        assert!(!document.events.is_empty());
+        assert_eq!(document.root_block_starts.as_ref(), &[0, 12]);
+    }
+
+    #[test]
+    fn preserves_ordered_start_callout_kind_and_footnote_targets() {
+        let source = "7. seven\n8. eight\n\n> [!WARNING]\n> Careful\n\nref[^a]\n\n[^a]: note";
+        let mut cx = NodeContext::default();
+        let document = parse(source, &mut cx).unwrap();
+
+        let BlockNode::List { start, .. } = &*document.blocks[0] else {
+            panic!("expected ordered list");
+        };
+        assert_eq!(*start, Some(7));
+        assert!(matches!(
+            &*document.blocks[1],
+            BlockNode::Blockquote {
+                kind: Some(BlockQuoteKind::Warning),
+                ..
+            }
+        ));
+        assert!(document.footnote_definitions.contains_key("a"));
+        assert!(document.events.iter().any(|event| {
+            event.kind == MarkdownSourceEventKind::FootnoteReference
+                && &source[event.range.clone()] == "[^a]"
+        }));
+    }
+
+    #[test]
+    fn parser_options_gate_html_metadata_and_mermaid() {
+        let mut disabled = NodeContext::default();
+        let html = parse("<b>bold</b>", &mut disabled).unwrap();
+        assert!(html.text().contains("<b>bold</b>"));
+
+        let mut enabled = NodeContext {
+            markdown_options: MarkdownOptions {
+                parse_html: true,
+                render_metadata_blocks: true,
+                render_mermaid_diagrams: true,
+                ..Default::default()
+            },
+            ..NodeContext::default()
+        };
+        let parsed = parse("---\ntitle: Test\n---\n\n<b>bold</b>", &mut enabled).unwrap();
+        assert!(matches!(&*parsed.blocks[0], BlockNode::CodeBlock(_)));
+        assert!(parsed.text().contains("bold"));
+    }
+
+    #[test]
+    fn parses_unclosed_fence_for_streaming_display() {
+        let mut cx = NodeContext::default();
+        let document = parse("```rust\nfn main() {}", &mut cx).unwrap();
+        let BlockNode::CodeBlock(code) = &*document.blocks[0] else {
+            panic!("expected code block");
+        };
+        assert_eq!(code.lang().as_deref(), Some("rust"));
+        assert_eq!(code.code().as_ref(), "fn main() {}");
+    }
+
+    #[test]
+    fn keeps_definition_list_syntax_literal_like_zed() {
+        let mut cx = NodeContext::default();
+        let document = parse("Term\n: Definition", &mut cx).unwrap();
+
+        assert_eq!(document.text(), "Term\n: Definition\n");
+    }
+
+    #[test]
+    fn parses_every_story_stream_prefix_with_inline_extensions() {
+        let fixture = include_str!("../../../../story/examples/fixtures/test.md");
+        let source = format!(
+            "Streaming repairs **strong text**, `inline code`, and [pending links](https://example.com/path) before their closers arrive.\n\n{fixture}"
+        );
+        let extensions = crate::text::MarkdownExtensions::default().plugin(TestInlineBadgePlugin);
+
+        let mut end = 0;
+        while end < source.len() {
+            end = (end + 24).min(source.len());
+            while !source.is_char_boundary(end) {
+                end -= 1;
+            }
+            let mut cx = NodeContext {
+                markdown_extensions: Arc::new(extensions.clone()),
+                ..NodeContext::default()
+            };
+            parse(&source[..end], &mut cx).unwrap_or_else(|error| {
+                let tail: String = source[..end]
+                    .chars()
+                    .rev()
+                    .take(200)
+                    .collect::<String>()
+                    .chars()
+                    .rev()
+                    .collect();
+                panic!("prefix ending at byte {end} failed: {error}\nTAIL:\n{tail}")
+            });
+        }
     }
 }

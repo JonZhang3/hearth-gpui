@@ -2,10 +2,19 @@ use std::{collections::HashMap, sync::Arc};
 
 use gpui::{
     FontStyle, FontWeight, HighlightStyle, Hsla, Pixels, Rems, SharedString, StrikethroughStyle,
-    StyleRefinement, UnderlineStyle, px, rems,
+    StyleRefinement, Styled as _, UnderlineStyle, px, rems,
 };
 
-use crate::highlighter::HighlightTheme;
+use crate::{ActiveTheme as _, highlighter::HighlightTheme};
+
+/// Legacy TextView profile retained only for the HTML renderer migration seam.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum MarkdownStyleProfile {
+    #[default]
+    Agent,
+    Editor,
+    Preview,
+}
 
 /// TextViewStyle used to customize the style for [`TextView`].
 #[derive(Clone)]
@@ -108,7 +117,7 @@ impl TextViewStyle {
 
 /// A Markdown heading level used by semantic styling and renderers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MarkdownHeadingLevel {
+pub(crate) enum MarkdownHeadingLevel {
     H1,
     H2,
     H3,
@@ -133,7 +142,7 @@ impl MarkdownHeadingLevel {
 /// A visible Markdown element that can receive a GPUI style refinement.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MarkdownElementKind {
+pub(crate) enum MarkdownElementKind {
     Document,
     Paragraph,
     Heading(MarkdownHeadingLevel),
@@ -157,7 +166,7 @@ pub enum MarkdownElementKind {
 /// An inline Markdown semantic that can receive text styling.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MarkdownInlineKind {
+pub(crate) enum MarkdownInlineKind {
     Plain,
     Strong,
     Emphasis,
@@ -176,7 +185,7 @@ pub enum MarkdownInlineKind {
 /// Builder methods only change the fields they name. The `no_*` methods are
 /// explicit removals and therefore differ from leaving a field inherited.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct MarkdownTextStyle {
+pub(crate) struct MarkdownTextStyle {
     color: Option<Hsla>,
     font_weight: Option<FontWeight>,
     font_style: Option<FontStyle>,
@@ -403,13 +412,111 @@ impl MarkdownTextStyle {
 /// `TextViewStyle` struct literals source-compatible and allows new semantic
 /// selectors to be added without changing callers.
 #[derive(Clone, Default)]
-pub struct MarkdownStyle {
+pub(crate) struct LegacyMarkdownStyle {
+    /// Body typography inherited by ordinary Markdown text.
+    ///
+    /// Keeping the line height on the document container prevents ordinary text
+    /// from being treated as an atomic inline box.
+    base_text_style: StyleRefinement,
     elements: HashMap<MarkdownElementKind, StyleRefinement>,
     inline: HashMap<MarkdownInlineKind, MarkdownTextStyle>,
     syntax_theme: Option<Arc<HighlightTheme>>,
 }
 
-impl MarkdownStyle {
+impl LegacyMarkdownStyle {
+    /// Build a semantic style profile using the active Hearth theme.
+    pub(crate) fn for_profile(profile: MarkdownStyleProfile, cx: &gpui::App) -> Self {
+        let body_size = cx.theme().font_size;
+        let heading_scales = match profile {
+            MarkdownStyleProfile::Agent => [1.15, 1.10, 1.05, 1.00, 0.95, 0.875],
+            MarkdownStyleProfile::Editor => [1.30, 1.20, 1.10, 1.00, 0.95, 0.90],
+            MarkdownStyleProfile::Preview => [1.45, 1.30, 1.10, 1.01, 0.95, 0.85],
+        };
+        let headings = [
+            MarkdownHeadingLevel::H1,
+            MarkdownHeadingLevel::H2,
+            MarkdownHeadingLevel::H3,
+            MarkdownHeadingLevel::H4,
+            MarkdownHeadingLevel::H5,
+            MarkdownHeadingLevel::H6,
+        ];
+
+        let mut style = Self {
+            base_text_style: StyleRefinement::default().line_height(body_size * 1.75),
+            ..Self::default()
+        }
+        .inline(
+            MarkdownInlineKind::Link,
+            MarkdownTextStyle::default()
+                .color(cx.theme().link)
+                .background(cx.theme().foreground.opacity(0.025))
+                .underline(UnderlineStyle {
+                    color: Some(cx.theme().link.opacity(0.5)),
+                    thickness: px(1.),
+                    ..Default::default()
+                }),
+        )
+        .inline(
+            MarkdownInlineKind::LinkHover,
+            MarkdownTextStyle::default().color(cx.theme().link.opacity(0.8)),
+        )
+        .inline(
+            MarkdownInlineKind::InlineCode,
+            MarkdownTextStyle::default()
+                .font_family(cx.theme().mono_font_family.clone())
+                .font_size(cx.theme().mono_font_size)
+                .background(cx.theme().foreground.opacity(0.08))
+                .padding_x(px(3.))
+                .corner_radius(cx.theme().style.radii.sm),
+        )
+        .element(
+            MarkdownElementKind::CodeBlock,
+            StyleRefinement::default()
+                .p_2()
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().tokens.background)
+                .rounded(cx.theme().style.radii.sm),
+        )
+        .element(
+            MarkdownElementKind::HorizontalRule,
+            StyleRefinement::default().bg(cx.theme().border),
+        )
+        .element(
+            MarkdownElementKind::Paragraph,
+            StyleRefinement::default().line_height(body_size * 1.3),
+        );
+
+        if profile == MarkdownStyleProfile::Preview {
+            style = style.element(
+                MarkdownElementKind::Document,
+                StyleRefinement::default().text_color(cx.theme().muted_foreground),
+            );
+        }
+        for (heading, scale) in headings.into_iter().zip(heading_scales) {
+            style = style.element(
+                MarkdownElementKind::Heading(heading),
+                StyleRefinement::default()
+                    .text_size(body_size * scale)
+                    .text_color(cx.theme().foreground),
+            );
+        }
+        style
+    }
+
+    /// Overlay caller refinements on top of a built-in profile.
+    pub(crate) fn overlay(mut self, overrides: &Self) -> Self {
+        if overrides.base_text_style != StyleRefinement::default() {
+            self.base_text_style = overrides.base_text_style.clone();
+        }
+        self.elements.extend(overrides.elements.clone());
+        self.inline.extend(overrides.inline.clone());
+        if let Some(theme) = &overrides.syntax_theme {
+            self.syntax_theme = Some(theme.clone());
+        }
+        self
+    }
+
     /// Refine the style of a visible Markdown element.
     pub fn element(mut self, kind: MarkdownElementKind, style: StyleRefinement) -> Self {
         self.elements.insert(kind, style);
@@ -430,6 +537,10 @@ impl MarkdownStyle {
 
     pub(crate) fn element_style(&self, kind: MarkdownElementKind) -> Option<&StyleRefinement> {
         self.elements.get(&kind)
+    }
+
+    pub(crate) fn base_text_style(&self) -> &StyleRefinement {
+        &self.base_text_style
     }
 
     pub(crate) fn inline_style(&self, kind: MarkdownInlineKind) -> Option<&MarkdownTextStyle> {

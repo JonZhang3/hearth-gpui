@@ -152,7 +152,7 @@ Notification::new()
 ### 自定义内容
 
 ```rust
-use hearth_gpui::text::markdown;
+use hearth_gpui::text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle};
 
 let markdown_content = r#"
 ## 可访问性
@@ -167,7 +167,11 @@ Notification 会暴露 AccessKit Alert role。设置标题时使用标题作为�
 
 Notification::new()
     .content(|_, window, cx| {
-        markdown(markdown_content).into_any_element()
+        let markdown = cx.new(|cx| Markdown::new(markdown_content, cx));
+        MarkdownElement::new(
+            markdown,
+            MarkdownStyle::themed(MarkdownFont::Preview, window, cx),
+        ).into_any_element()
     })
 ```
 

@@ -1,282 +1,117 @@
 ---
-title: TextView
-description: 渲染 Markdown 与 HTML 文本，并支持自定义 Markdown 插件。
+title: Markdown 与 Text View
+description: 渲染持久化 Markdown 文档和 HTML 文本。
 ---
 
-# TextView
+# Markdown 与 Text View
 
-`TextView` 用于在 GPUI 中渲染格式化文本。它支持 Markdown、简单 HTML、文本选择、代码块操作，以及通过 Markdown 插件解析和渲染项目自定义语法。
+Markdown 与 HTML 使用独立渲染路径。`MarkdownElement` 是由 `Entity<Markdown>` 驱动、带源码映射的 GPUI element；`TextView` 继续负责 HTML。
 
-## 导入
+## Markdown
+
+Markdown entity 应创建一次，并由所属 view 持久持有：
 
 ```rust
-use hearth_gpui::text::{markdown, TextView};
+use gpui::{AppContext as _, Entity};
+use hearth_gpui::text::Markdown;
+
+let markdown: Entity<Markdown> =
+    cx.new(|cx| Markdown::new("# Hello\n\nThis is **Markdown**.", cx));
 ```
 
-## 用法
-
-### Markdown
-
-只需要渲染 Markdown 时，可以使用 `markdown` helper：
+render 时解析主题样式，并与 entity 一起传给 `MarkdownElement`：
 
 ```rust
-use hearth_gpui::text::markdown;
+use hearth_gpui::text::{MarkdownElement, MarkdownFont, MarkdownStyle};
 
-markdown("# Hello\n\nThis is **Markdown**.")
-    .selectable(true)
-    .scrollable(true)
+let style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
+MarkdownElement::new(markdown.clone(), style)
 ```
 
-如果需要稳定 id，也可以直接构造 `TextView`：
+`MarkdownFont::Agent`、`Editor`、`Preview` 提供与 Zed 对齐的排版 profile。`MarkdownStyle` 可配置标题、链接、inline code、引用、code block、分隔线、表格、语法高亮、选择区域和软换行。
+
+### 外层容器拥有滚动
+
+`MarkdownElement` 不创建纵向滚动区域。overflow、scrollbar 和 follow-tail 策略全部属于外层容器：
 
 ```rust
-use hearth_gpui::text::TextView;
+use gpui::{div, ParentElement as _, ScrollHandle, StatefulInteractiveElement as _, Styled as _};
+use hearth_gpui::scroll::ScrollableElement as _;
 
-TextView::markdown("preview", markdown_source)
-    .selectable(true)
+let scroll_handle = ScrollHandle::new();
+
+div()
+    .relative()
+    .size_full()
+    .child(
+        div()
+            .id("markdown-scroll")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&scroll_handle)
+            .child(
+                MarkdownElement::new(markdown.clone(), style)
+                    .scroll_handle(scroll_handle.clone()),
+            ),
+    )
+    .vertical_scrollbar(&scroll_handle)
 ```
 
-### HTML
+传入 handle 只用于标题、脚注、源码位置和选择边缘的导航，不会把滚动所有权交给 Markdown。
+
+### Streaming
+
+Provider delta 直接更新 canonical source。解析在 UI 线程外执行；同一时间只允许一个解析任务，任务运行期间到达的 delta 会合并处理，过期结果不会发布：
 
 ```rust
-TextView::html("html-preview", "<strong>Hello</strong>")
+markdown.update(cx, |markdown, cx| markdown.append(provider_delta, cx));
+
+// 开始新的回复。
+markdown.update(cx, |markdown, cx| markdown.replace("", cx));
 ```
 
-## Markdown 语义样式
+调用方无需增加第二层 pacing。若外层容器仍处于 follow-tail 状态，可在 append 后调用 `scroll_handle.scroll_to_bottom()`。
 
-`MarkdownStyle` 可以按 Markdown 语义为单个视图设置样式，不改变 parser。Inline 样式既能覆盖继承值，也能显式清除继承值；element 样式支持完整的 GPUI `StyleRefinement` API。
+### Options 与交互
 
 ```rust
-use gpui::{hsla, px, Styled as _};
-use hearth_gpui::text::{
-    markdown, MarkdownElementKind, MarkdownInlineKind, MarkdownStyle,
-    MarkdownTextStyle,
+use hearth_gpui::text::MarkdownOptions;
+
+let options = MarkdownOptions {
+    parse_html: true,
+    render_mermaid_diagrams: true,
+    parse_heading_slugs: true,
+    render_metadata_blocks: true,
+    ..Default::default()
 };
 
-let style = MarkdownStyle::default()
-    .inline(
-        MarkdownInlineKind::Link,
-        MarkdownTextStyle::default()
-            .color(hsla(0.58, 0.75, 0.55, 1.0))
-            .no_underline(),
-    )
-    .inline(
-        MarkdownInlineKind::LinkHover,
-        MarkdownTextStyle::default().background(hsla(0.58, 0.4, 0.5, 0.14)),
-    )
-    .element(
-        MarkdownElementKind::CodeBlock,
-        gpui::StyleRefinement::default()
-            .p_3()
-            .rounded(px(8.0))
-            .bg(hsla(0.62, 0.12, 0.16, 1.0)),
-    );
-
-markdown(source).markdown_style(style)
+let markdown = cx.new(|cx| Markdown::new_with_options(source, options, cx));
 ```
 
-Element selector 覆盖 document、paragraph、各级 heading、blockquote、list 与 marker、task checkbox、code block 与 actions、table 与 cell、image 和 horizontal rule。Inline selector 覆盖 plain text、各类 emphasis、inline 与 block code text、link 与 link hover、mark 和 footnote reference。Atomic inline 语义支持 font family、font size、line height，以及分别设置的水平/垂直 padding、margin、border、background 和 corner radius；这些 metrics 会参与换行与行高测量。`syntax_theme(...)` 可以只覆盖当前视图的代码语法高亮。Link 提供稳定的 `Role::Link` focus target，并支持 Enter 激活，跨视觉行换行时同样有效。
+Element callback 支持 URL click/hover、inline-code link、source click、task checkbox toggle，以及由调用方控制的图片解析。默认 code renderer 支持复制、换行切换、边框、完整 fenced info、source path、语法高亮，以及可选 Mermaid SVG 渲染。
 
-样式优先级为：当前 `Theme`、`TextViewStyle`、`MarkdownStyle`、link hover 等临时交互状态，最后是可选的 block renderer。
-
-`LinkHover` 保持布局稳定。支持 color、background、underline、strikethrough 和 fade；字体与盒模型 refinement 会被忽略，确保链接 hover 不会改变换行或段落高度。
-
-聊天 transcript 应由外层 message list 管理滚动，并为每条消息持久化 `TextViewState`。只有独立文档才启用 TextView 内部滚动，避免嵌套虚拟列表产生额外测量开销。
-
-## 内置 Block Renderer
-
-样式不足以表达自定义组合时，使用 `.markdown_builtin_renderer(...)` 覆盖内置 block。包装 `context.into_default()` 可以保留 selection、link、code actions 等框架管理的行为。
+搜索与导航统一使用 canonical source 的 UTF-8 byte range：
 
 ```rust
-use hearth_gpui::text::MarkdownBlockKind;
-
-markdown(source).markdown_builtin_renderer(
-    MarkdownBlockKind::CodeBlock,
-    |context, _window, _cx| {
-        let language = context.code_language().unwrap_or("text").to_string();
-        gpui::div()
-            .child(gpui::div().child(language))
-            .child(context.into_default())
-    },
-)
-```
-
-如果完全替换默认 element，自定义 renderer 需要自行负责交互与无障碍行为。Inline plugin 会作为 atomic flow item 参与测量，并可通过 `MarkdownNode::text(...)` 提供 selection 与 copy fallback 使用的纯文本。
-
-## 流式 Markdown
-
-复用同一个 `TextViewState`，启动显式 streaming session，通过 `push_str` 追加每个 LLM delta，并在流结束时调用 `finish_streaming`：
-
-```rust
-let state = cx.new(|cx| TextViewState::markdown("", cx));
-
-state.update(cx, |state, cx| state.begin_streaming(cx));
-state.update(cx, |state, cx| state.push_str(delta, cx));
-state.update(cx, |state, cx| state.finish_streaming(cx));
-
-TextView::new(&state)
-    .selectable(true)
-    .scrollable(true)
-    .follow_tail(true)
-```
-
-显式 session 按 24 ms cadence 合并 provider delta；session 活跃期间不会因空闲触发 canonical parse。`finish_streaming` 会先 flush 待处理批次，再且仅再请求一次 canonical parse。未调用 `begin_streaming` 的旧用法继续兼容，并在空闲 300 ms 后 settle。`set_text` 会终止当前 session 及其 timer。
-
-追加解析在后台执行；临时解析失败时保留最后一份有效文档；结构一致的 streamed block 会保留 selection、link hover 和 code highlight 状态。稳定的顶层 block 通过 `Arc` 共享，append 与 display repair 只 copy 变化的尾部 block；同步 replacement 结果会直接 seed 后台 parser，避免重复全文解析。追加期间，display-only tail 会临时闭合未完成的 emphasis、inline code、strikethrough 和 link，减少 marker 出现、消失及换行跳变。合成闭合符不会进入 canonical source、selection、复制内容或最终 AST；未完成的 link 保留样式但不可点击，未完成的 image 则保持普通文本，直到 destination 完整。fenced code block 不执行补全。引用式 link 的 definition 即使在后续 chunk 才到达，也能得到正确结果。
-
-当 provider 输出过快或单个 delta 很大时，使用 `StreamingTextPacer`：
-
-```rust
-use hearth_gpui::text::StreamingTextPacer;
-
-let mut pacer = StreamingTextPacer::new();
-pacer.push_str(provider_delta);
-
-while let Some(chunk) = pacer.take_chunk() {
-    state.update(cx, |state, cx| state.push_str(&chunk, cx));
-    // 获取下一个 chunk 前等待 pacer.frame_interval()。
-}
-
-let remaining = pacer.drain();
-state.update(cx, |state, cx| {
-    state.push_str(&remaining, cx);
-    state.finish_streaming(cx);
+markdown.update(cx, |markdown, cx| {
+    markdown.search("query", false, cx);
+    markdown.scroll_to_heading("streaming", cx);
 });
 ```
 
-Pacer 不会拆分当前 buffer 中已经识别出的 grapheme，遇到换行会提前结束当前帧，并根据 backlog 自适应 chunk 大小。Provider 仍可能把同一个 grapheme 拆到不同 delta，因此中间帧可能暂时不完整；所有输出拼接后的 Unicode 序列和最终 settled render 保持准确。Pacer 不持有 task 或 timer。`.follow_tail(true)` 使用 GPUI 原生 list follow mode：用户首次向上滚动时立即暂停，回到底部后自动恢复。
+普通 Copy 输出渲染后的纯文本；`CopyAsMarkdown` 输出选中的 canonical Markdown source。
 
-## LLM 资源安全
+## HTML
 
-受信任 Markdown 保持历史资源行为。LLM 生成或其他不受信任 Markdown 应启用安全策略，并由宿主应用处理允许的 link：
-
-```rust
-use hearth_gpui::text::MarkdownResourcePolicy;
-
-TextView::new(&state)
-    .markdown_resource_policy(MarkdownResourcePolicy::llm_safe())
-    .on_link_click(|url, _window, cx| cx.open_url(url))
-```
-
-`llm_safe` 允许 HTTP(S) 与 `mailto` link，允许规范化的相对 embedded image path；阻止 remote image、`data:` image、path traversal、pending-link sentinel 和可执行 URL scheme。被阻止的 image 会显示 alt text。
-
-## Markdown 插件
-
-使用 `.plugin(...)` 支持自定义 Markdown 格式。插件同时拥有解析和渲染逻辑，调用方只需要把它挂到 `TextView` 上：
+HTML 继续通过 `TextView` 使用：
 
 ```rust
-markdown(source)
-    .plugin(TickerPlugin::new())
+use hearth_gpui::text::{TextView, html};
+
+html("<p>Hello <strong>HTML</strong>.</p>")
+
+TextView::html("stable-id", "<p>Persistent HTML</p>")
+    .selectable(true)
 ```
 
-Markdown 插件实现 `MarkdownPlugin`：
-
-```rust
-use gpui::{App, IntoElement, ParentElement as _, Window};
-use hearth_gpui::text::{
-    markdown_ast, MarkdownNode, MarkdownParseContext, MarkdownPlugin,
-};
-
-struct TickerNode {
-    symbol: String,
-}
-
-struct TickerPlugin;
-
-impl TickerPlugin {
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl MarkdownPlugin for TickerPlugin {
-    fn is_block(&self) -> bool {
-        true
-    }
-
-    fn name(&self) -> &str {
-        "ticker"
-    }
-
-    fn parse(
-        &self,
-        node: &markdown_ast::Node,
-        cx: &MarkdownParseContext<'_>,
-    ) -> Option<MarkdownNode> {
-        let markdown_ast::Node::Paragraph(paragraph) = node else {
-            return None;
-        };
-        let [markdown_ast::Node::Text(text)] = paragraph.children.as_slice() else {
-            return None;
-        };
-        let symbol = text.value.strip_prefix('$')?;
-
-        Some(
-            MarkdownNode::new(
-                "ticker",
-                TickerNode {
-                    symbol: symbol.to_string(),
-                },
-            )
-            .text(format!("${symbol}"))
-            .markdown(cx.node_source(node).unwrap_or(text.value.as_str())),
-        )
-    }
-
-    fn render(
-        &self,
-        node: &MarkdownNode,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> impl IntoElement {
-        let ticker = node.data::<TickerNode>().expect("ticker node data");
-
-        gpui::div().child(format!("${}", ticker.symbol))
-    }
-}
-```
-
-然后挂到 Markdown `TextView`：
-
-```rust
-markdown("$AAPL.US")
-    .plugin(TickerPlugin::new())
-```
-
-## MarkdownNode
-
-`MarkdownNode` 是 `parse` 和 `render` 之间传递的中性数据结构。
-
-```rust
-MarkdownNode::new("ticker", TickerNode { symbol })
-    .text("$AAPL.US")
-    .markdown("$AAPL.US")
-```
-
-- `name` 是稳定的节点名称，用于匹配 renderer。
-- `data` 是 parser 产生的类型化数据，通过 `node.data::<T>()` 读取。
-- `text` 是纯文本表示，用于选择和未注册 renderer 时的回退渲染。
-- `markdown` 是 Markdown 表示，用于将文档重新序列化为 Markdown。
-
-## Block 插件
-
-当前自定义 Markdown 渲染支持 block 插件。现在可注册的插件需要在 `is_block()` 中返回 `true`：
-
-```rust
-fn is_block(&self) -> bool {
-    true
-}
-```
-
-Inline 插件保留给未来的 `TextView` 支持。
-
-## 代码块操作
-
-可以为 Markdown 代码块渲染操作控件：
-
-```rust
-markdown(source)
-    .code_block_actions(|code_block, _window, _cx| {
-        gpui::div().child(format!("Run {}", code_block.lang().unwrap_or_default()))
-    })
-```
+旧 `markdown(source)`、`TextView::markdown`、`MarkdownState`、streaming buffer/configuration 和 Markdown plugin Interface 已移除。Markdown 调用方必须迁移到持久化 `Entity<Markdown>`。

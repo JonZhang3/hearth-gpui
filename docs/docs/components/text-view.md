@@ -1,282 +1,117 @@
 ---
-title: TextView
-description: Renders Markdown and HTML text with optional custom Markdown plugins.
+title: Markdown and Text View
+description: Renders persistent Markdown documents and HTML text.
 ---
 
-# TextView
+# Markdown and Text View
 
-`TextView` renders formatted text in GPUI. It supports Markdown and simple HTML, text selection, code block actions, and custom Markdown plugins for project-specific syntax.
+Markdown and HTML use separate rendering paths. `MarkdownElement` is a source-mapped GPUI element backed by `Entity<Markdown>`. `TextView` remains the HTML renderer.
 
-## Import
+## Markdown
+
+Create the entity once and retain it with the owning view:
 
 ```rust
-use hearth_gpui::text::{markdown, TextView};
+use gpui::{AppContext as _, Entity};
+use hearth_gpui::text::Markdown;
+
+let markdown: Entity<Markdown> =
+    cx.new(|cx| Markdown::new("# Hello\n\nThis is **Markdown**.", cx));
 ```
 
-## Usage
-
-### Markdown
-
-Use the `markdown` helper when you only need to render Markdown text:
+Resolve the style during render and pass both values to `MarkdownElement`:
 
 ```rust
-use hearth_gpui::text::markdown;
+use hearth_gpui::text::{MarkdownElement, MarkdownFont, MarkdownStyle};
 
-markdown("# Hello\n\nThis is **Markdown**.")
-    .selectable(true)
-    .scrollable(true)
+let style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
+MarkdownElement::new(markdown.clone(), style)
 ```
 
-You can also construct a `TextView` directly when you need a stable id:
+`MarkdownFont::Agent`, `Editor`, and `Preview` select Zed-compatible typography profiles. `MarkdownStyle` exposes semantic refinements for headings, links, inline code, block quotes, code blocks, rules, tables, syntax highlighting, selection, and soft breaks.
+
+### Host-owned scrolling
+
+`MarkdownElement` does not create a vertical scroll area. The host owns overflow, scrollbar, and follow-tail policy:
 
 ```rust
-use hearth_gpui::text::TextView;
+use gpui::{div, ParentElement as _, ScrollHandle, StatefulInteractiveElement as _, Styled as _};
+use hearth_gpui::scroll::ScrollableElement as _;
 
-TextView::markdown("preview", markdown_source)
-    .selectable(true)
+let scroll_handle = ScrollHandle::new();
+
+div()
+    .relative()
+    .size_full()
+    .child(
+        div()
+            .id("markdown-scroll")
+            .size_full()
+            .overflow_y_scroll()
+            .track_scroll(&scroll_handle)
+            .child(
+                MarkdownElement::new(markdown.clone(), style)
+                    .scroll_handle(scroll_handle.clone()),
+            ),
+    )
+    .vertical_scrollbar(&scroll_handle)
 ```
 
-### HTML
+Passing the handle enables heading, footnote, source-index, and selection-edge navigation. It does not transfer scroll ownership to Markdown.
+
+### Streaming
+
+Provider deltas update the canonical source directly. Parsing runs off the UI thread, permits only one parse task at a time, coalesces arrivals while that task is running, and rejects stale results:
 
 ```rust
-TextView::html("html-preview", "<strong>Hello</strong>")
+markdown.update(cx, |markdown, cx| markdown.append(provider_delta, cx));
+
+// Start a new response.
+markdown.update(cx, |markdown, cx| markdown.replace("", cx));
 ```
 
-## Semantic Markdown Styles
+No additional pacing layer is required. If the host follows the tail, call `scroll_handle.scroll_to_bottom()` after an append while its follow policy remains active.
 
-`MarkdownStyle` provides per-view styling for Markdown semantics without changing the parser. Inline styles can replace inherited values or explicitly clear them, while element styles accept the complete GPUI `StyleRefinement` API.
+### Options and interaction
 
 ```rust
-use gpui::{hsla, px, Styled as _};
-use hearth_gpui::text::{
-    markdown, MarkdownElementKind, MarkdownInlineKind, MarkdownStyle,
-    MarkdownTextStyle,
+use hearth_gpui::text::MarkdownOptions;
+
+let options = MarkdownOptions {
+    parse_html: true,
+    render_mermaid_diagrams: true,
+    parse_heading_slugs: true,
+    render_metadata_blocks: true,
+    ..Default::default()
 };
 
-let style = MarkdownStyle::default()
-    .inline(
-        MarkdownInlineKind::Link,
-        MarkdownTextStyle::default()
-            .color(hsla(0.58, 0.75, 0.55, 1.0))
-            .no_underline(),
-    )
-    .inline(
-        MarkdownInlineKind::LinkHover,
-        MarkdownTextStyle::default().background(hsla(0.58, 0.4, 0.5, 0.14)),
-    )
-    .element(
-        MarkdownElementKind::CodeBlock,
-        gpui::StyleRefinement::default()
-            .p_3()
-            .rounded(px(8.0))
-            .bg(hsla(0.62, 0.12, 0.16, 1.0)),
-    );
-
-markdown(source).markdown_style(style)
+let markdown = cx.new(|cx| Markdown::new_with_options(source, options, cx));
 ```
 
-Element selectors cover the document, paragraphs, each heading level, blockquotes, lists and markers, task checkboxes, code blocks and actions, tables and cells, images, and horizontal rules. Inline selectors cover plain text, emphasis variants, inline and block code text, links and link hover, marks, and footnote references. Atomic inline semantics support font family, font size, line height, independent horizontal/vertical padding, margins, border, background, and corner radius; these metrics participate in wrapping and line measurement. `syntax_theme(...)` overrides code syntax highlighting for only this view. Links expose a stable `Role::Link` focus target and activate with Enter, including links that wrap across visual lines.
+Optional element callbacks support URL click/hover, inline-code links, source clicks, task checkbox toggles, and caller-owned image resolution. The default code renderer supports copy, wrap, border, fenced info strings, source paths, syntax highlighting, and optional Mermaid SVG rendering.
 
-Style precedence is: active `Theme`, `TextViewStyle`, `MarkdownStyle`, transient interaction state such as link hover, then an optional block renderer.
-
-`LinkHover` is layout-stable. Color, background, underline, strikethrough, and fade refinements are supported. Font and box-model refinements are ignored so hovering a link cannot change wrapping or paragraph height.
-
-For chat transcripts, let the outer message list own scrolling and keep each message's `TextViewState` persistent. Enable TextView scrolling only for standalone documents; nested virtual lists add avoidable measurement work.
-
-## Built-in Block Renderers
-
-Use `.markdown_builtin_renderer(...)` when styling is not enough and a built-in block needs custom composition. Wrapping `context.into_default()` retains selection, links, code actions, and other framework-managed behavior.
+Search and navigation use canonical UTF-8 byte ranges:
 
 ```rust
-use hearth_gpui::text::MarkdownBlockKind;
-
-markdown(source).markdown_builtin_renderer(
-    MarkdownBlockKind::CodeBlock,
-    |context, _window, _cx| {
-        let language = context.code_language().unwrap_or("text").to_string();
-        gpui::div()
-            .child(gpui::div().child(language))
-            .child(context.into_default())
-    },
-)
-```
-
-Replacing the default element completely transfers interaction and accessibility responsibility to the custom renderer. Inline plugins are measured as atomic flow items and may provide a plain-text representation through `MarkdownNode::text(...)` for selection and copy fallbacks.
-
-## Streaming Markdown
-
-Keep one `TextViewState`, start an explicit session, append each LLM delta with `push_str`, and call `finish_streaming` when the stream completes:
-
-```rust
-let state = cx.new(|cx| TextViewState::markdown("", cx));
-
-state.update(cx, |state, cx| state.begin_streaming(cx));
-state.update(cx, |state, cx| state.push_str(delta, cx));
-state.update(cx, |state, cx| state.finish_streaming(cx));
-
-TextView::new(&state)
-    .selectable(true)
-    .scrollable(true)
-    .follow_tail(true)
-```
-
-An explicit session batches provider deltas at a 24 ms parse cadence and never performs an idle canonical parse while the session is active. `finish_streaming` flushes the pending batch and requests exactly one canonical parse. Calling `push_str` without `begin_streaming` remains supported and settles after 300 ms of inactivity. `set_text` cancels the active session and its timers.
-
-Append parsing runs in the background, preserves the last valid rendered document on a transient parse failure, and keeps selection, link hover, and code-highlight state for structurally matching streamed blocks. Stable top-level blocks are shared with `Arc`; append and display repairs copy only the changed tail block. Synchronous replacement results seed the background parser, avoiding a duplicate full parse. While appending, the display-only tail closes incomplete emphasis, inline code, strikethrough, and links to avoid visible marker and wrapping jumps. Synthetic closers never enter the canonical source, selection, copy output, or settled AST; incomplete links are styled but not clickable, while incomplete images remain literal text until their destination is complete. Fenced code blocks are never mended. Reference-style links remain correct when their definitions arrive in later chunks.
-
-Use `StreamingTextPacer` when providers emit deltas too quickly or in very large chunks:
-
-```rust
-use hearth_gpui::text::StreamingTextPacer;
-
-let mut pacer = StreamingTextPacer::new();
-pacer.push_str(provider_delta);
-
-while let Some(chunk) = pacer.take_chunk() {
-    state.update(cx, |state, cx| state.push_str(&chunk, cx));
-    // Wait pacer.frame_interval() before taking the next chunk.
-}
-
-let remaining = pacer.drain();
-state.update(cx, |state, cx| {
-    state.push_str(&remaining, cx);
-    state.finish_streaming(cx);
+markdown.update(cx, |markdown, cx| {
+    markdown.search("query", false, cx);
+    markdown.scroll_to_heading("streaming", cx);
 });
 ```
 
-The pacer avoids splitting graphemes already present in its current buffer, stops a frame at a newline, and adapts its chunk size to backlog. A provider may still divide one grapheme across separate deltas, so an intermediate frame can be incomplete; concatenated output and the final settled render preserve the original Unicode sequence. The pacer owns no task or timer. `.follow_tail(true)` uses GPUI's native list follow mode: an upward gesture pauses following immediately, and returning to the bottom re-engages it.
+Normal copy writes rendered plain text. `CopyAsMarkdown` writes the selected canonical source.
 
-## LLM Resource Safety
+## HTML
 
-Trusted Markdown keeps the historical resource behavior. For generated or otherwise untrusted Markdown, opt into the safe policy and route allowed links through the host application:
-
-```rust
-use hearth_gpui::text::MarkdownResourcePolicy;
-
-TextView::new(&state)
-    .markdown_resource_policy(MarkdownResourcePolicy::llm_safe())
-    .on_link_click(|url, _window, cx| cx.open_url(url))
-```
-
-`llm_safe` allows HTTP(S) and `mailto` links, allows normalized relative embedded image paths, and blocks remote images, `data:` images, path traversal, pending-link sentinels, and executable URL schemes. A blocked image renders its alt text.
-
-## Markdown Plugins
-
-Use `.plugin(...)` to support custom Markdown formats. A plugin owns both parsing and rendering, so callers only need to attach it to the `TextView`:
+HTML remains available through `TextView`:
 
 ```rust
-markdown(source)
-    .plugin(TickerPlugin::new())
+use hearth_gpui::text::{TextView, html};
+
+html("<p>Hello <strong>HTML</strong>.</p>")
+
+TextView::html("stable-id", "<p>Persistent HTML</p>")
+    .selectable(true)
 ```
 
-A Markdown plugin implements `MarkdownPlugin`:
-
-```rust
-use gpui::{App, IntoElement, ParentElement as _, Window};
-use hearth_gpui::text::{
-    markdown_ast, MarkdownNode, MarkdownParseContext, MarkdownPlugin,
-};
-
-struct TickerNode {
-    symbol: String,
-}
-
-struct TickerPlugin;
-
-impl TickerPlugin {
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl MarkdownPlugin for TickerPlugin {
-    fn is_block(&self) -> bool {
-        true
-    }
-
-    fn name(&self) -> &str {
-        "ticker"
-    }
-
-    fn parse(
-        &self,
-        node: &markdown_ast::Node,
-        cx: &MarkdownParseContext<'_>,
-    ) -> Option<MarkdownNode> {
-        let markdown_ast::Node::Paragraph(paragraph) = node else {
-            return None;
-        };
-        let [markdown_ast::Node::Text(text)] = paragraph.children.as_slice() else {
-            return None;
-        };
-        let symbol = text.value.strip_prefix('$')?;
-
-        Some(
-            MarkdownNode::new(
-                "ticker",
-                TickerNode {
-                    symbol: symbol.to_string(),
-                },
-            )
-            .text(format!("${symbol}"))
-            .markdown(cx.node_source(node).unwrap_or(text.value.as_str())),
-        )
-    }
-
-    fn render(
-        &self,
-        node: &MarkdownNode,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> impl IntoElement {
-        let ticker = node.data::<TickerNode>().expect("ticker node data");
-
-        gpui::div().child(format!("${}", ticker.symbol))
-    }
-}
-```
-
-Then attach it to a Markdown `TextView`:
-
-```rust
-markdown("$AAPL.US")
-    .plugin(TickerPlugin::new())
-```
-
-## MarkdownNode
-
-`MarkdownNode` is the neutral data passed between `parse` and `render`.
-
-```rust
-MarkdownNode::new("ticker", TickerNode { symbol })
-    .text("$AAPL.US")
-    .markdown("$AAPL.US")
-```
-
-- `name` is the stable node name used to match the renderer.
-- `data` is typed parser output read with `node.data::<T>()`.
-- `text` is the plain text representation used by selection and fallback rendering.
-- `markdown` is the Markdown representation used when the document is serialized back to Markdown.
-
-## Block Plugins
-
-Custom Markdown rendering currently supports block plugins. Return `true` from `is_block()` for plugins that should be registered today:
-
-```rust
-fn is_block(&self) -> bool {
-    true
-}
-```
-
-Inline plugins are reserved for future `TextView` support.
-
-## Code Block Actions
-
-You can render controls for Markdown code blocks:
-
-```rust
-markdown(source)
-    .code_block_actions(|code_block, _window, _cx| {
-        gpui::div().child(format!("Run {}", code_block.lang().unwrap_or_default()))
-    })
-```
+The legacy `markdown(source)`, `TextView::markdown`, `MarkdownState`, streaming buffer/configuration, and Markdown plugin Interfaces were removed. Migrate Markdown owners to a persistent `Entity<Markdown>`.

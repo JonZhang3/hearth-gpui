@@ -1,13 +1,11 @@
 use std::{collections::HashMap, ops::Range, sync::Arc};
 
-use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, Bounds, Element, ElementId, Entity, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels,
-    SharedString, StyleRefinement, Styled, Window, div,
+    ScrollHandle, SharedString, StyleRefinement, Styled, Window, div,
 };
 
-use crate::scroll::ScrollableElement;
 use crate::text::TextViewFormat;
 use crate::text::markdown_ext::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
 use crate::text::node::CodeBlock;
@@ -15,7 +13,10 @@ use crate::text::state::TextViewState;
 use crate::{StyledExt, WindowExt as _};
 use crate::{
     global_state::GlobalState,
-    text::{MarkdownHeadingLevel, MarkdownStyle, TextViewStyle},
+    text::{
+        LegacyMarkdownStyle, MarkdownHeadingLevel, MarkdownOptions, MarkdownStyleProfile,
+        TextViewStyle,
+    },
 };
 
 /// Type for code block actions generator function.
@@ -47,7 +48,7 @@ impl MarkdownLinkHandler {
 
 /// Controls which links and images may perform external resource access.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum MarkdownResourcePolicy {
+pub(crate) enum MarkdownResourcePolicy {
     /// Preserve the historical behavior and allow caller-provided resources.
     #[default]
     Trusted,
@@ -77,6 +78,7 @@ impl MarkdownResourcePolicy {
                 lower.starts_with("https://")
                     || lower.starts_with("http://")
                     || lower.starts_with("mailto:")
+                    || lower.starts_with('#')
             }
         }
     }
@@ -98,7 +100,7 @@ impl MarkdownResourcePolicy {
 /// A built-in Markdown block that can use a custom renderer.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum MarkdownBlockKind {
+pub(crate) enum MarkdownBlockKind {
     Paragraph,
     Heading,
     Blockquote,
@@ -112,13 +114,15 @@ pub enum MarkdownBlockKind {
 }
 
 /// Context supplied to a custom built-in Markdown block renderer.
-pub struct MarkdownBlockRenderContext {
+pub(crate) struct MarkdownBlockRenderContext {
     pub(crate) kind: MarkdownBlockKind,
     pub(crate) source_range: Option<Range<usize>>,
     pub(crate) source: SharedString,
     pub(crate) text: SharedString,
     pub(crate) heading_level: Option<MarkdownHeadingLevel>,
     pub(crate) code_language: Option<SharedString>,
+    pub(crate) code_info: Option<SharedString>,
+    pub(crate) code_source_path: Option<SharedString>,
     pub(crate) task_checked: Option<bool>,
     pub(crate) default: AnyElement,
 }
@@ -152,6 +156,16 @@ impl MarkdownBlockRenderContext {
     /// Return the fenced code language when this is a code block.
     pub fn code_language(&self) -> Option<&str> {
         self.code_language.as_deref()
+    }
+
+    /// Return the complete fenced info string when this is a code block.
+    pub fn code_info(&self) -> Option<&str> {
+        self.code_info.as_deref()
+    }
+
+    /// Return the fenced source path when the info identifies a path.
+    pub fn code_source_path(&self) -> Option<&str> {
+        self.code_source_path.as_deref()
     }
 
     /// Return the task state when this is a task-list item.
@@ -196,18 +210,19 @@ pub struct TextView {
     text_view_style: TextViewStyle,
     style: StyleRefinement,
     selectable: bool,
-    scrollable: bool,
-    follow_tail: bool,
+    scroll_handle: Option<ScrollHandle>,
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     markdown_extensions: Arc<MarkdownExtensions>,
-    markdown_style: Arc<MarkdownStyle>,
+    markdown_style: Arc<LegacyMarkdownStyle>,
+    markdown_style_profile: MarkdownStyleProfile,
     markdown_block_renderers: Arc<MarkdownBlockRenderers>,
     markdown_resource_policy: MarkdownResourcePolicy,
+    markdown_options: MarkdownOptions,
     on_link_click: Option<Arc<MarkdownLinkClickFn>>,
 }
 
 /// A plugin that can configure a [`TextView`].
-pub trait TextViewPlugin {
+pub(crate) trait TextViewPlugin {
     fn setup(self, text_view: TextView) -> TextView;
 }
 
@@ -240,19 +255,23 @@ impl TextView {
             text_view_style: TextViewStyle::default(),
             style: StyleRefinement::default(),
             selectable: false,
-            scrollable: false,
-            follow_tail: false,
+            scroll_handle: None,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
+            markdown_style_profile: MarkdownStyleProfile::Editor,
             markdown_block_renderers: Arc::default(),
             markdown_resource_policy: MarkdownResourcePolicy::default(),
+            markdown_options: MarkdownOptions::default(),
             on_link_click: None,
         }
     }
 
     /// Create a new markdown text view.
-    pub fn markdown(id: impl Into<ElementId>, markdown: impl Into<SharedString>) -> Self {
+    pub(crate) fn markdown_inner(
+        id: impl Into<ElementId>,
+        markdown: impl Into<SharedString>,
+    ) -> Self {
         Self {
             id: id.into(),
             format: Some(TextViewFormat::Markdown),
@@ -261,13 +280,14 @@ impl TextView {
             style: StyleRefinement::default(),
             state: None,
             selectable: false,
-            scrollable: false,
-            follow_tail: false,
+            scroll_handle: None,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
+            markdown_style_profile: MarkdownStyleProfile::Preview,
             markdown_block_renderers: Arc::default(),
             markdown_resource_policy: MarkdownResourcePolicy::default(),
+            markdown_options: MarkdownOptions::default(),
             on_link_click: None,
         }
     }
@@ -282,13 +302,14 @@ impl TextView {
             style: StyleRefinement::default(),
             state: None,
             selectable: false,
-            scrollable: false,
-            follow_tail: false,
+            scroll_handle: None,
             code_block_actions: None,
             markdown_extensions: Arc::default(),
             markdown_style: Arc::default(),
+            markdown_style_profile: MarkdownStyleProfile::Editor,
             markdown_block_renderers: Arc::default(),
             markdown_resource_policy: MarkdownResourcePolicy::default(),
+            markdown_options: MarkdownOptions::default(),
             on_link_click: None,
         }
     }
@@ -300,8 +321,14 @@ impl TextView {
     }
 
     /// Apply semantic Markdown styling without changing parsing behavior.
-    pub fn markdown_style(mut self, style: MarkdownStyle) -> Self {
+    pub(crate) fn markdown_style(mut self, style: LegacyMarkdownStyle) -> Self {
         self.markdown_style = Arc::new(style);
+        self
+    }
+
+    /// Select the built-in Markdown typography and density profile.
+    pub(crate) fn markdown_style_profile(mut self, profile: MarkdownStyleProfile) -> Self {
+        self.markdown_style_profile = profile;
         self
     }
 
@@ -311,7 +338,11 @@ impl TextView {
     /// preserve framework-managed interactions, or replace it completely and
     /// own those interactions itself. Registering the same kind again replaces
     /// the previous renderer.
-    pub fn markdown_builtin_renderer<F, E>(mut self, kind: MarkdownBlockKind, renderer: F) -> Self
+    pub(crate) fn markdown_builtin_renderer<F, E>(
+        mut self,
+        kind: MarkdownBlockKind,
+        renderer: F,
+    ) -> Self
     where
         F: Fn(MarkdownBlockRenderContext, &mut Window, &mut App) -> E + Send + Sync + 'static,
         E: IntoElement,
@@ -329,35 +360,25 @@ impl TextView {
         self
     }
 
-    /// Set the text view to be scrollable, default is false.
+    /// Connect this view to the [`ScrollHandle`] owned by its scrollable host.
     ///
-    /// ## If true for `scrollable`
-    ///
-    /// The `scrollable` mode used for large content,
-    /// will show scrollbar, but requires the parent to have a fixed height,
-    /// and use [`gpui::list`] to render the content in a virtualized way.
-    ///
-    /// ## If false to fit content
-    ///
-    /// The TextView will expand to fit all content, no scrollbar.
-    /// This mode is suitable for small content, such as a few lines of text, a label, etc.
-    pub fn scrollable(mut self, scrollable: bool) -> Self {
-        self.scrollable = scrollable;
-        self
-    }
-
-    /// Follow appended content while the scroll position remains at the tail.
-    ///
-    /// Any upward user scroll pauses following. Scrolling back to the bottom
-    /// re-engages it through GPUI's native list behavior.
-    pub fn follow_tail(mut self, follow: bool) -> Self {
-        self.follow_tail = follow;
+    /// TextView never creates a scroll area. The host must track the same
+    /// handle on its overflow container; TextView uses it only for document
+    /// navigation and selection auto-scroll.
+    pub fn scroll_handle(mut self, scroll_handle: ScrollHandle) -> Self {
+        self.scroll_handle = Some(scroll_handle);
         self
     }
 
     /// Set the resource policy used for Markdown links and images.
-    pub fn markdown_resource_policy(mut self, policy: MarkdownResourcePolicy) -> Self {
+    pub(crate) fn markdown_resource_policy(mut self, policy: MarkdownResourcePolicy) -> Self {
         self.markdown_resource_policy = policy;
+        self
+    }
+
+    /// Set optional Markdown parser and renderer behavior.
+    pub(crate) fn markdown_options(mut self, options: MarkdownOptions) -> Self {
+        self.markdown_options = options;
         self
     }
 
@@ -374,7 +395,7 @@ impl TextView {
     ///
     /// The closure receives the [`CodeBlock`],
     /// and returns an element to display.
-    pub fn code_block_actions<F, E>(mut self, f: F) -> Self
+    pub(crate) fn code_block_actions<F, E>(mut self, f: F) -> Self
     where
         F: Fn(&CodeBlock, &mut Window, &mut App) -> E + Send + Sync + 'static,
         E: IntoElement,
@@ -386,30 +407,20 @@ impl TextView {
     }
 
     /// Replace the Markdown extension registry.
-    pub fn markdown_extensions(mut self, extensions: MarkdownExtensions) -> Self {
+    pub(crate) fn markdown_extensions(mut self, extensions: MarkdownExtensions) -> Self {
         self.markdown_extensions = Arc::new(extensions);
         self
     }
 
-    /// Enable MDX JSX/expression parsing.
-    ///
-    /// This disables raw HTML parsing because `markdown-rs` gives HTML
-    /// priority over MDX when both are enabled.
-    pub fn markdown_mdx(mut self) -> Self {
-        let extensions = Arc::make_mut(&mut self.markdown_extensions);
-        *extensions = extensions.clone().mdx();
-        self
-    }
-
-    /// Register a custom block-level Markdown parser.
+    /// Register a custom block-level Markdown event parser.
     ///
     /// The parser runs during Markdown AST conversion and must be independent
     /// of [`Window`] / [`App`]. Store any parsed data in [`MarkdownNode`] and
     /// render it later with [`Self::markdown_block_renderer`].
-    pub fn markdown_block_parser<F>(mut self, parser: F) -> Self
+    pub(crate) fn markdown_block_parser<F>(mut self, parser: F) -> Self
     where
         F: for<'a> Fn(
-                &markdown::mdast::Node,
+                &crate::text::MarkdownParseEvent<'a>,
                 &crate::text::MarkdownParseContext<'a>,
             ) -> Option<MarkdownNode>
             + Send
@@ -421,7 +432,7 @@ impl TextView {
     }
 
     /// Register a renderer for a custom block-level Markdown node name.
-    pub fn markdown_block_renderer<F, E>(
+    pub(crate) fn markdown_block_renderer<F, E>(
         mut self,
         name: impl Into<SharedString>,
         renderer: F,
@@ -435,7 +446,7 @@ impl TextView {
     }
 
     /// Apply a reusable text view plugin.
-    pub fn plugin<P>(self, plugin: P) -> Self
+    pub(crate) fn plugin<P>(self, plugin: P) -> Self
     where
         P: TextViewPlugin,
     {
@@ -498,14 +509,18 @@ impl Element for TextView {
 
         state.update(cx, |state, cx| {
             state.code_block_actions = self.code_block_actions.clone();
-            state.markdown_style = self.markdown_style.clone();
+            state.markdown_style = Arc::new(
+                LegacyMarkdownStyle::for_profile(self.markdown_style_profile, cx)
+                    .overlay(self.markdown_style.as_ref()),
+            );
             state.markdown_block_renderers = self.markdown_block_renderers.clone();
             state.markdown_resource_policy = self.markdown_resource_policy;
+            state.set_markdown_style_profile(self.markdown_style_profile, cx);
+            state.set_markdown_options(self.markdown_options, cx);
             state.on_link_click = self.on_link_click.clone();
             state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
-            state.scrollable = self.scrollable;
-            state.set_follow_tail(self.follow_tail, cx);
+            state.set_scroll_handle(self.scroll_handle.clone(), cx);
             state.text_view_style = self.text_view_style.clone();
 
             if let Some(text) = self.text.clone() {
@@ -514,14 +529,10 @@ impl Element for TextView {
         });
 
         let focus_handle = state.read(cx).focus_handle.clone();
-        let list_state = state.read(cx).list_state.clone();
 
         let mut el = div()
             .key_context("TextView")
             .track_focus(&focus_handle)
-            .when(self.scrollable, |this| {
-                this.size_full().vertical_scrollbar(&list_state)
-            })
             .relative()
             .on_action(move |_: &crate::input::Copy, window, cx| {
                 use crate::WindowExt as _;
@@ -581,12 +592,14 @@ impl Element for TextView {
 mod tests {
     use super::{MarkdownBlockKind, MarkdownResourcePolicy, TextView, TextViewPlugin};
     use crate::text::{
-        MarkdownElementKind, MarkdownInlineKind, MarkdownStyle, MarkdownTextStyle, TextViewState,
+        LegacyMarkdownStyle, MarkdownElementKind, MarkdownInlineKind, MarkdownTextStyle,
+        TextViewState,
     };
     use gpui::{
         AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, Modifiers,
-        MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render, Styled as _,
-        TestAppContext, VisualTestContext, Window, div, point, px,
+        MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render, ScrollHandle,
+        StatefulInteractiveElement as _, Styled as _, TestAppContext, VisualTestContext, Window,
+        div, point, px,
     };
 
     struct TextViewTestRoot {
@@ -646,6 +659,11 @@ mod tests {
         text_view: Entity<TextViewState>,
     }
 
+    struct HostScrolledTextViewTestRoot {
+        text_view: Entity<TextViewState>,
+        scroll_handle: ScrollHandle,
+    }
+
     struct InlineCodeSelectionTestRoot {
         text_view: Entity<TextViewState>,
     }
@@ -684,7 +702,7 @@ mod tests {
 
     impl Render for StreamingLinkHoverTestRoot {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            let style = MarkdownStyle::default()
+            let style = LegacyMarkdownStyle::default()
                 .inline(
                     MarkdownInlineKind::InlineCode,
                     MarkdownTextStyle::default()
@@ -702,9 +720,25 @@ mod tests {
         }
     }
 
+    impl Render for HostScrolledTextViewTestRoot {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .id("host-markdown-scroll")
+                .w(px(320.))
+                .h(px(100.))
+                .overflow_y_scroll()
+                .track_scroll(&self.scroll_handle)
+                .child(
+                    TextView::new(&self.text_view)
+                        .scroll_handle(self.scroll_handle.clone())
+                        .selectable(true),
+                )
+        }
+    }
+
     impl Render for InlineCodeSelectionTestRoot {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-            let style = MarkdownStyle::default().inline(
+            let style = LegacyMarkdownStyle::default().inline(
                 MarkdownInlineKind::InlineCode,
                 MarkdownTextStyle::default()
                     .background(gpui::black())
@@ -876,7 +910,7 @@ mod tests {
                     crate::resizable::h_resizable("markdown-width-test")
                         .child(crate::resizable::resizable_panel().child(div()))
                         .child(crate::resizable::resizable_panel().child(
-                            TextView::markdown(
+                            TextView::markdown_inner(
                                 "list-with-code",
                                 "1. List item\n   ```rust\n   nested code\n   ```\n\n```rust\ntop-level code\n```",
                             )
@@ -890,7 +924,6 @@ mod tests {
                                     .debug_selector(move || selector.into())
                                     .child("Copy")
                             })
-                            .scrollable(true)
                             .p_5()
                             .flex_none(),
                         )),
@@ -917,14 +950,14 @@ mod tests {
 
     #[test]
     fn plugin_accepts_text_view_plugins_beyond_markdown() {
-        let view = TextView::markdown("plugin-test", "").plugin(DummyTextViewPlugin);
+        let view = TextView::markdown_inner("plugin-test", "").plugin(DummyTextViewPlugin);
 
         assert!(view.selectable);
     }
 
     #[test]
     fn markdown_presentation_builders_register_styles_and_renderers() {
-        let style = MarkdownStyle::default()
+        let style = LegacyMarkdownStyle::default()
             .inline(
                 MarkdownInlineKind::Link,
                 MarkdownTextStyle::default().no_underline(),
@@ -933,7 +966,7 @@ mod tests {
                 MarkdownElementKind::CodeBlock,
                 gpui::StyleRefinement::default(),
             );
-        let view = TextView::markdown("presentation-test", "[link](https://example.com)")
+        let view = TextView::markdown_inner("presentation-test", "[link](https://example.com)")
             .markdown_style(style)
             .markdown_builtin_renderer(MarkdownBlockKind::CodeBlock, |context, _, _| {
                 context.into_default()
@@ -1084,6 +1117,47 @@ mod tests {
         assert_eq!(selected_text.trim(), "quick select value");
     }
 
+    #[gpui::test]
+    fn document_navigation_scrolls_the_host_owned_container(cx: &mut TestAppContext) {
+        let source = (0..20)
+            .map(|ix| format!("## Section {ix}\n\nParagraph {ix} with enough content to scroll."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        cx.update(crate::init);
+        let text_view = cx.update(|cx| cx.new(|cx| TextViewState::markdown(&source, cx)));
+        let state_for_view = text_view.clone();
+        let scroll_handle = ScrollHandle::new();
+        let handle_for_view = scroll_handle.clone();
+        let (_, cx) = cx.add_window_view(move |_window, _cx| HostScrolledTextViewTestRoot {
+            text_view: state_for_view,
+            scroll_handle: handle_for_view,
+        });
+        let cx: &mut VisualTestContext = cx;
+
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        assert!(scroll_handle.max_offset().y > px(0.));
+
+        text_view.update(cx, |state, cx| {
+            state.scroll_to_source_index(source.len().saturating_sub(1), cx);
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+            assert_eq!(window.simulate_next_frame(cx), 1);
+        });
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+
+        assert!(
+            scroll_handle.offset().y < px(0.),
+            "document navigation must move the host ScrollHandle"
+        );
+    }
+
     // Regression: markdown `TextView` items inside an outer `gpui::list` with
     // `measure_all` must keep a stable total content height while scrolling.
     // Before synchronous full-replace parsing, off-screen markdown views were
@@ -1114,7 +1188,7 @@ mod tests {
                     list(self.state.clone(), |ix, _w, _cx| {
                         div()
                             .w_full()
-                            .child(TextView::markdown(
+                            .child(TextView::markdown_inner(
                                 ("md", ix as u64),
                                 ITEMS[ix % ITEMS.len()],
                             ))

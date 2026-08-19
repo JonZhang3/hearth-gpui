@@ -14,7 +14,8 @@
 use gpui::*;
 use hearth_gpui::{
     button::Button,
-    text::{TextView, TextViewStyle},
+    scroll::ScrollableElement as _,
+    text::{Markdown, MarkdownElement, MarkdownFont, MarkdownStyle},
     *,
 };
 use hearth_gpui_assets::Assets;
@@ -64,32 +65,18 @@ impl TableMode {
             Self::Nowrap => "Table: scroll (nowrap)",
         }
     }
-
-    fn style(self) -> TextViewStyle {
-        if self == Self::Wrap {
-            return TextViewStyle::default();
-        }
-
-        let mut table = StyleRefinement::default();
-        table.overflow.x = Some(Overflow::Scroll);
-        let style = TextViewStyle::default().table(table);
-
-        if self == Self::Nowrap {
-            let mut cell = StyleRefinement::default();
-            cell.text.white_space = Some(WhiteSpace::Nowrap);
-            style.table_cell(cell)
-        } else {
-            style
-        }
-    }
 }
 
 struct Example {
     mode: TableMode,
+    scroll_handle: ScrollHandle,
+    markdown: Entity<Markdown>,
 }
 
 impl Render for Example {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let mut markdown_style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
+        markdown_style.table_columns_min_size = self.mode != TableMode::Wrap;
         v_flex()
             .size_full()
             .child(
@@ -108,11 +95,23 @@ impl Render for Example {
                     ),
             )
             .child(
-                TextView::markdown("report", source())
-                    .style(self.mode.style())
-                    .p_4()
-                    .scrollable(true)
-                    .selectable(true),
+                div()
+                    .relative()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .id("markdown-table-scroll")
+                            .size_full()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .child(
+                                MarkdownElement::new(self.markdown.clone(), markdown_style)
+                                    .scroll_handle(self.scroll_handle.clone())
+                                    .p_4(),
+                            ),
+                    )
+                    .vertical_scrollbar(&self.scroll_handle),
             )
     }
 }
@@ -137,8 +136,11 @@ fn main() {
 
         cx.spawn(async move |cx| {
             cx.open_window(window_options, |window, cx| {
+                let markdown = cx.new(|cx| Markdown::new(source(), cx));
                 let view = cx.new(|_| Example {
                     mode: TableMode::initial(),
+                    scroll_handle: ScrollHandle::new(),
+                    markdown,
                 });
                 // The first level view on the window should be a Root.
                 cx.new(|cx| Root::new(view, window, cx).bg(cx.theme().background))
