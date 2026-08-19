@@ -30,6 +30,29 @@ MarkdownElement::new(markdown.clone(), style)
 
 `MarkdownFont::Agent`、`Editor`、`Preview` 提供与 Zed 对齐的排版 profile。`MarkdownStyle` 可配置标题、链接、inline code、引用、code block、分隔线、表格、语法高亮、选择区域和软换行。
 
+### Inline code
+
+内置样式将 inline code 渲染为圆角胶囊：
+
+- 使用 `Theme.mono_font_family` 等宽字体，字号为正文的 87.5%；
+- 背景由前景色推导，保证暗色主题下的可读性；
+- 水平 padding 4px，圆角取自当前 Style Preset 的 `radii.sm`；
+- 在 `MarkdownFont::Preview` 中保持完整前景色，因为此时正文是弱化色。
+
+`MarkdownStyle.inline_code_box` 持有胶囊指标，默认全零，因此自定义样式仍可使用普通文本背景：
+
+```rust
+use hearth_gpui::text::{InlineCodeBoxStyle, MarkdownStyle};
+
+let mut style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+style.inline_code_box = InlineCodeBoxStyle {
+    padding_x: px(4.),
+    corner_radius: px(6.),
+};
+```
+
+Code block 不受影响：它们保持 `Theme.mono_font_size`，inline code 则随正文字号缩放。
+
 ### 外层容器拥有滚动
 
 `MarkdownElement` 不创建纵向滚动区域。overflow、scrollbar 和 follow-tail 策略全部属于外层容器：

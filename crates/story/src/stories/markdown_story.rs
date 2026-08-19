@@ -18,7 +18,11 @@ const STYLE_EXAMPLE: &str = r#"## Zed-style renderer
 
 [Links keep source-mapped hit testing across wrapped visual lines.](https://example.com)
 
-Inline code such as `MarkdownElement` uses the configured monospace style.
+Inline code such as `MarkdownElement` renders as a rounded chip at 87.5% of the body size with a foreground-derived background.
+
+Adjacent spans keep independent chips: `let a = 1;` and `let b = a + 1;`
+
+Code inside links keeps its chip styling and stays clickable: [`open_url("https://example.com")`](https://example.com)
 
 > [!TIP]
 > Selection, link hit testing, copy, and scrolling are owned by one Markdown entity.

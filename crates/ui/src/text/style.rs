@@ -16,6 +16,26 @@ pub(crate) enum MarkdownStyleProfile {
     Preview,
 }
 
+/// Horizontal padding applied around inline code text in a Markdown chip.
+///
+/// Mirrors the shadcn `Kbd` primitive (`px-1`, four pixels at the default
+/// density) and keeps both Markdown render paths visually identical.
+pub(crate) const INLINE_CODE_PADDING_X: f32 = 4.;
+
+/// Inline code renders at 87.5% of the surrounding body text size, matching
+/// the shadcn prose `code` rule (`font-size: 0.875em`).
+pub(crate) const INLINE_CODE_SIZE_SCALE: f32 = 0.875;
+
+/// Resolve the inline code background for the active Hearth theme.
+///
+/// Keeps the GitHub/Zed foreground-chip convention instead of the shadcn
+/// `bg-muted` pill: a muted background without a border has too little
+/// contrast in dark themes. The single source of truth lives here so both
+/// render paths stay in sync.
+pub(crate) fn inline_code_background(cx: &gpui::App) -> Hsla {
+    cx.theme().foreground.opacity(0.08)
+}
+
 /// TextViewStyle used to customize the style for [`TextView`].
 #[derive(Clone)]
 pub struct TextViewStyle {
@@ -441,6 +461,20 @@ impl LegacyMarkdownStyle {
             MarkdownHeadingLevel::H6,
         ];
 
+        let inline_code = MarkdownTextStyle::default()
+            .font_family(cx.theme().mono_font_family.clone())
+            .font_size(body_size * INLINE_CODE_SIZE_SCALE)
+            .background(inline_code_background(cx))
+            .padding_x(px(INLINE_CODE_PADDING_X))
+            .corner_radius(cx.theme().style.radii.sm);
+        // Preview prose is muted; inline code keeps the full foreground color
+        // so code stays legible inside weakened body text.
+        let inline_code = if profile == MarkdownStyleProfile::Preview {
+            inline_code.color(cx.theme().foreground)
+        } else {
+            inline_code
+        };
+
         let mut style = Self {
             base_text_style: StyleRefinement::default().line_height(body_size * 1.75),
             ..Self::default()
@@ -460,15 +494,7 @@ impl LegacyMarkdownStyle {
             MarkdownInlineKind::LinkHover,
             MarkdownTextStyle::default().color(cx.theme().link.opacity(0.8)),
         )
-        .inline(
-            MarkdownInlineKind::InlineCode,
-            MarkdownTextStyle::default()
-                .font_family(cx.theme().mono_font_family.clone())
-                .font_size(cx.theme().mono_font_size)
-                .background(cx.theme().foreground.opacity(0.08))
-                .padding_x(px(3.))
-                .corner_radius(cx.theme().style.radii.sm),
-        )
+        .inline(MarkdownInlineKind::InlineCode, inline_code)
         .element(
             MarkdownElementKind::CodeBlock,
             StyleRefinement::default()
@@ -578,7 +604,7 @@ impl LegacyMarkdownStyle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{hsla, px};
+    use gpui::{TestAppContext, hsla, px};
 
     #[test]
     fn markdown_text_style_can_replace_and_clear_inherited_values() {
@@ -626,5 +652,36 @@ mod tests {
                 ..Default::default()
             })
         );
+    }
+
+    #[gpui::test]
+    fn inline_code_profiles_resolve_semantic_metrics(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        cx.update(|cx| {
+            let theme = cx.theme();
+            let editor = LegacyMarkdownStyle::for_profile(MarkdownStyleProfile::Editor, cx);
+            let inline = editor
+                .inline_style(MarkdownInlineKind::InlineCode)
+                .expect("editor profile defines inline code");
+            assert_eq!(inline.font_family, Some(theme.mono_font_family.clone()));
+            assert_eq!(
+                inline.font_size,
+                Some(theme.font_size * INLINE_CODE_SIZE_SCALE)
+            );
+            assert_eq!(
+                inline.background_color,
+                Some(Some(inline_code_background(cx)))
+            );
+            assert_eq!(inline.padding_x, Some(px(INLINE_CODE_PADDING_X)));
+            assert_eq!(inline.corner_radius, Some(theme.style.radii.sm));
+            // Editor and Agent inherit the body color instead of overriding it.
+            assert_eq!(inline.color, None);
+
+            let preview = LegacyMarkdownStyle::for_profile(MarkdownStyleProfile::Preview, cx);
+            let preview_inline = preview
+                .inline_style(MarkdownInlineKind::InlineCode)
+                .expect("preview profile defines inline code");
+            assert_eq!(preview_inline.color, Some(theme.foreground));
+        });
     }
 }

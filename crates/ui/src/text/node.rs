@@ -1604,6 +1604,15 @@ fn append_resolved_inline_styles(
         if mark.code {
             style.background_color = Some(accent);
             node_cx.refine_inline(MarkdownInlineKind::InlineCode, &mut style);
+        } else if mark.link.is_some() {
+            // Code takes priority: link color and underline must not override
+            // the code chip. The link stays clickable through `links`.
+            style.color = Some(link_color);
+            style.underline = Some(gpui::UnderlineStyle {
+                thickness: gpui::px(1.),
+                ..Default::default()
+            });
+            node_cx.refine_inline(MarkdownInlineKind::Link, &mut style);
         }
         if mark.footnote_reference {
             node_cx.refine_inline(MarkdownInlineKind::FootnoteReference, &mut style);
@@ -1611,14 +1620,6 @@ fn append_resolved_inline_styles(
         if let Some(color) = mark.highlight {
             style.background_color = Some(color);
             node_cx.refine_inline(MarkdownInlineKind::Mark, &mut style);
-        }
-        if mark.link.is_some() {
-            style.color = Some(link_color);
-            style.underline = Some(gpui::UnderlineStyle {
-                thickness: gpui::px(1.),
-                ..Default::default()
-            });
-            node_cx.refine_inline(MarkdownInlineKind::Link, &mut style);
         }
         if let Some((_, active)) = search_ranges
             .iter()

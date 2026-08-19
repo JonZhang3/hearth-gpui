@@ -37,6 +37,7 @@ use super::{
         InlineBoxStyle, InlineFlow, InlineFlowItem, InlineFlowLayoutCache, InlineFlowLayoutState,
         InlineImageSizing,
     },
+    style::{INLINE_CODE_PADDING_X, INLINE_CODE_SIZE_SCALE, inline_code_background},
 };
 
 /// Optional parser and renderer behavior. Expensive extensions remain opt-in.
@@ -100,6 +101,12 @@ pub struct MarkdownStyle {
     pub code_block: StyleRefinement,
     pub code_block_overflow_x_scroll: bool,
     pub inline_code: TextStyleRefinement,
+    /// Layout metrics for the inline code background chip.
+    ///
+    /// Zeroed by default so inline code renders without a box; the built-in
+    /// [`MarkdownStyle::themed`] resolves semantic metrics from the active
+    /// Style Preset.
+    pub inline_code_box: InlineCodeBoxStyle,
     pub block_quote: TextStyleRefinement,
     pub link: TextStyleRefinement,
     pub rule_color: Hsla,
@@ -113,6 +120,18 @@ pub struct MarkdownStyle {
     pub prevent_mouse_interaction: bool,
     pub table_columns_min_size: bool,
     pub soft_break_as_hard_break: bool,
+}
+
+/// Layout metrics for the inline code background chip.
+///
+/// Zeroed values render inline code without a box, preserving the previous
+/// plain-text background behavior.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct InlineCodeBoxStyle {
+    /// Horizontal padding between the code text and the chip edges.
+    pub padding_x: Pixels,
+    /// Corner radius of the chip, resolved from the active Style Preset.
+    pub corner_radius: Pixels,
 }
 
 impl MarkdownStyle {
@@ -146,13 +165,29 @@ impl MarkdownStyle {
         Self {
             base_text_style: base,
             container_style: StyleRefinement::default(),
-            code_block: StyleRefinement::default().bg(theme.muted.opacity(0.5)),
+            code_block: {
+                let mut code_block = StyleRefinement::default().bg(theme.muted.opacity(0.5));
+                code_block.text = TextStyleRefinement {
+                    // Code block text stays at the mono UI size; inline code
+                    // resolves its own size from the body typography below.
+                    font_size: Some(theme.mono_font_size.into()),
+                    ..Default::default()
+                };
+                code_block
+            },
             code_block_overflow_x_scroll: true,
             inline_code: TextStyleRefinement {
                 font_family: Some(theme.mono_font_family.clone()),
-                font_size: Some(theme.mono_font_size.into()),
-                background_color: Some(theme.foreground.opacity(0.08)),
+                font_size: Some((body_size * INLINE_CODE_SIZE_SCALE).into()),
+                // Preview prose is muted; inline code keeps the full foreground
+                // color so code stays legible inside weakened body text.
+                color: matches!(font, MarkdownFont::Preview).then_some(theme.foreground),
+                background_color: Some(inline_code_background(cx)),
                 ..Default::default()
+            },
+            inline_code_box: InlineCodeBoxStyle {
+                padding_x: px(INLINE_CODE_PADDING_X),
+                corner_radius: theme.style.radii.sm,
             },
             block_quote: TextStyleRefinement {
                 color: Some(theme.muted_foreground),
@@ -204,6 +239,7 @@ impl Default for MarkdownStyle {
             code_block: StyleRefinement::default(),
             code_block_overflow_x_scroll: false,
             inline_code: TextStyleRefinement::default(),
+            inline_code_box: InlineCodeBoxStyle::default(),
             block_quote: TextStyleRefinement::default(),
             link: TextStyleRefinement::default(),
             rule_color: Hsla::default(),
@@ -332,6 +368,7 @@ struct RenderedLink {
 struct TextPreparationKey {
     block_style: TextStyle,
     inline_code: TextStyleRefinement,
+    inline_code_box: InlineCodeBoxStyle,
     link: TextStyleRefinement,
     selection_background_color: Hsla,
     soft_break_as_hard_break: bool,
@@ -2250,6 +2287,7 @@ fn render_text_block(
     let key = TextPreparationKey {
         block_style: block_text_style.clone(),
         inline_code: style.inline_code.clone(),
+        inline_code_box: style.inline_code_box,
         link: style.link.clone(),
         selection_background_color: style.selection_background_color,
         soft_break_as_hard_break: style.soft_break_as_hard_break,
@@ -2257,9 +2295,6 @@ fn render_text_block(
         active_search,
     };
     let prepared = prepare_text_block(block, key.clone());
-    let text = prepared.text.clone();
-    let styled_text = StyledText::new(text.clone()).with_runs(prepared.runs.clone());
-    let layout = styled_text.layout().clone();
     let mut links = prepared.links.to_vec();
     if let Some(resolve) = code_span_link {
         links.extend(block.segments.iter().filter_map(|segment| {
@@ -2304,7 +2339,19 @@ fn render_text_block(
         TextBlockKind::Metadata => container.p_2().bg(style.rule_color.opacity(0.08)),
         _ => container,
     };
-    if block.images.is_empty() {
+    // The inline flow owns chip boxes and images. Route blocks through it
+    // whenever an inline code chip is active, not only when images are present
+    // — otherwise inline code falls back to a plain text-run background and
+    // the chip metrics never render.
+    let code_with_chip = (style.inline_code_box.padding_x > px(0.)
+        || style.inline_code_box.corner_radius > px(0.))
+        && block.segments.iter().any(|segment| segment.flags.code);
+    if block.images.is_empty() && !code_with_chip {
+        // Only the plain path pays for shaping; the inline flow shapes its own
+        // fragments during layout.
+        let text = prepared.text.clone();
+        let styled_text = StyledText::new(text.clone()).with_runs(prepared.runs.clone());
+        let layout = styled_text.layout().clone();
         return (
             container.child(styled_text).into_any_element(),
             RenderedLine {
@@ -2432,8 +2479,9 @@ fn inline_text_item(
     }
     if segment.flags.code {
         resolved.refine(&key.inline_code);
-    }
-    if segment.flags.link {
+    } else if segment.flags.link {
+        // Code takes priority: link color and underline must not override
+        // the code chip. Hit testing keeps the link clickable regardless.
         resolved.refine(&key.link);
     }
 
@@ -2448,7 +2496,7 @@ fn inline_text_item(
     }
     boundaries.sort_unstable();
     boundaries.dedup();
-    let highlights = boundaries
+    let mut highlights: Vec<_> = boundaries
         .windows(2)
         .filter_map(|bounds| {
             let range = bounds[0]..bounds[1];
@@ -2483,7 +2531,7 @@ fn inline_text_item(
         })
         .collect();
     let rem_size = window.rem_size();
-    let box_style = (resolved.font_family != block_style.font_family
+    let mut box_style = (resolved.font_family != block_style.font_family
         || resolved.font_size != block_style.font_size
         || resolved.line_height != block_style.line_height)
         .then(|| InlineBoxStyle {
@@ -2492,6 +2540,27 @@ fn inline_text_item(
             line_height: Some(resolved.line_height.to_pixels(resolved.font_size, rem_size)),
             ..Default::default()
         });
+    if segment.flags.code {
+        let chip = key.inline_code_box;
+        if chip.padding_x > px(0.) || chip.corner_radius > px(0.) {
+            let style = box_style.get_or_insert_with(InlineBoxStyle::default);
+            style.padding_x = chip.padding_x;
+            style.corner_radius = chip.corner_radius;
+            // The chip takes the code refinement's own background; `resolved`
+            // may have been re-refined by a link afterwards.
+            style.background = key.inline_code.background_color;
+        }
+    }
+    // The containing chip owns the code background; painting it on the text
+    // runs again would double its opacity.
+    if box_style
+        .as_ref()
+        .is_some_and(|box_style| box_style.background.is_some())
+    {
+        for (_, highlight) in &mut highlights {
+            highlight.background_color = None;
+        }
+    }
     InlineFlowItem::Text {
         state: Arc::new(std::sync::Mutex::new(InlineState::default())),
         paragraph_range: paragraph_start..(paragraph_start + text.len()),
@@ -2544,8 +2613,9 @@ fn prepare_text_block(block: &ParsedTextBlock, key: TextPreparationKey) -> Cache
         }
         if segment.flags.code {
             segment_style.refine(&key.inline_code);
-        }
-        if segment.flags.link {
+        } else if segment.flags.link {
+            // Code takes priority over link color and underline; the link
+            // stays clickable through the rendered link ranges.
             segment_style.refine(&key.link);
         }
         let segment_len = end - start;
@@ -2625,9 +2695,11 @@ fn render_code_block(
     let mut code_style = style.base_text_style.clone();
     code_style.refine(&TextStyleRefinement {
         font_family: style.inline_code.font_family.clone(),
-        font_size: style.inline_code.font_size,
         ..Default::default()
     });
+    // `code_block.text` carries the code-block typography (mono UI size) and
+    // any caller refinements; inline code resolves its own size separately.
+    code_style.refine(&style.code_block.text);
     let text = block.display_code.clone();
     let display_len = text.len();
     let mut runs = Vec::new();
@@ -2896,6 +2968,7 @@ fn table_cell_intrinsic_text_width(
     let key = TextPreparationKey {
         block_style: text_style.clone(),
         inline_code: style.inline_code.clone(),
+        inline_code_box: style.inline_code_box,
         link: style.link.clone(),
         selection_background_color: style.selection_background_color,
         soft_break_as_hard_break: style.soft_break_as_hard_break,
@@ -3556,6 +3629,14 @@ mod tests {
         table: ParsedHtmlTable,
         layouts: Rc<RefCell<Vec<(TextLayout, SharedString)>>>,
         scroll_handle: ScrollHandle,
+    }
+
+    struct ThemedStyleTestRoot;
+
+    impl Render for ThemedStyleTestRoot {
+        fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
     }
 
     impl Render for CodeBlockScrollTestRoot {
@@ -4600,5 +4681,264 @@ mod tests {
             &width_cache,
             &after.rows[1].cells[0].content.intrinsic_width_cache.0
         ));
+    }
+
+    #[gpui::test]
+    fn themed_inline_code_scales_with_body_and_keeps_code_blocks_at_mono_size(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+            assert_eq!(
+                style.inline_code.font_family.as_deref(),
+                Some(cx.theme().mono_font_family.as_ref())
+            );
+            assert_eq!(
+                style.inline_code.font_size,
+                Some((cx.theme().font_size * INLINE_CODE_SIZE_SCALE).into())
+            );
+            assert_eq!(
+                style.inline_code.background_color,
+                Some(inline_code_background(cx))
+            );
+            assert_eq!(style.inline_code_box.padding_x, px(INLINE_CODE_PADDING_X));
+            assert_eq!(
+                style.inline_code_box.corner_radius,
+                cx.theme().style.radii.sm
+            );
+            // Code blocks stay at the mono UI size even though inline code
+            // scales with the body typography.
+            assert_eq!(
+                style.code_block.text.font_size,
+                Some(cx.theme().mono_font_size.into())
+            );
+            // Editor and Agent inherit the body color instead of overriding it.
+            assert_eq!(style.inline_code.color, None);
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
+    }
+
+    #[gpui::test]
+    fn themed_preview_inline_code_keeps_foreground_color(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
+            assert_eq!(style.base_text_style.color, cx.theme().muted_foreground);
+            assert_eq!(style.inline_code.color, Some(cx.theme().foreground));
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
+    }
+
+    #[gpui::test]
+    fn inline_code_chip_owns_background_and_adds_padding(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+            let segment = TextSegment {
+                text: "fn main() {}".into(),
+                source: 1..13,
+                flags: InlineFlags {
+                    code: true,
+                    ..Default::default()
+                },
+            };
+            let key = TextPreparationKey {
+                block_style: style.base_text_style.clone(),
+                inline_code: style.inline_code.clone(),
+                inline_code_box: style.inline_code_box,
+                link: style.link.clone(),
+                selection_background_color: style.selection_background_color,
+                soft_break_as_hard_break: style.soft_break_as_hard_break,
+                search: Vec::new(),
+                active_search: None,
+            };
+            let item = inline_text_item(
+                "fn main() {}".into(),
+                0,
+                &segment,
+                &style.base_text_style,
+                &key,
+                window,
+            );
+            let InlineFlowItem::Text {
+                box_style,
+                highlights,
+                ..
+            } = item
+            else {
+                panic!("expected an inline text item");
+            };
+            let box_style = box_style.expect("inline code renders inside a chip");
+            assert_eq!(box_style.padding_x, px(INLINE_CODE_PADDING_X));
+            assert_eq!(box_style.corner_radius, style.inline_code_box.corner_radius);
+            assert_eq!(box_style.background, style.inline_code.background_color);
+            // The chip owns the background; text runs must not paint it again.
+            assert!(highlights.iter().all(|(_, h)| h.background_color.is_none()));
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
+    }
+
+    #[gpui::test]
+    fn image_free_paragraphs_with_inline_code_render_the_chip_flow(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+            let block = ParsedTextBlock {
+                kind: TextBlockKind::Paragraph,
+                source: 0..20,
+                segments: vec![
+                    TextSegment {
+                        text: "Use ".into(),
+                        source: 0..4,
+                        flags: InlineFlags::default(),
+                    },
+                    TextSegment {
+                        text: "MarkdownElement".into(),
+                        source: 5..21,
+                        flags: InlineFlags { code: true, ..Default::default() },
+                    },
+                ],
+                images: Vec::new(),
+                links: Vec::new(),
+                render_cache: TextPreparationCache::default(),
+                intrinsic_width_cache: IntrinsicTextWidthCache::default(),
+                inline_flow_layout_cache: InlineFlowLayoutCache::default(),
+            };
+            let (_, line) = render_text_block(
+                &block,
+                &style,
+                (&[], None),
+                None,
+                None,
+                window,
+                cx,
+            );
+            assert!(
+                matches!(line.layout, RenderedLineLayout::Inline(_)),
+                "an image-free paragraph with an active inline code chip must render through the inline flow"
+            );
+
+            // Zeroing the chip restores the plain styled-text path.
+            let mut plain_style = style.clone();
+            plain_style.inline_code_box = InlineCodeBoxStyle::default();
+            let (_, line) = render_text_block(
+                &block,
+                &plain_style,
+                (&[], None),
+                None,
+                None,
+                window,
+                cx,
+            );
+            assert!(
+                matches!(line.layout, RenderedLineLayout::Text(_)),
+                "a zeroed chip keeps the plain text path"
+            );
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
+    }
+
+    #[gpui::test]
+    fn linked_inline_code_keeps_the_code_chip_background(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+            let key = TextPreparationKey {
+                block_style: style.base_text_style.clone(),
+                inline_code: style.inline_code.clone(),
+                inline_code_box: style.inline_code_box,
+                link: style.link.clone(),
+                selection_background_color: style.selection_background_color,
+                soft_break_as_hard_break: style.soft_break_as_hard_break,
+                search: Vec::new(),
+                active_search: None,
+            };
+            let segment = TextSegment {
+                text: "linked code".into(),
+                source: 0..11,
+                flags: InlineFlags {
+                    code: true,
+                    link: true,
+                    ..Default::default()
+                },
+            };
+            let item = inline_text_item(
+                "linked code".into(),
+                0,
+                &segment,
+                &style.base_text_style,
+                &key,
+                window,
+            );
+            let InlineFlowItem::Text {
+                box_style,
+                highlights,
+                ..
+            } = item
+            else {
+                panic!("expected an inline text item");
+            };
+            let box_style = box_style.expect("linked inline code renders inside a chip");
+            // Code takes priority: the chip keeps its own background, and the
+            // link color/underline must not override the code styling.
+            assert_eq!(box_style.background, style.inline_code.background_color);
+            assert!(highlights.iter().all(
+                |(_, h)| h.color == Some(style.base_text_style.color) && h.underline.is_none()
+            ));
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
+    }
+
+    #[gpui::test]
+    fn zeroed_inline_code_box_keeps_plain_text_background(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let mut style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+            style.inline_code_box = InlineCodeBoxStyle::default();
+            let key = TextPreparationKey {
+                block_style: style.base_text_style.clone(),
+                inline_code: style.inline_code.clone(),
+                inline_code_box: style.inline_code_box,
+                link: style.link.clone(),
+                selection_background_color: style.selection_background_color,
+                soft_break_as_hard_break: style.soft_break_as_hard_break,
+                search: Vec::new(),
+                active_search: None,
+            };
+            let segment = TextSegment {
+                text: "code".into(),
+                source: 0..4,
+                flags: InlineFlags {
+                    code: true,
+                    ..Default::default()
+                },
+            };
+            let item = inline_text_item(
+                "code".into(),
+                0,
+                &segment,
+                &style.base_text_style,
+                &key,
+                window,
+            );
+            let InlineFlowItem::Text {
+                box_style,
+                highlights,
+                ..
+            } = item
+            else {
+                panic!("expected an inline text item");
+            };
+            // The font-driven box may still exist, but it must not paint a
+            // background or padding for the zeroed chip.
+            if let Some(box_style) = &box_style {
+                assert_eq!(box_style.padding_x, px(0.));
+                assert_eq!(box_style.corner_radius, px(0.));
+                assert_eq!(box_style.background, None);
+            }
+            assert!(highlights.iter().all(|(_, h)| h.background_color.is_some()));
+            crate::Root::new(cx.new(|_| ThemedStyleTestRoot), window, cx)
+        });
     }
 }

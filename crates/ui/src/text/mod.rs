@@ -24,8 +24,8 @@ use gpui::{App, ElementId, IntoElement, RenderOnce, SharedString, Window};
 pub(crate) use markdown_ext::*;
 pub use markdown_renderer::{
     BlockQuoteKindColors, CodeBlockRenderContext, CodeBlockRenderer, CopyAsMarkdown,
-    CopyButtonVisibility, HeadingLevelStyles, Markdown, MarkdownElement, MarkdownFont,
-    MarkdownOptions, MarkdownStyle, WrapButtonVisibility,
+    CopyButtonVisibility, HeadingLevelStyles, InlineCodeBoxStyle, Markdown, MarkdownElement,
+    MarkdownFont, MarkdownOptions, MarkdownStyle, WrapButtonVisibility,
 };
 pub use state::*;
 pub(crate) use style::MarkdownStyleProfile;

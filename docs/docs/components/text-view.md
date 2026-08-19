@@ -30,6 +30,31 @@ MarkdownElement::new(markdown.clone(), style)
 
 `MarkdownFont::Agent`, `Editor`, and `Preview` select Zed-compatible typography profiles. `MarkdownStyle` exposes semantic refinements for headings, links, inline code, block quotes, code blocks, rules, tables, syntax highlighting, selection, and soft breaks.
 
+### Inline code
+
+The built-in style renders inline code as a rounded chip:
+
+- monospace family from `Theme.mono_font_family` at 87.5% of the body size;
+- a foreground-derived background so the chip stays legible in dark themes;
+- 4px horizontal padding and the `radii.sm` corner radius from the active Style Preset;
+- the full foreground color in `MarkdownFont::Preview`, where body text is muted.
+
+`MarkdownStyle.inline_code_box` owns the chip metrics and is zeroed by default, so
+plain text-run backgrounds remain available for custom styles:
+
+```rust
+use hearth_gpui::text::{InlineCodeBoxStyle, MarkdownStyle};
+
+let mut style = MarkdownStyle::themed(MarkdownFont::Editor, window, cx);
+style.inline_code_box = InlineCodeBoxStyle {
+    padding_x: px(4.),
+    corner_radius: px(6.),
+};
+```
+
+Code blocks are unaffected: they keep `Theme.mono_font_size` while inline code
+scales with the body typography.
+
 ### Host-owned scrolling
 
 `MarkdownElement` does not create a vertical scroll area. The host owns overflow, scrollbar, and follow-tail policy:
