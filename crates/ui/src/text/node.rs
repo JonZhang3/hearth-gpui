@@ -33,7 +33,7 @@ use crate::{
         document::NodeRenderOptions,
         inline::{Inline, InlineLink, InlineState},
         inline_flow::InlineBoxStyle,
-        inline_flow::{InlineFlow, InlineFlowItem, InlineFlowLayoutCache},
+        inline_flow::{InlineFlow, InlineFlowItem, InlineFlowLayoutCache, InlineImageSizing},
     },
     tooltip::Tooltip,
     v_flex,
@@ -1960,6 +1960,8 @@ impl Paragraph {
                 }
                 items.push(InlineFlowItem::Image {
                     url: image.url.clone(),
+                    source: None,
+                    sizing: InlineImageSizing::Compact,
                     link: image.link.clone(),
                     title: image.title(),
                     width: image.width,

@@ -199,6 +199,10 @@ impl MarkdownStory {
                 element.scroll_handle(handle.clone())
             })
             .on_url_click(|url, _, cx| cx.open_url(&url))
+            .image_resolver(|url, _| {
+                let uri: SharedUri = url.to_string().into();
+                Some(ImageSource::Resource(Resource::Uri(uri)))
+            })
             .code_block_renderer(CodeBlockRenderer::Default {
                 copy_button_visibility: CopyButtonVisibility::VisibleOnHover,
                 wrap_button_visibility: WrapButtonVisibility::VisibleOnHover,

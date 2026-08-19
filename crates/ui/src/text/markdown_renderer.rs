@@ -7,13 +7,14 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use gpui::{
-    AnyElement, App, AppContext as _, Bounds, ClipboardItem, Context, DispatchPhase, Element,
-    ElementId, Entity, FocusHandle, GlobalElementId, Hitbox, HitboxBehavior, Hsla, ImageSource,
-    InspectorElementId, InteractiveElement as _, IntoElement, KeyContext, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Refineable as _,
-    ScrollHandle, SharedString, StatefulInteractiveElement as _, StrikethroughStyle,
-    StyleRefinement, Styled, StyledText, Task, TextLayout, TextRun, TextStyle, TextStyleRefinement,
-    UnderlineStyle, Window, actions, div, fill, img, point, prelude::FluentBuilder as _, px, rems,
+    AnyElement, App, AppContext as _, Bounds, ClipboardItem, Context, DefiniteLength,
+    DispatchPhase, Element, ElementId, Entity, FocusHandle, GlobalElementId, HighlightStyle,
+    Hitbox, HitboxBehavior, Hsla, ImageSource, InspectorElementId, InteractiveElement as _,
+    IntoElement, KeyContext, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement as _, Pixels, Refineable as _, ScrollHandle, SharedString,
+    StatefulInteractiveElement as _, StrikethroughStyle, StyleRefinement, Styled, StyledText, Task,
+    TextLayout, TextRun, TextStyle, TextStyleRefinement, UnderlineStyle, Window, actions, div,
+    fill, img, point, prelude::FluentBuilder as _, px, rems,
 };
 use linkify::{LinkFinder, LinkKind};
 use pulldown_cmark::{
@@ -23,6 +24,14 @@ use pulldown_cmark::{
 use crate::{
     ActiveTheme as _, Sizable as _, button::Button, clipboard::Clipboard, h_flex,
     highlighter::HighlightTheme,
+};
+
+use super::{
+    inline::InlineState,
+    inline_flow::{
+        InlineBoxStyle, InlineFlow, InlineFlowItem, InlineFlowLayoutCache, InlineFlowLayoutState,
+        InlineImageSizing,
+    },
 };
 
 /// Optional parser and renderer behavior. Expensive extensions remain opt-in.
@@ -360,7 +369,9 @@ struct ParsedTextBlock {
     source: Range<usize>,
     segments: Vec<TextSegment>,
     links: Vec<ParsedLink>,
+    images: Vec<ParsedInlineImage>,
     render_cache: TextPreparationCache,
+    inline_flow_layout_cache: InlineFlowLayoutCache,
 }
 
 impl PartialEq for ParsedTextBlock {
@@ -369,6 +380,7 @@ impl PartialEq for ParsedTextBlock {
             && self.source == other.source
             && self.segments == other.segments
             && self.links == other.links
+            && self.images == other.images
     }
 }
 
@@ -384,18 +396,20 @@ struct ParsedCodeBlock {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct ParsedImageBlock {
+struct ParsedInlineImage {
+    segment_index: usize,
     source: Range<usize>,
     destination: SharedString,
     title: SharedString,
     alt: SharedString,
+    width: Option<DefiniteLength>,
+    height: Option<DefiniteLength>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum ParsedBlock {
     Text(ParsedTextBlock),
     Code(ParsedCodeBlock),
-    Image(ParsedImageBlock),
     Rule(Range<usize>),
 }
 
@@ -650,6 +664,7 @@ struct TextBlockBuilder {
     source_end: usize,
     segments: Vec<TextSegment>,
     links: Vec<ParsedLink>,
+    images: Vec<ParsedInlineImage>,
     flags: InlineFlags,
     active_links: Vec<ActiveLink>,
 }
@@ -662,6 +677,7 @@ impl TextBlockBuilder {
             source_end: source_start,
             segments: Vec::new(),
             links: Vec::new(),
+            images: Vec::new(),
             flags: InlineFlags::default(),
             active_links: Vec::new(),
         }
@@ -680,6 +696,29 @@ impl TextBlockBuilder {
         });
     }
 
+    /// Inserts an atomic image placeholder while retaining canonical source mapping.
+    fn push_image(
+        &mut self,
+        source: Range<usize>,
+        destination: SharedString,
+        title: SharedString,
+        alt: SharedString,
+        width: Option<DefiniteLength>,
+        height: Option<DefiniteLength>,
+    ) {
+        let segment_index = self.segments.len();
+        self.push("\u{fffc}", source.clone());
+        self.images.push(ParsedInlineImage {
+            segment_index,
+            source,
+            destination,
+            title,
+            alt,
+            width,
+            height,
+        });
+    }
+
     fn finish(mut self, source_end: usize) -> ParsedTextBlock {
         self.source_end = self.source_end.max(source_end);
         ParsedTextBlock {
@@ -687,7 +726,9 @@ impl TextBlockBuilder {
             source: self.source_start..self.source_end,
             segments: self.segments,
             links: self.links,
+            images: self.images,
             render_cache: TextPreparationCache::default(),
+            inline_flow_layout_cache: InlineFlowLayoutCache::default(),
         }
     }
 }
@@ -710,7 +751,14 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
         Option<SharedString>,
         Option<SharedString>,
     )> = None;
-    let mut image: Option<(usize, SharedString, SharedString, String)> = None;
+    let mut image: Option<(
+        usize,
+        SharedString,
+        SharedString,
+        String,
+        Option<DefiniteLength>,
+        Option<DefiniteLength>,
+    )> = None;
     let mut lists: Vec<ListContext> = Vec::new();
     let mut pending_item_prefix: Option<(SharedString, usize)> = None;
     let mut quote_kind: Option<Option<BlockQuoteKind>> = None;
@@ -831,26 +879,32 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
             Event::Start(Tag::Image {
                 dest_url, title, ..
             }) => {
-                if let Some(block) = current.take() {
-                    root_starts.push(block.source_start);
-                    blocks.push(ParsedBlock::Text(block.finish(range.start)));
-                }
+                current.get_or_insert_with(|| {
+                    TextBlockBuilder::new(TextBlockKind::Paragraph, range.start)
+                });
                 image = Some((
                     range.start,
                     dest_url.to_string().into(),
                     title.to_string().into(),
                     String::new(),
+                    None,
+                    None,
                 ));
             }
             Event::End(TagEnd::Image) => {
-                if let Some((start, destination, title, alt)) = image.take() {
-                    root_starts.push(start);
-                    blocks.push(ParsedBlock::Image(ParsedImageBlock {
-                        source: start..range.end,
-                        destination,
-                        title,
-                        alt: alt.into(),
-                    }));
+                if let Some((start, destination, title, alt, width, height)) = image.take() {
+                    current
+                        .get_or_insert_with(|| {
+                            TextBlockBuilder::new(TextBlockKind::Paragraph, start)
+                        })
+                        .push_image(
+                            start..range.end,
+                            destination,
+                            title,
+                            alt.into(),
+                            width,
+                            height,
+                        );
                 }
             }
             Event::Start(Tag::BlockQuote(kind)) => quote_kind = Some(kind),
@@ -1007,7 +1061,7 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
             Event::Text(text) => {
                 if let Some((_, code_text, _, _, _)) = code.as_mut() {
                     code_text.push_str(&text);
-                } else if let Some((_, _, _, alt)) = image.as_mut() {
+                } else if let Some((_, _, _, alt, _, _)) = image.as_mut() {
                     alt.push_str(&text);
                 } else {
                     let block = current.get_or_insert_with(|| {
@@ -1029,9 +1083,23 @@ fn parse_markdown(source: SharedString, options: MarkdownOptions) -> ParsedMarkd
                 block.flags.code = previous;
             }
             Event::Html(text) | Event::InlineHtml(text) if options.parse_html => {
-                current
-                    .get_or_insert_with(|| TextBlockBuilder::new(TextBlockKind::Html, range.start))
-                    .push(text.to_string(), range);
+                let block = current.get_or_insert_with(|| {
+                    TextBlockBuilder::new(TextBlockKind::Paragraph, range.start)
+                });
+                if let Some(image) = super::format::html::parse_inline_image(&text) {
+                    block.push_image(
+                        range,
+                        image.url.to_string().into(),
+                        image.title.unwrap_or_default(),
+                        image.alt.unwrap_or_default(),
+                        image.width,
+                        image.height,
+                    );
+                } else if text.trim_start().to_ascii_lowercase().starts_with("<br") {
+                    block.push("\n", range);
+                } else {
+                    block.push(text.to_string(), range);
+                }
             }
             Event::FootnoteReference(label) => {
                 current
@@ -1151,7 +1219,9 @@ fn parse_links_only(source: SharedString) -> ParsedMarkdown {
         source: 0..source.len(),
         segments,
         links,
+        images: Vec::new(),
         render_cache: TextPreparationCache::default(),
+        inline_flow_layout_cache: InlineFlowLayoutCache::default(),
     };
     ParsedMarkdown {
         source,
@@ -1308,11 +1378,87 @@ impl Styled for MarkdownElement {
 }
 
 struct RenderedLine {
-    layout: TextLayout,
+    layout: RenderedLineLayout,
     text: SharedString,
     source: Range<usize>,
     mappings: Arc<[SegmentMapping]>,
     links: Vec<RenderedLink>,
+}
+
+enum RenderedLineLayout {
+    Text(TextLayout),
+    Inline(InlineFlowLayoutState),
+}
+
+impl From<TextLayout> for RenderedLineLayout {
+    fn from(layout: TextLayout) -> Self {
+        Self::Text(layout)
+    }
+}
+
+impl RenderedLineLayout {
+    fn bounds(&self) -> Option<Bounds<Pixels>> {
+        match self {
+            Self::Text(layout) => Some(layout.bounds()),
+            Self::Inline(layout) => layout.bounds(),
+        }
+    }
+
+    fn index_for_position(&self, position: gpui::Point<Pixels>) -> usize {
+        match self {
+            Self::Text(layout) => match layout.index_for_position(position) {
+                Ok(index) | Err(index) => index,
+            },
+            Self::Inline(layout) => layout.index_for_position(position),
+        }
+    }
+
+    fn position_for_index(&self, index: usize) -> Option<(gpui::Point<Pixels>, Pixels)> {
+        match self {
+            Self::Text(layout) => layout
+                .position_for_index(index)
+                .map(|position| (position, layout.line_height())),
+            Self::Inline(layout) => layout.position_for_index(index),
+        }
+    }
+
+    fn selection_bounds(&self, range: Range<usize>) -> Vec<Bounds<Pixels>> {
+        match self {
+            Self::Inline(layout) => layout.selection_bounds(range),
+            Self::Text(layout) => {
+                let Some(start_point) = layout.position_for_index(range.start) else {
+                    return Vec::new();
+                };
+                let Some(end_point) = layout.position_for_index(range.end) else {
+                    return Vec::new();
+                };
+                let line_height = layout.line_height();
+                let layout_bounds = layout.bounds();
+                if (start_point.y - end_point.y).abs() < px(0.5) {
+                    vec![Bounds::from_corners(
+                        start_point,
+                        point(end_point.x.max(start_point.x), start_point.y + line_height),
+                    )]
+                } else {
+                    let mut bounds = vec![Bounds::from_corners(
+                        start_point,
+                        point(layout_bounds.right(), start_point.y + line_height),
+                    )];
+                    if end_point.y > start_point.y + line_height {
+                        bounds.push(Bounds::from_corners(
+                            point(layout_bounds.left(), start_point.y + line_height),
+                            point(layout_bounds.right(), end_point.y),
+                        ));
+                    }
+                    bounds.push(Bounds::from_corners(
+                        point(layout_bounds.left(), end_point.y),
+                        point(end_point.x, end_point.y + line_height),
+                    ));
+                    bounds
+                }
+            }
+        }
+    }
 }
 
 impl RenderedLine {
@@ -1381,11 +1527,11 @@ impl RenderedText {
     fn source_index_for_position(&self, position: gpui::Point<Pixels>) -> usize {
         let mut previous_end = 0;
         for line in &self.lines {
-            let bounds = line.layout.bounds();
+            let Some(bounds) = line.layout.bounds() else {
+                continue;
+            };
             if bounds.contains(&position) {
-                let index = match line.layout.index_for_position(position) {
-                    Ok(index) | Err(index) => index,
-                };
+                let index = line.layout.index_for_position(position);
                 return line.source_for_rendered(index, false);
             }
             if position.y < bounds.top() {
@@ -1432,9 +1578,7 @@ impl RenderedText {
             .iter()
             .find(|line| line.source.contains(&source_index) || source_index == line.source.end)?;
         let rendered = line.rendered_for_source(source_index);
-        line.layout
-            .position_for_index(rendered)
-            .map(|position| (position, line.layout.line_height()))
+        line.layout.position_for_index(rendered)
     }
 
     fn selection_bounds(&self, range: Range<usize>) -> Vec<Bounds<Pixels>> {
@@ -1447,35 +1591,7 @@ impl RenderedText {
             }
             let rendered_start = line.rendered_for_source(start);
             let rendered_end = line.rendered_for_source(end);
-            let Some(start_point) = line.layout.position_for_index(rendered_start) else {
-                continue;
-            };
-            let Some(end_point) = line.layout.position_for_index(rendered_end) else {
-                continue;
-            };
-            let line_height = line.layout.line_height();
-            let layout_bounds = line.layout.bounds();
-            if (start_point.y - end_point.y).abs() < px(0.5) {
-                bounds.push(Bounds::from_corners(
-                    start_point,
-                    point(end_point.x.max(start_point.x), start_point.y + line_height),
-                ));
-            } else {
-                bounds.push(Bounds::from_corners(
-                    start_point,
-                    point(layout_bounds.right(), start_point.y + line_height),
-                ));
-                if end_point.y > start_point.y + line_height {
-                    bounds.push(Bounds::from_corners(
-                        point(layout_bounds.left(), start_point.y + line_height),
-                        point(layout_bounds.right(), end_point.y),
-                    ));
-                }
-                bounds.push(Bounds::from_corners(
-                    point(layout_bounds.left(), end_point.y),
-                    point(end_point.x, end_point.y + line_height),
-                ));
-            }
+            bounds.extend(line.layout.selection_bounds(rendered_start..rendered_end));
         }
         bounds
     }
@@ -1516,11 +1632,13 @@ fn heading_refinement(style: &MarkdownStyle, level: HeadingLevel) -> Option<&Tex
 fn render_text_block(
     block: &ParsedTextBlock,
     style: &MarkdownStyle,
-    search: &[Range<usize>],
-    active_search: Option<usize>,
+    search_state: (&[Range<usize>], Option<usize>),
     code_span_link: Option<&CodeSpanLinkCallback>,
+    image_resolver: Option<&ImageResolver>,
+    window: &mut Window,
     cx: &App,
 ) -> (AnyElement, RenderedLine) {
+    let (search, active_search) = search_state;
     let mut block_text_style = style.base_text_style.clone();
     if let TextBlockKind::Heading(level) = block.kind {
         if let Some(refinement) = heading_refinement(style, level) {
@@ -1543,7 +1661,7 @@ fn render_text_block(
         search: search.to_vec(),
         active_search,
     };
-    let prepared = prepare_text_block(block, key);
+    let prepared = prepare_text_block(block, key.clone());
     let text = prepared.text.clone();
     let styled_text = StyledText::new(text.clone()).with_runs(prepared.runs.clone());
     let layout = styled_text.layout().clone();
@@ -1598,16 +1716,200 @@ fn render_text_block(
         TextBlockKind::Metadata => container.p_2().bg(style.rule_color.opacity(0.08)),
         _ => container,
     };
+    if block.images.is_empty() {
+        return (
+            container.child(styled_text).into_any_element(),
+            RenderedLine {
+                layout: layout.into(),
+                text,
+                source: block.source.clone(),
+                mappings: prepared.mappings.clone(),
+                links,
+            },
+        );
+    }
+
+    let mut items = Vec::with_capacity(block.segments.len());
+    let mut flow_text = String::new();
+    let mut mappings = Vec::with_capacity(block.segments.len());
+    let image_sizing = image_sizing_for_block(block);
+    for (segment_index, segment) in block.segments.iter().enumerate() {
+        let start = flow_text.len();
+        if let Some(image) = block
+            .images
+            .iter()
+            .find(|image| image.segment_index == segment_index)
+        {
+            if let Some(source) =
+                image_resolver.and_then(|resolver| resolver(&image.destination, cx))
+            {
+                flow_text.push('\u{1a}');
+                items.push(InlineFlowItem::Image {
+                    url: image.destination.to_string().into(),
+                    source: Some(source),
+                    sizing: image_sizing,
+                    link: None,
+                    title: image.title.to_string(),
+                    width: image.width,
+                    height: image.height,
+                    style: Box::default(),
+                });
+            } else {
+                flow_text.push_str(&image.alt);
+                items.push(inline_text_item(
+                    image.alt.clone(),
+                    start,
+                    segment,
+                    &block_text_style,
+                    &key,
+                    window,
+                ));
+            }
+        } else {
+            let display: SharedString = if segment.flags.soft_break && !key.soft_break_as_hard_break
+            {
+                " ".into()
+            } else {
+                segment.text.clone()
+            };
+            flow_text.push_str(&display);
+            items.push(inline_text_item(
+                display,
+                start,
+                segment,
+                &block_text_style,
+                &key,
+                window,
+            ));
+        }
+        mappings.push(SegmentMapping {
+            rendered: start..flow_text.len(),
+            source: segment.source.clone(),
+        });
+    }
+
+    let layout_state = InlineFlowLayoutState::default();
+    let flow = InlineFlow::new(("markdown-inline-flow", block.source.start), items)
+        .layout_cache(block.inline_flow_layout_cache.clone())
+        .layout_state(layout_state.clone());
     (
-        container.child(styled_text).into_any_element(),
+        container.child(flow).into_any_element(),
         RenderedLine {
-            layout,
-            text,
+            layout: RenderedLineLayout::Inline(layout_state),
+            text: flow_text.into(),
             source: block.source.clone(),
-            mappings: prepared.mappings.clone(),
+            mappings: mappings.into(),
             links,
         },
     )
+}
+
+/// Selects block sizing only when a paragraph contains no visible text beside its images.
+fn image_sizing_for_block(block: &ParsedTextBlock) -> InlineImageSizing {
+    let image_only = block.segments.iter().enumerate().all(|(index, segment)| {
+        block
+            .images
+            .iter()
+            .any(|image| image.segment_index == index)
+            || segment.text.trim().is_empty()
+    });
+    if image_only {
+        InlineImageSizing::Intrinsic
+    } else {
+        InlineImageSizing::Compact
+    }
+}
+
+/// Builds one cacheable inline text item with the same resolved style as `StyledText`.
+fn inline_text_item(
+    text: SharedString,
+    paragraph_start: usize,
+    segment: &TextSegment,
+    block_style: &TextStyle,
+    key: &TextPreparationKey,
+    window: &Window,
+) -> InlineFlowItem {
+    let mut resolved = block_style.clone();
+    if segment.flags.strong {
+        resolved.font_weight = gpui::FontWeight::BOLD;
+    }
+    if segment.flags.emphasis {
+        resolved.font_style = gpui::FontStyle::Italic;
+    }
+    if segment.flags.strike {
+        resolved.strikethrough = Some(StrikethroughStyle::default());
+    }
+    if segment.flags.code {
+        resolved.refine(&key.inline_code);
+    }
+    if segment.flags.link {
+        resolved.refine(&key.link);
+    }
+
+    let mut boundaries = vec![0, text.len()];
+    for range in &key.search {
+        if range.start < segment.source.end && range.end > segment.source.start {
+            if segment.source.len() == text.len() {
+                boundaries.push(range.start.max(segment.source.start) - segment.source.start);
+                boundaries.push(range.end.min(segment.source.end) - segment.source.start);
+            }
+        }
+    }
+    boundaries.sort_unstable();
+    boundaries.dedup();
+    let highlights = boundaries
+        .windows(2)
+        .filter_map(|bounds| {
+            let range = bounds[0]..bounds[1];
+            if range.is_empty() {
+                return None;
+            }
+            let mut highlight = HighlightStyle {
+                color: Some(resolved.color),
+                font_weight: Some(resolved.font_weight),
+                font_style: Some(resolved.font_style),
+                background_color: resolved.background_color,
+                underline: resolved.underline,
+                strikethrough: resolved.strikethrough,
+                fade_out: None,
+            };
+            if segment.source.len() == text.len()
+                && let Some((index, _)) = key.search.iter().enumerate().find(|(_, search)| {
+                    let source_start = segment.source.start + range.start;
+                    let source_end = segment.source.start + range.end;
+                    search.start < source_end && search.end > source_start
+                })
+            {
+                highlight.background_color = Some(key.selection_background_color.opacity(
+                    if key.active_search == Some(index) {
+                        0.8
+                    } else {
+                        0.45
+                    },
+                ));
+            }
+            Some((range, highlight))
+        })
+        .collect();
+    let rem_size = window.rem_size();
+    let box_style = (resolved.font_family != block_style.font_family
+        || resolved.font_size != block_style.font_size
+        || resolved.line_height != block_style.line_height)
+        .then(|| InlineBoxStyle {
+            font_family: Some(resolved.font_family.clone()),
+            font_size: Some(resolved.font_size.to_pixels(rem_size)),
+            line_height: Some(resolved.line_height.to_pixels(resolved.font_size, rem_size)),
+            ..Default::default()
+        });
+    InlineFlowItem::Text {
+        state: Arc::new(std::sync::Mutex::new(InlineState::default())),
+        paragraph_range: paragraph_start..(paragraph_start + text.len()),
+        text,
+        links: Vec::new(),
+        highlights,
+        link_hover_style: None,
+        box_style,
+    }
 }
 
 /// Flatten and style one parsed text block, reusing the result while its semantic
@@ -1781,7 +2083,7 @@ fn render_code_block(
                         .child(img(source).max_w_full())
                         .into_any_element(),
                     RenderedLine {
-                        layout,
+                        layout: layout.into(),
                         text,
                         source: block.source.clone(),
                         mappings: vec![SegmentMapping {
@@ -1898,7 +2200,7 @@ fn render_code_block(
     (
         element,
         RenderedLine {
-            layout,
+            layout: layout.into(),
             text,
             source: block.source.clone(),
             mappings: vec![SegmentMapping {
@@ -1950,9 +2252,10 @@ impl Element for MarkdownElement {
                     let (element, line) = render_text_block(
                         block,
                         &self.style,
-                        &search_highlights,
-                        active_search,
+                        (&search_highlights, active_search),
                         self.code_span_link.as_ref(),
+                        self.image_resolver.as_ref(),
+                        window,
                         cx,
                     );
                     root = root.child(element);
@@ -1988,29 +2291,6 @@ impl Element for MarkdownElement {
                     );
                     root = root.child(element);
                     rendered.lines.push(line);
-                }
-                ParsedBlock::Image(block) => {
-                    let image = self
-                        .image_resolver
-                        .as_ref()
-                        .and_then(|resolve| resolve(&block.destination, cx));
-                    let has_image = image.is_some();
-                    let _title = block.title.clone();
-                    root = root.child(
-                        div()
-                            .id(("markdown-image", block.source.start))
-                            .w_full()
-                            .min_w_0()
-                            .mb_3()
-                            .when_some(image, |this, source| this.child(img(source).max_w_full()))
-                            .when(!has_image, |this| {
-                                this.child(
-                                    div()
-                                        .text_color(self.style.base_text_style.color.opacity(0.7))
-                                        .child(block.alt.clone()),
-                                )
-                            }),
-                    );
                 }
                 ParsedBlock::Rule(_source_range) => {
                     root = root.child(
@@ -2477,14 +2757,63 @@ mod tests {
         let parsed = parse_markdown(source.into(), MarkdownOptions::default());
         assert!(parsed.blocks.iter().any(|block| matches!(
             block,
-            ParsedBlock::Image(ParsedImageBlock { destination, alt, .. })
-                if destination.as_ref() == "asset.svg" && alt.as_ref() == "alt text"
+            ParsedBlock::Text(ParsedTextBlock { images, .. })
+                if images.iter().any(|image| image.destination.as_ref() == "asset.svg"
+                    && image.alt.as_ref() == "alt text")
         )));
         let marker = source.find("[x]").expect("task marker");
         assert_eq!(
             task_marker_at(source, marker + 1),
             Some((marker..marker + 3, true))
         );
+    }
+
+    #[test]
+    fn parser_keeps_markdown_and_html_images_inside_their_paragraph() {
+        let source = "Build [![status](badge.svg)](https://example.com) with <img src=\"avatar.png\" alt=\"avatar\" width=\"32\" height=\"24\" /> inline.";
+        let parsed = parse_markdown(
+            source.into(),
+            MarkdownOptions {
+                parse_html: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(parsed.blocks.len(), 1);
+        let ParsedBlock::Text(block) = &parsed.blocks[0] else {
+            panic!("expected one inline paragraph");
+        };
+        assert_eq!(block.images.len(), 2);
+        assert_eq!(block.images[0].destination.as_ref(), "badge.svg");
+        assert_eq!(block.images[1].destination.as_ref(), "avatar.png");
+        assert_eq!(block.images[1].alt.as_ref(), "avatar");
+        assert!(block.images[1].width.is_some());
+        assert!(block.images[1].height.is_some());
+        assert!(block.links.iter().any(|link| {
+            link.destination.as_ref() == "https://example.com"
+                && link.source.start <= block.images[0].source.start
+                && link.source.end >= block.images[0].source.end
+        }));
+    }
+
+    #[test]
+    fn image_sizing_distinguishes_standalone_and_mixed_paragraphs() {
+        let standalone = parse_markdown("![large](image.png)".into(), MarkdownOptions::default());
+        let mixed = parse_markdown(
+            "before ![badge](badge.svg) after".into(),
+            MarkdownOptions::default(),
+        );
+        let ParsedBlock::Text(standalone) = &standalone.blocks[0] else {
+            panic!("expected standalone image paragraph");
+        };
+        let ParsedBlock::Text(mixed) = &mixed.blocks[0] else {
+            panic!("expected mixed image paragraph");
+        };
+
+        assert_eq!(
+            image_sizing_for_block(standalone),
+            InlineImageSizing::Intrinsic
+        );
+        assert_eq!(image_sizing_for_block(mixed), InlineImageSizing::Compact);
     }
 
     #[test]

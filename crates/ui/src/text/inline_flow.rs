@@ -34,6 +34,7 @@ pub(super) struct InlineFlow {
     link_handler: MarkdownLinkHandler,
     layout_cache: InlineFlowLayoutCache,
     semantic_styles: Vec<(MarkdownInlineKind, MarkdownTextStyle)>,
+    layout_state: InlineFlowLayoutState,
 }
 
 /// Layout and paint properties for an atomic inline text box.
@@ -74,6 +75,8 @@ pub(super) enum InlineFlowItem {
     },
     Image {
         url: SharedUri,
+        source: Option<ImageSource>,
+        sizing: InlineImageSizing,
         link: Option<LinkMark>,
         title: String,
         width: Option<DefiniteLength>,
@@ -86,10 +89,20 @@ pub(super) enum InlineFlowItem {
     },
 }
 
+/// Controls whether an image behaves like an inline glyph or a standalone content block.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum InlineImageSizing {
+    #[default]
+    Compact,
+    Intrinsic,
+}
+
 #[derive(Clone, Default)]
-pub(crate) struct InlineFlowLayoutCache(
-    Arc<Mutex<Option<(InlineFlowLayoutKey, Arc<InlineFlowLayout>)>>>,
-);
+pub(crate) struct InlineFlowLayoutCache {
+    layout: Arc<Mutex<Option<(InlineFlowLayoutKey, Arc<InlineFlowLayout>)>>>,
+    image_measurements:
+        Arc<Mutex<Option<(InlineImageMeasurementKey, Vec<Option<MeasuredImageLayout>>)>>>,
+}
 
 impl std::fmt::Debug for InlineFlowLayoutCache {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -104,7 +117,7 @@ impl InlineFlowLayoutCache {
         key: InlineFlowLayoutKey,
         build: impl FnOnce() -> InlineFlowLayout,
     ) -> Arc<InlineFlowLayout> {
-        if let Ok(cache) = self.0.lock()
+        if let Ok(cache) = self.layout.lock()
             && let Some((cached_key, layout)) = cache.as_ref()
             && cached_key == &key
         {
@@ -112,11 +125,48 @@ impl InlineFlowLayoutCache {
         }
 
         let layout = Arc::new(build());
-        if let Ok(mut cache) = self.0.lock() {
+        if let Ok(mut cache) = self.layout.lock() {
             *cache = Some((key, layout.clone()));
         }
         layout
     }
+
+    /// Reuses intrinsic image measurements while image inputs and typography are unchanged.
+    fn image_measurements(
+        &self,
+        key: InlineImageMeasurementKey,
+        measure: impl FnOnce() -> Vec<Option<MeasuredImageLayout>>,
+    ) -> Vec<Option<MeasuredImageLayout>> {
+        if let Ok(cache) = self.image_measurements.lock()
+            && let Some((cached_key, layouts)) = cache.as_ref()
+            && cached_key == &key
+        {
+            return layouts.clone();
+        }
+        let layouts = measure();
+        let measurements_are_stable = layouts
+            .iter()
+            .flatten()
+            .all(|layout| layout.intrinsic_resolved);
+        if measurements_are_stable && let Ok(mut cache) = self.image_measurements.lock() {
+            *cache = Some((key, layouts.clone()));
+        }
+        layouts
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct InlineImageMeasurementKey {
+    images: Vec<(
+        usize,
+        SharedUri,
+        Option<DefiniteLength>,
+        Option<DefiniteLength>,
+        InlineImageSizing,
+        Box<StyleRefinement>,
+    )>,
+    line_height: Pixels,
+    rem_size: Pixels,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -131,9 +181,138 @@ struct InlineFlowLayoutKey {
     rem_size: Pixels,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct InlineFlowLayoutState {
     layout: Arc<Mutex<Option<Arc<InlineFlowLayout>>>>,
+    origin: Arc<Mutex<Option<gpui::Point<Pixels>>>>,
+}
+
+impl InlineFlowLayoutState {
+    /// Returns the window-space bounds occupied by the complete flow.
+    pub(crate) fn bounds(&self) -> Option<Bounds<Pixels>> {
+        let (layout, origin) = self.snapshot()?;
+        Some(Bounds::new(origin, layout.size))
+    }
+
+    /// Returns the synthetic inline-flow offset nearest to a window position.
+    pub(crate) fn index_for_position(&self, position: gpui::Point<Pixels>) -> usize {
+        let Some((layout, origin)) = self.snapshot() else {
+            return 0;
+        };
+        let local = position - origin;
+        let mut previous_end = 0;
+        for fragment in &layout.fragments {
+            let (fragment_origin, fragment_size, range) = fragment.geometry();
+            let bounds = Bounds::new(fragment_origin, fragment_size);
+            if local.y < bounds.top() {
+                return previous_end;
+            }
+            if local.y <= bounds.bottom() {
+                if local.x <= bounds.left() {
+                    return range.start;
+                }
+                if local.x <= bounds.right() {
+                    return match fragment {
+                        PositionedFragment::Text {
+                            shaped_line,
+                            flow_range,
+                            ..
+                        } => {
+                            flow_range.start
+                                + shaped_line
+                                    .index_for_x(local.x - bounds.left())
+                                    .unwrap_or(flow_range.len())
+                        }
+                        PositionedFragment::Image { .. } | PositionedFragment::Custom { .. } => {
+                            if local.x < bounds.center().x {
+                                range.start
+                            } else {
+                                range.end
+                            }
+                        }
+                    };
+                }
+                previous_end = range.end;
+            } else {
+                previous_end = range.end;
+            }
+        }
+        previous_end
+    }
+
+    /// Returns a window position and visual line height for a synthetic flow offset.
+    pub(crate) fn position_for_index(&self, index: usize) -> Option<(gpui::Point<Pixels>, Pixels)> {
+        let (layout, origin) = self.snapshot()?;
+        let fragment = layout.fragments.iter().find(|fragment| {
+            let range = fragment.geometry().2;
+            range.contains(&index) || index == range.end
+        })?;
+        let (fragment_origin, fragment_size, range) = fragment.geometry();
+        let x = match fragment {
+            PositionedFragment::Text {
+                shaped_line,
+                flow_range,
+                ..
+            } => shaped_line.x_for_index(index.saturating_sub(flow_range.start)),
+            PositionedFragment::Image { .. } | PositionedFragment::Custom { .. } => {
+                if index >= range.end {
+                    fragment_size.width
+                } else {
+                    Pixels::ZERO
+                }
+            }
+        };
+        Some((
+            origin + point(fragment_origin.x + x, fragment_origin.y),
+            fragment_size.height,
+        ))
+    }
+
+    /// Returns paint bounds for the selected part of the synthetic inline flow.
+    pub(crate) fn selection_bounds(&self, range: Range<usize>) -> Vec<Bounds<Pixels>> {
+        let Some((layout, origin)) = self.snapshot() else {
+            return Vec::new();
+        };
+        layout
+            .fragments
+            .iter()
+            .filter_map(|fragment| {
+                let (fragment_origin, fragment_size, fragment_range) = fragment.geometry();
+                let start = range.start.max(fragment_range.start);
+                let end = range.end.min(fragment_range.end);
+                if start >= end {
+                    return None;
+                }
+                let (left, right) = match fragment {
+                    PositionedFragment::Text {
+                        shaped_line,
+                        flow_range,
+                        ..
+                    } => (
+                        shaped_line.x_for_index(start - flow_range.start),
+                        shaped_line.x_for_index(end - flow_range.start),
+                    ),
+                    PositionedFragment::Image { .. } | PositionedFragment::Custom { .. } => {
+                        (Pixels::ZERO, fragment_size.width)
+                    }
+                };
+                Some(Bounds::from_corners(
+                    origin + point(fragment_origin.x + left, fragment_origin.y),
+                    origin
+                        + point(
+                            fragment_origin.x + right,
+                            fragment_origin.y + fragment_size.height,
+                        ),
+                ))
+            })
+            .collect()
+    }
+
+    fn snapshot(&self) -> Option<(Arc<InlineFlowLayout>, gpui::Point<Pixels>)> {
+        let layout = self.layout.lock().ok()?.clone()?;
+        let origin = self.origin.lock().ok()?.as_ref().copied()?;
+        Some((layout, origin))
+    }
 }
 
 #[derive(Clone, Default)]
@@ -156,18 +335,46 @@ enum PositionedFragment {
         box_style: Box<Option<InlineBoxStyle>>,
         shaped_line: Arc<ShapedLine>,
         line_height: Pixels,
+        flow_range: Range<usize>,
     },
     Image {
         item_ix: usize,
         origin: gpui::Point<Pixels>,
         size: Size<Pixels>,
         base_size: Size<Pixels>,
+        source_range: Range<usize>,
     },
     Custom {
         item_ix: usize,
         origin: gpui::Point<Pixels>,
         size: Size<Pixels>,
+        source_range: Range<usize>,
     },
+}
+
+impl PositionedFragment {
+    fn geometry(&self) -> (gpui::Point<Pixels>, Size<Pixels>, Range<usize>) {
+        match self {
+            Self::Text {
+                origin,
+                size,
+                flow_range,
+                ..
+            } => (*origin, *size, flow_range.clone()),
+            Self::Image {
+                origin,
+                size,
+                source_range,
+                ..
+            }
+            | Self::Custom {
+                origin,
+                size,
+                source_range,
+                ..
+            } => (*origin, *size, source_range.clone()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,6 +390,7 @@ enum MeasureItem {
         url: SharedUri,
         width: Option<DefiniteLength>,
         height: Option<DefiniteLength>,
+        sizing: InlineImageSizing,
         style: Box<StyleRefinement>,
     },
     Custom {
@@ -197,6 +405,8 @@ struct MeasuredImageLayout {
     base_size: Size<Pixels>,
     /// Final GPUI layout size, including semantic dimensions and box-model styles.
     outer_size: Size<Pixels>,
+    /// Whether every dimension that depends on the decoded resource is final.
+    intrinsic_resolved: bool,
 }
 
 struct LineFragmentLayout {
@@ -204,6 +414,7 @@ struct LineFragmentLayout {
     kind: LineFragmentKind,
     size: Size<Pixels>,
     source_range: Range<usize>,
+    flow_range: Range<usize>,
 }
 
 enum LineFragmentKind {
@@ -231,6 +442,7 @@ impl InlineFlow {
             link_handler: MarkdownLinkHandler::default(),
             layout_cache: InlineFlowLayoutCache::default(),
             semantic_styles: Vec::new(),
+            layout_state: InlineFlowLayoutState::default(),
         }
     }
 
@@ -261,16 +473,22 @@ impl InlineFlow {
         self
     }
 
+    /// Shares positioned fragment geometry with the owning Markdown renderer.
+    pub(crate) fn layout_state(mut self, state: InlineFlowLayoutState) -> Self {
+        self.layout_state = state;
+        self
+    }
+
     fn image_element(
         ix: usize,
-        url: &SharedUri,
+        source: ImageSource,
         link: &Option<LinkMark>,
         title: &str,
         base_size: Size<Pixels>,
         style: &StyleRefinement,
         link_handler: MarkdownLinkHandler,
     ) -> AnyElement {
-        img(markdown_image_source(url))
+        img(source)
             .id(ix)
             .object_fit(ObjectFit::Contain)
             .max_w(relative(1.))
@@ -355,30 +573,52 @@ impl Element for InlineFlow {
             .collect::<Vec<_>>();
         let line_height = window.line_height();
         let rem_size = window.rem_size();
-        let image_layouts = measure_items
-            .iter()
-            .enumerate()
-            .map(|(ix, item)| match item {
-                MeasureItem::Image {
-                    url,
-                    width,
-                    height,
-                    style,
-                } => Some(measure_image_layout(
-                    ix,
-                    url,
-                    *width,
-                    *height,
-                    style,
-                    line_height,
-                    rem_size,
-                    window,
-                    cx,
-                )),
-                MeasureItem::Text { .. } | MeasureItem::Custom { .. } => None,
-            })
-            .collect::<Vec<_>>();
-        let layout_state = InlineFlowLayoutState::default();
+        let image_key = InlineImageMeasurementKey {
+            images: measure_items
+                .iter()
+                .enumerate()
+                .filter_map(|(ix, item)| match item {
+                    MeasureItem::Image {
+                        url,
+                        width,
+                        height,
+                        sizing,
+                        style,
+                    } => Some((ix, url.clone(), *width, *height, *sizing, style.clone())),
+                    MeasureItem::Text { .. } | MeasureItem::Custom { .. } => None,
+                })
+                .collect(),
+            line_height,
+            rem_size,
+        };
+        let image_layouts = self.layout_cache.image_measurements(image_key, || {
+            measure_items
+                .iter()
+                .enumerate()
+                .map(|(ix, item)| match item {
+                    MeasureItem::Image {
+                        url,
+                        width,
+                        height,
+                        sizing,
+                        style,
+                    } => Some(measure_image_layout(
+                        ix,
+                        url,
+                        *width,
+                        *height,
+                        *sizing,
+                        style,
+                        line_height,
+                        rem_size,
+                        window,
+                        cx,
+                    )),
+                    MeasureItem::Text { .. } | MeasureItem::Custom { .. } => None,
+                })
+                .collect()
+        });
+        let layout_state = self.layout_state.clone();
         let layout_ref = layout_state.layout.clone();
         let layout_cache = self.layout_cache.clone();
         let semantic_styles = self.semantic_styles.clone();
@@ -442,6 +682,9 @@ impl Element for InlineFlow {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
+        if let Ok(mut origin) = request_layout.origin.lock() {
+            *origin = Some(bounds.origin);
+        }
         let fragments = request_layout
             .layout
             .lock()
@@ -585,9 +828,11 @@ impl Element for InlineFlow {
                     origin,
                     size: fragment_size,
                     base_size,
+                    source_range: _,
                 } => {
                     let InlineFlowItem::Image {
                         url,
+                        source,
                         link,
                         title,
                         style,
@@ -598,7 +843,7 @@ impl Element for InlineFlow {
                     };
                     let mut element = Self::image_element(
                         elements.len(),
-                        url,
+                        source.clone().unwrap_or_else(|| markdown_image_source(url)),
                         link,
                         title.as_str(),
                         base_size,
@@ -620,6 +865,7 @@ impl Element for InlineFlow {
                     item_ix,
                     origin,
                     size: fragment_size,
+                    source_range: _,
                 } => {
                     let InlineFlowItem::Custom { element, .. } = &mut self.items[item_ix] else {
                         continue;
@@ -687,12 +933,14 @@ impl From<&InlineFlowItem> for MeasureItem {
                 url,
                 width,
                 height,
+                sizing,
                 style,
                 ..
             } => MeasureItem::Image {
                 url: url.clone(),
                 width: *width,
                 height: *height,
+                sizing: *sizing,
                 style: style.clone(),
             },
             InlineFlowItem::Custom { text, .. } => MeasureItem::Custom {
@@ -802,13 +1050,24 @@ fn layout_flow(
                             },
                             size: size(width, height),
                             source_range: local_start..local_end,
+                            flow_range: (item_start + local_start)..(item_start + local_end),
                         });
                     }
                 }
-                MeasureItem::Image { .. } => {
+                MeasureItem::Image { sizing, .. } => {
                     if line_range.start <= item_start && item_end <= line_range.end {
-                        let image_layout =
+                        let mut image_layout =
                             image_layouts[item_ix].expect("image should be measured before layout");
+                        if *sizing == InlineImageSizing::Intrinsic
+                            && let Some(wrap_width) = wrap_width
+                            && image_layout.outer_size.width > wrap_width
+                        {
+                            let scale = wrap_width / image_layout.outer_size.width;
+                            image_layout.base_size.width *= scale;
+                            image_layout.base_size.height *= scale;
+                            image_layout.outer_size.width *= scale;
+                            image_layout.outer_size.height *= scale;
+                        }
                         line_width += image_layout.outer_size.width;
                         actual_line_height = actual_line_height.max(image_layout.outer_size.height);
                         line_fragments.push(LineFragmentLayout {
@@ -818,6 +1077,7 @@ fn layout_flow(
                             },
                             size: image_layout.outer_size,
                             source_range: 0..IMAGE_LEN,
+                            flow_range: item_start..item_end,
                         });
                     }
                 }
@@ -830,6 +1090,7 @@ fn layout_flow(
                             kind: LineFragmentKind::Custom,
                             size: *size,
                             source_range: 0..item.len(),
+                            flow_range: item_start..item_end,
                         });
                     }
                 }
@@ -862,17 +1123,20 @@ fn layout_flow(
                     box_style: Box::new(box_style),
                     shaped_line,
                     line_height,
+                    flow_range: fragment.flow_range,
                 },
                 LineFragmentKind::Image { base_size } => PositionedFragment::Image {
                     item_ix: fragment.item_ix,
                     origin,
                     size: fragment.size,
                     base_size,
+                    source_range: fragment.flow_range,
                 },
                 LineFragmentKind::Custom => PositionedFragment::Custom {
                     item_ix: fragment.item_ix,
                     origin,
                     size: fragment.size,
+                    source_range: fragment.flow_range,
                 },
             };
             x += fragment.size.width;
@@ -1058,18 +1322,20 @@ fn measure_image_layout(
     url: &SharedUri,
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
+    sizing: InlineImageSizing,
     style: &StyleRefinement,
     line_height: Pixels,
     rem_size: Pixels,
     window: &mut Window,
     cx: &mut App,
 ) -> MeasuredImageLayout {
-    let intrinsic_size = if width.is_some() && height.is_some() {
+    let requires_intrinsic = width.is_none() || height.is_none();
+    let intrinsic_size = if !requires_intrinsic {
         None
     } else {
         intrinsic_image_size(ix, url, width, height, window, cx)
     };
-    let base_size = image_size(width, height, intrinsic_size, line_height, rem_size);
+    let base_size = image_size(width, height, intrinsic_size, sizing, line_height, rem_size);
     // A layout-only container avoids loading the image twice while applying the same GPUI box
     // model as the painted image. Intrinsic image dimensions have already been resolved above.
     let mut element = gpui::div()
@@ -1089,6 +1355,7 @@ fn measure_image_layout(
     MeasuredImageLayout {
         base_size,
         outer_size,
+        intrinsic_resolved: !requires_intrinsic || intrinsic_size.is_some(),
     }
 }
 
@@ -1120,6 +1387,7 @@ fn image_size(
     width: Option<DefiniteLength>,
     height: Option<DefiniteLength>,
     intrinsic_size: Option<Size<Pixels>>,
+    sizing: InlineImageSizing,
     line_height: Pixels,
     rem_size: Pixels,
 ) -> Size<Pixels> {
@@ -1149,7 +1417,12 @@ fn image_size(
                 .unwrap_or(height);
             size(width, height)
         }
-        (None, None) => inline_image_size_for_line(intrinsic_size, line_height),
+        (None, None) => match sizing {
+            InlineImageSizing::Compact => inline_image_size_for_line(intrinsic_size, line_height),
+            InlineImageSizing::Intrinsic => {
+                intrinsic_size.unwrap_or_else(|| inline_image_size_for_line(None, line_height))
+            }
+        },
     }
 }
 
@@ -1248,6 +1521,7 @@ mod tests {
     use gpui::{
         AppContext as _, Context, Render, Resource, TestAppContext, VisualTestContext, div, point,
     };
+    use std::cell::Cell;
 
     struct InlineFlowTestRoot;
 
@@ -1307,6 +1581,61 @@ mod tests {
     }
 
     #[test]
+    fn image_measurement_cache_waits_for_intrinsic_dimensions_then_reuses_them() {
+        let cache = InlineFlowLayoutCache::default();
+        let key = InlineImageMeasurementKey {
+            images: Vec::new(),
+            line_height: px(20.),
+            rem_size: px(16.),
+        };
+        let measurements = Cell::new(0);
+        let layout = |intrinsic_resolved| MeasuredImageLayout {
+            base_size: size(px(20.), px(20.)),
+            outer_size: size(px(20.), px(20.)),
+            intrinsic_resolved,
+        };
+
+        cache.image_measurements(key.clone(), || {
+            measurements.set(measurements.get() + 1);
+            vec![Some(layout(false))]
+        });
+        cache.image_measurements(key.clone(), || {
+            measurements.set(measurements.get() + 1);
+            vec![Some(layout(true))]
+        });
+        cache.image_measurements(key, || {
+            measurements.set(measurements.get() + 1);
+            vec![Some(layout(true))]
+        });
+
+        assert_eq!(measurements.get(), 2);
+    }
+
+    #[test]
+    fn intrinsic_sizing_preserves_block_dimensions_while_compact_sizing_uses_line_height() {
+        let intrinsic = size(px(640.), px(320.));
+        let block = image_size(
+            None,
+            None,
+            Some(intrinsic),
+            InlineImageSizing::Intrinsic,
+            px(20.),
+            px(16.),
+        );
+        let inline = image_size(
+            None,
+            None,
+            Some(intrinsic),
+            InlineImageSizing::Compact,
+            px(20.),
+            px(16.),
+        );
+
+        assert_eq!(block, intrinsic);
+        assert_eq!(inline, size(px(30.), px(15.)));
+    }
+
+    #[test]
     fn markdown_image_source_preserves_embedded_and_remote_resource_kinds() {
         let embedded: SharedUri = "icons/heart.svg".into();
         assert!(matches!(
@@ -1355,6 +1684,7 @@ mod tests {
                 &url,
                 Some(px(20.).into()),
                 Some(px(10.).into()),
+                InlineImageSizing::Compact,
                 &self.style,
                 px(20.),
                 window.rem_size(),

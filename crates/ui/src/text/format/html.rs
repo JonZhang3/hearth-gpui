@@ -81,6 +81,39 @@ pub(crate) fn parse(source: &str, cx: &mut NodeContext) -> Result<ParsedDocument
     })
 }
 
+/// Parses one inline HTML image tag without constructing a full Markdown document.
+pub(crate) fn parse_inline_image(source: &str) -> Option<ImageNode> {
+    fn find_image(node: &Rc<Node>) -> Option<ImageNode> {
+        if let NodeData::Element {
+            ref name,
+            ref attrs,
+            ..
+        } = node.data
+            && name.local == local_name!("img")
+        {
+            let src = attr_value(attrs, local_name!("src"))?;
+            let (width, height) = attr_width_height(attrs);
+            return Some(ImageNode {
+                url: src.into(),
+                link: None,
+                title: attr_value(attrs, local_name!("title")).map(Into::into),
+                alt: attr_value(attrs, local_name!("alt")).map(Into::into),
+                width,
+                height,
+            });
+        }
+
+        node.children.borrow().iter().find_map(find_image)
+    }
+
+    let mut cursor = std::io::Cursor::new(cleanup_html(source));
+    let dom = parse_document(RcDom::default(), ParseOpts::default())
+        .from_utf8()
+        .read_from(&mut cursor)
+        .ok()?;
+    find_image(&dom.document)
+}
+
 fn cleanup_html(source: &str) -> Vec<u8> {
     let mut w = std::io::Cursor::new(vec![]);
     let mut r = std::io::Cursor::new(source);
