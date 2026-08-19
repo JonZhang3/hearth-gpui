@@ -2981,9 +2981,9 @@ fn render_html_table(
     let cell_padding = match table.kind {
         ParsedTableKind::Markdown => Edges {
             top: px(2.),
-            right: px(4.),
+            right: px(6.),
             bottom: px(2.),
-            left: px(4.),
+            left: px(6.),
         },
         ParsedTableKind::Html => Edges {
             top: px(4.),
