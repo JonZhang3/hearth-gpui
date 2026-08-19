@@ -14,9 +14,7 @@ use hearth_gpui::{
 };
 
 const STREAM_EXAMPLE: &str = include_str!("../../examples/fixtures/test.md");
-const STYLE_EXAMPLE: &str = r#"## Zed-style renderer
-
-[Links keep source-mapped hit testing across wrapped visual lines.](https://example.com)
+const STYLE_EXAMPLE: &str = r#"[Links keep source-mapped hit testing across wrapped visual lines.](https://example.com)
 
 Inline code such as `MarkdownElement` renders as a rounded chip at 87.5% of the body size with a foreground-derived background.
 
