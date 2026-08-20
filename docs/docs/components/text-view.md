@@ -28,7 +28,7 @@ let style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
 MarkdownElement::new(markdown.clone(), style)
 ```
 
-`MarkdownFont::Agent`, `Editor`, and `Preview` select Zed-compatible typography profiles. `MarkdownStyle` exposes semantic refinements for headings, links, inline code, block quotes, code blocks, rules, tables, syntax highlighting, selection, and soft breaks.
+`MarkdownFont::Agent`, `Editor`, and `Preview` select typography profiles for agent, editor, and preview contexts. `MarkdownStyle` exposes semantic refinements for headings, links, inline code, block quotes, code blocks, rules, tables, syntax highlighting, selection, and soft breaks.
 
 ### Inline code
 
@@ -124,7 +124,9 @@ markdown.update(cx, |markdown, cx| {
 });
 ```
 
-Normal copy writes rendered plain text. `CopyAsMarkdown` writes the selected canonical source.
+Normal copy writes rendered plain text. `CopyAsMarkdown` writes well-formed markdown: boundaries snap out of delimiter syntax and delimiters cut off by the selection are re-added, so selecting `old` in `**bold**` copies `**old**`. Selections fully inside an inline code span copy plain text.
+
+Mouse selection: word selection is computed on the rendered text (double-clicking inline code selects the content without the backticks), shift-click extends from the selection tail, and word/line drags extend in reverse past the anchor. Clicking a link never starts a selection; activation is decided on release.
 
 ## HTML
 

@@ -136,7 +136,7 @@ The preferred design is:
 
 ### Dependency strategy
 
-GPUI is consumed from the pinned Zed Git dependency. Develop this work in an explicit GPUI fork or contribute it upstream. Do not modify Cargo's Git checkout cache or add a Card-only renderer exception.
+GPUI is consumed from the pinned Git dependency. Develop this work in an explicit GPUI fork or contribute it upstream. Do not modify Cargo's Git checkout cache or add a Card-only renderer exception.
 
 ### Acceptance criteria
 
@@ -215,7 +215,7 @@ A primitive-only `Min` or `Max` blend pipeline may be used for an isolated exper
 
 ### Dependency strategy
 
-GPUI is currently consumed from the pinned Zed Git dependency. Renderer work must be developed in an explicit GPUI fork or contributed upstream. Cargo's Git checkout cache must never be modified as project source.
+GPUI is currently consumed from the pinned Git dependency. Renderer work must be developed in an explicit GPUI fork or contributed upstream. Cargo's Git checkout cache must never be modified as project source.
 
 ### Acceptance criteria
 
@@ -337,3 +337,15 @@ The pinned Empty source uses `text-wrap: balance` on the root and content region
 letter spacing through its public styling API. Empty therefore uses normal constrained wrapping and
 the standard theme title typography. Revisit exact parity when GPUI provides these text-layout
 controls without requiring custom text painting.
+
+## Markdown drag-selection primary clipboard (Linux/freebsd)
+
+**Status:** Deferred platform capability; selection itself is platform-neutral
+
+Platform conventions on X11/FreeBSD write a finished Markdown drag selection to the primary clipboard on mouse release. GPUI on Linux does not expose a primary-selection clipboard API from the Hearth layer. Do not route this through the regular clipboard, which would clobber explicit copies. Revisit when the platform layer can address the primary selection separately.
+
+## TextView markdown selection parity with MarkdownElement
+
+**Status:** Deferred component parity; MarkdownElement selection semantics are richer
+
+MarkdownElement now computes word selection on rendered text, supports shift-click extension, reverse word/line drags, link-press suppression, and rebalanced CopyAsMarkdown. TextView owns a separate selection pipeline (window_selection) and keeps its existing behavior. Align TextView after its HTML migration seam is removed so one semantic selection contract covers both renderers.

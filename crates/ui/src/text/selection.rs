@@ -12,7 +12,8 @@ pub(crate) enum CharType {
     Other,
 }
 
-/// Implementation based on <https://github.com/zed-industries/zed/blob/main/crates/gpui/src/text_system/line_wrapper.rs>
+/// Implementation based on the word-character classification used by the
+/// upstream text system's line wrapper.
 fn is_word_char(c: char) -> bool {
     matches!(c, '_')
         // ASCII alphanumeric characters, for English, numbers: `Hello123`, etc.
@@ -28,6 +29,16 @@ fn is_word_char(c: char) -> bool {
         || matches!(c, '\u{0300}'..='\u{036F}')
 }
 
+/// Kind ranking used for word selection: word runs beat
+/// punctuation, punctuation beats whitespace, so a click on a separator
+/// between two words selects the adjacent word run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum WordKind {
+    Whitespace,
+    Punctuation,
+    Word,
+}
+
 impl From<char> for CharType {
     fn from(c: char) -> Self {
         match c {
@@ -35,6 +46,16 @@ impl From<char> for CharType {
             c if c == '\n' || c == '\r' => CharType::Newline,
             c if c.is_whitespace() => CharType::Whitespace,
             _ => CharType::Other,
+        }
+    }
+}
+
+impl CharType {
+    pub(crate) fn word_kind(self) -> WordKind {
+        match self {
+            CharType::Word => WordKind::Word,
+            CharType::Other => WordKind::Punctuation,
+            CharType::Whitespace | CharType::Newline => WordKind::Whitespace,
         }
     }
 }

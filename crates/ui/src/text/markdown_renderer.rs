@@ -37,6 +37,7 @@ use super::{
         InlineBoxStyle, InlineFlow, InlineFlowItem, InlineFlowLayoutCache, InlineFlowLayoutState,
         InlineImageSizing,
     },
+    selection::CharType,
     style::{INLINE_CODE_PADDING_X, INLINE_CODE_SIZE_SCALE, inline_code_background},
 };
 
@@ -135,7 +136,7 @@ pub struct InlineCodeBoxStyle {
 }
 
 impl MarkdownStyle {
-    /// Resolves a Zed-compatible style from Hearth semantic theme tokens.
+    /// Resolves a built-in style from Hearth semantic theme tokens.
     pub fn themed(font: MarkdownFont, window: &Window, cx: &App) -> Self {
         let theme = cx.theme();
         let mut base = window.text_style();
@@ -305,12 +306,12 @@ pub struct CodeBlockRenderContext {
 
 actions!(markdown, [CopyAsMarkdown]);
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 enum SelectionMode {
     #[default]
     Character,
-    Word,
-    Line,
+    Word(Range<usize>),
+    Line(Range<usize>),
     All,
 }
 
@@ -344,6 +345,29 @@ struct TextSegment {
     text: SharedString,
     source: Range<usize>,
     flags: InlineFlags,
+}
+
+/// A delimited inline span (`**`…`**`, `` ` ``…`` ` ``, `[…]`…), recorded so copied
+/// selections can re-balance delimiters cut off at the boundaries.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct InlineSpan {
+    /// Full range including the delimiters.
+    range: Range<usize>,
+    /// Content range without the delimiters.
+    content: Range<usize>,
+    is_code: bool,
+}
+
+impl InlineSpan {
+    fn opening<'a>(&self, source: &'a str) -> &'a str {
+        source
+            .get(self.range.start..self.content.start)
+            .unwrap_or("")
+    }
+
+    fn closing<'a>(&self, source: &'a str) -> &'a str {
+        source.get(self.content.end..self.range.end).unwrap_or("")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -422,6 +446,7 @@ struct ParsedTextBlock {
     segments: Vec<TextSegment>,
     links: Vec<ParsedLink>,
     images: Vec<ParsedInlineImage>,
+    spans: Vec<InlineSpan>,
     render_cache: TextPreparationCache,
     intrinsic_width_cache: IntrinsicTextWidthCache,
     inline_flow_layout_cache: InlineFlowLayoutCache,
@@ -434,12 +459,15 @@ impl PartialEq for ParsedTextBlock {
             && self.segments == other.segments
             && self.links == other.links
             && self.images == other.images
+            && self.spans == other.spans
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct ParsedCodeBlock {
     source: Range<usize>,
+    /// Source range of the code content between the fences.
+    content_source: Range<usize>,
     code: SharedString,
     display_code: SharedString,
     language: Option<SharedString>,
@@ -447,6 +475,17 @@ struct ParsedCodeBlock {
     source_path: Option<SharedString>,
     mermaid_data_uri: Option<SharedString>,
     highlight: super::node::CodeBlock,
+}
+
+/// State for a fenced code block while the parser is inside it.
+#[derive(Default)]
+struct PendingCodeBlock {
+    source_start: usize,
+    code: String,
+    language: Option<SharedString>,
+    info: Option<SharedString>,
+    source_path: Option<SharedString>,
+    content: Option<Range<usize>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -481,7 +520,7 @@ struct ParsedHtmlTableRow {
     cells: Vec<ParsedHtmlTableCell>,
 }
 
-/// Identifies the source syntax so Markdown and HTML tables retain Zed's
+/// Identifies the source syntax so Markdown and HTML tables retain their
 /// intentionally different cell densities while sharing one layout path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ParsedTableKind {
@@ -528,6 +567,7 @@ pub struct Markdown {
     active_search_highlight: Option<usize>,
     autoscroll_request: Option<usize>,
     pressed_link: Option<SharedString>,
+    pressed_checkbox: Option<(Range<usize>, bool)>,
     wrapped_code_blocks: HashSet<usize>,
     code_block_scroll_handles: HashMap<usize, ScrollHandle>,
     table_scroll_handles: HashMap<usize, ScrollHandle>,
@@ -562,6 +602,7 @@ impl Markdown {
             active_search_highlight: None,
             autoscroll_request: None,
             pressed_link: None,
+            pressed_checkbox: None,
             wrapped_code_blocks: HashSet::new(),
             code_block_scroll_handles: HashMap::new(),
             table_scroll_handles: HashMap::new(),
@@ -712,6 +753,12 @@ impl Markdown {
             .flatten()
     }
 
+    /// Returns well-formed markdown for the selection: boundaries snap out of
+    /// delimiter syntax and delimiters cut off by the selection are re-added.
+    pub fn rebalanced_markdown_for_selection(&self) -> String {
+        rebalanced_markdown_for_selection(&self.parsed, self.selection.range())
+    }
+
     fn schedule_parse(&mut self, cx: &mut Context<Self>) {
         if self.pending_parse.is_some() {
             self.should_reparse = true;
@@ -812,6 +859,8 @@ struct TextBlockBuilder {
     images: Vec<ParsedInlineImage>,
     flags: InlineFlags,
     active_links: Vec<ActiveLink>,
+    spans: Vec<InlineSpan>,
+    span_stack: Vec<(Range<usize>, Option<Range<usize>>)>,
 }
 
 impl TextBlockBuilder {
@@ -825,6 +874,8 @@ impl TextBlockBuilder {
             images: Vec::new(),
             flags: InlineFlags::default(),
             active_links: Vec::new(),
+            spans: Vec::new(),
+            span_stack: Vec::new(),
         }
     }
 
@@ -872,10 +923,50 @@ impl TextBlockBuilder {
             segments: self.segments,
             links: self.links,
             images: self.images,
+            spans: self.spans,
             render_cache: TextPreparationCache::default(),
             intrinsic_width_cache: IntrinsicTextWidthCache::default(),
             inline_flow_layout_cache: InlineFlowLayoutCache::default(),
         }
+    }
+
+    /// Extends the content range of every open span to include the child.
+    fn note_child(&mut self, child: &Range<usize>) {
+        for (_, content) in self.span_stack.iter_mut() {
+            match content {
+                Some(content) => content.end = content.end.max(child.end),
+                None => *content = Some(child.clone()),
+            }
+        }
+    }
+
+    /// Opens a delimited inline span (strong, emphasis, strikethrough, link).
+    fn open_inline_span(&mut self, range: Range<usize>) {
+        self.note_child(&range);
+        self.span_stack.push((range, None));
+    }
+
+    /// Closes the innermost open inline span.
+    fn close_inline_span(&mut self, range: Range<usize>) {
+        if let Some((span_range, content)) = self.span_stack.pop() {
+            let content = content.unwrap_or_else(|| span_range.clone());
+            self.spans.push(InlineSpan {
+                range: span_range,
+                content,
+                is_code: false,
+            });
+        }
+        self.note_child(&range);
+    }
+
+    /// Records a complete inline code span.
+    fn code_span(&mut self, full: Range<usize>, content: Range<usize>) {
+        self.note_child(&full);
+        self.spans.push(InlineSpan {
+            range: full,
+            content,
+            is_code: true,
+        });
     }
 }
 
@@ -933,7 +1024,7 @@ fn apply_inline_html_tag(source: &str, range: Range<usize>, block: &mut TextBloc
 
 /// Assigns deterministic canonical ranges to visible HTML content.
 ///
-/// html5ever does not retain byte locations, so this follows Zed's monotonic
+/// html5ever does not retain byte locations, so this follows the monotonic
 /// allocator contract while keeping every boundary valid for the UTF-8 source.
 struct HtmlSourceAllocator<'a> {
     source: &'a str,
@@ -1274,13 +1365,7 @@ fn parse_markdown_with_previous(
     let mut heading_counts: HashMap<String, usize> = HashMap::new();
     let mut footnotes = HashMap::new();
     let mut current: Option<TextBlockBuilder> = None;
-    let mut code: Option<(
-        usize,
-        String,
-        Option<SharedString>,
-        Option<SharedString>,
-        Option<SharedString>,
-    )> = None;
+    let mut code: Option<PendingCodeBlock> = None;
     let mut image: Option<(
         usize,
         SharedString,
@@ -1379,17 +1464,25 @@ fn parse_markdown_with_previous(
                         .find(|token| token.contains('/') || token.contains('\\'))
                         .map(|token| token.to_string().into())
                 });
-                code = Some((range.start, String::new(), language, info, source_path));
+                code = Some(PendingCodeBlock {
+                    source_start: range.start,
+                    language,
+                    info,
+                    source_path,
+                    ..Default::default()
+                });
             }
             Event::End(TagEnd::CodeBlock) => {
-                if let Some((start, code_text, language, info, source_path)) = code.take() {
+                if let Some(mut pending) = code.take() {
+                    let start = pending.source_start;
+                    let content = pending.content.take().unwrap_or(start..range.end);
                     let mermaid_data_uri = (options.render_mermaid_diagrams
-                        && language.as_deref() == Some("mermaid"))
-                    .then(|| render_mermaid_data_uri(&code_text))
+                        && pending.language.as_deref() == Some("mermaid"))
+                    .then(|| render_mermaid_data_uri(&pending.code))
                     .flatten();
-                    let code_text: SharedString = code_text.into();
+                    let code_text: SharedString = pending.code.into();
                     let display_code = code_block_display_text(&code_text);
-                    let highlight = if let Some(info) = info.clone() {
+                    let highlight = if let Some(info) = pending.info.clone() {
                         super::node::CodeBlock::new_fenced(
                             code_text.clone(),
                             info,
@@ -1398,18 +1491,19 @@ fn parse_markdown_with_previous(
                     } else {
                         super::node::CodeBlock::new(
                             code_text.clone(),
-                            language.clone(),
+                            pending.language.clone(),
                             None::<super::node::Span>,
                         )
                     };
                     root_starts.push(start);
                     blocks.push(ParsedBlock::Code(ParsedCodeBlock {
                         source: start..range.end,
+                        content_source: content,
                         code: code_text,
                         display_code,
-                        language,
-                        info,
-                        source_path,
+                        language: pending.language,
+                        info: pending.info,
+                        source_path: pending.source_path,
                         mermaid_data_uri,
                         highlight,
                     }));
@@ -1603,10 +1697,14 @@ fn parse_markdown_with_previous(
                     })
                     .flags
                     .emphasis = true;
+                if let Some(block) = current.as_mut() {
+                    block.open_inline_span(range.clone());
+                }
             }
             Event::End(TagEnd::Emphasis) => {
                 if let Some(block) = current.as_mut() {
                     block.flags.emphasis = false;
+                    block.close_inline_span(range.clone());
                 }
             }
             Event::Start(Tag::Strong) => {
@@ -1616,10 +1714,14 @@ fn parse_markdown_with_previous(
                     })
                     .flags
                     .strong = true;
+                if let Some(block) = current.as_mut() {
+                    block.open_inline_span(range.clone());
+                }
             }
             Event::End(TagEnd::Strong) => {
                 if let Some(block) = current.as_mut() {
                     block.flags.strong = false;
+                    block.close_inline_span(range.clone());
                 }
             }
             Event::Start(Tag::Strikethrough) => {
@@ -1629,10 +1731,14 @@ fn parse_markdown_with_previous(
                     })
                     .flags
                     .strike = true;
+                if let Some(block) = current.as_mut() {
+                    block.open_inline_span(range.clone());
+                }
             }
             Event::End(TagEnd::Strikethrough) => {
                 if let Some(block) = current.as_mut() {
                     block.flags.strike = false;
+                    block.close_inline_span(range.clone());
                 }
             }
             Event::Start(Tag::Link { dest_url, .. }) => {
@@ -1640,6 +1746,7 @@ fn parse_markdown_with_previous(
                     TextBlockBuilder::new(TextBlockKind::Paragraph, range.start)
                 });
                 block.flags.link = true;
+                block.open_inline_span(range.clone());
                 block.active_links.push(ActiveLink {
                     source_start: range.start,
                     destination: dest_url.to_string().into(),
@@ -1648,6 +1755,7 @@ fn parse_markdown_with_previous(
             Event::End(TagEnd::Link) => {
                 if let Some(block) = current.as_mut() {
                     block.flags.link = false;
+                    block.close_inline_span(range.clone());
                     if let Some(link) = block.active_links.pop() {
                         block.links.push(ParsedLink {
                             source: link.source_start..range.end,
@@ -1657,8 +1765,12 @@ fn parse_markdown_with_previous(
                 }
             }
             Event::Text(text) => {
-                if let Some((_, code_text, _, _, _)) = code.as_mut() {
-                    code_text.push_str(&text);
+                if let Some(pending) = code.as_mut() {
+                    pending.code.push_str(&text);
+                    pending.content = Some(match pending.content.take() {
+                        Some(content) => content.start..range.end,
+                        None => range.clone(),
+                    });
                 } else if let Some((_, _, _, alt, _, _)) = image.as_mut() {
                     alt.push_str(&text);
                 } else {
@@ -1668,7 +1780,8 @@ fn parse_markdown_with_previous(
                     if heading_start.is_some() {
                         heading_text.push_str(&text);
                     }
-                    block.push(text.to_string(), range);
+                    block.push(text.to_string(), range.clone());
+                    block.note_child(&range);
                 }
             }
             Event::Code(text) => {
@@ -1677,7 +1790,13 @@ fn parse_markdown_with_previous(
                 });
                 let previous = block.flags.code;
                 block.flags.code = true;
-                block.push(text.to_string(), range);
+                // The event range covers the full span including backticks, but
+                // the rendered text is the content only. Map the segment to the
+                // content range so source<->rendered mappings stay length-equal
+                // and selection can start and end inside the code span.
+                let content = inline_code_content_range(&source, &range);
+                block.push(text.to_string(), content.clone());
+                block.code_span(range.clone(), content);
                 block.flags.code = previous;
             }
             Event::Html(text) | Event::InlineHtml(text) if options.parse_html => {
@@ -1720,7 +1839,10 @@ fn parse_markdown_with_previous(
                     TextBlockBuilder::new(TextBlockKind::Paragraph, range.start)
                 });
                 block.flags.soft_break = true;
-                block.push("\n", range);
+                // Rendered as a single space; map the segment to the newline
+                // character only (the leading spaces are not rendered) so the
+                // source<->rendered mapping stays length-equal.
+                block.push("\n", range.end.saturating_sub(1)..range.end);
                 block.flags.soft_break = false;
             }
             Event::HardBreak => {
@@ -1771,6 +1893,176 @@ fn parse_markdown_with_previous(
 }
 
 /// Removes only the terminal newline introduced before a Markdown closing fence.
+/// Returns the content range of an inline code span, excluding the backtick
+/// delimiters. Pulldown reports the full span for [`pulldown_cmark::Event::Code`].
+fn inline_code_content_range(source: &str, span: &Range<usize>) -> Range<usize> {
+    let opening_ticks = source[span.start..]
+        .bytes()
+        .take_while(|&byte| byte == b'`')
+        .count();
+    let closing_ticks = source[..span.end]
+        .bytes()
+        .rev()
+        .take_while(|&byte| byte == b'`')
+        .count();
+    let ticks = opening_ticks.min(closing_ticks);
+    span.start + ticks..span.end - ticks
+}
+
+/// Re-builds well-formed markdown for a selection: boundaries snap out of
+/// delimiter syntax and delimiters cut off by the selection are re-added,
+/// outermost first.
+fn rebalanced_markdown_for_selection(parsed: &ParsedMarkdown, selection: Range<usize>) -> String {
+    let source = parsed.source.as_ref();
+    let Some(selection) = snap_to_char_boundaries(source, selection) else {
+        return String::new();
+    };
+
+    let (start_spans, end_spans) = boundary_block_spans(parsed, &selection);
+    let mut spans: Vec<&InlineSpan> = start_spans;
+    spans.extend(end_spans);
+
+    let Some(selection) = snap_out_of_delimiters(&spans, selection) else {
+        return String::new();
+    };
+
+    if selection_is_only_inside_code_spans(&spans, &selection) {
+        return source[selection].to_string();
+    }
+
+    rebalance_delimiters(source, &spans, &selection)
+}
+
+/// Returns the inline spans of the root blocks containing each selection
+/// boundary. The second slice is empty when both boundaries share a block.
+fn boundary_block_spans<'a>(
+    parsed: &'a ParsedMarkdown,
+    selection: &Range<usize>,
+) -> (Vec<&'a InlineSpan>, Vec<&'a InlineSpan>) {
+    let spans_of = |block: usize| -> Vec<&'a InlineSpan> {
+        parsed
+            .blocks
+            .get(block)
+            .and_then(|block| match block {
+                ParsedBlock::Text(block) => Some(block.spans.iter().collect()),
+                _ => None,
+            })
+            .unwrap_or_default()
+    };
+    if parsed.root_block_starts.is_empty() {
+        let mut spans = Vec::new();
+        for block in parsed.blocks.iter() {
+            if let ParsedBlock::Text(block) = block {
+                spans.extend(block.spans.iter());
+            }
+        }
+        return (spans, Vec::new());
+    }
+    let start_block = root_block_index(&parsed.root_block_starts, selection.start);
+    let end_block = root_block_index(&parsed.root_block_starts, selection.end);
+    let start_spans = spans_of(start_block);
+    if end_block == start_block {
+        (start_spans, Vec::new())
+    } else {
+        (start_spans, spans_of(end_block))
+    }
+}
+
+fn root_block_index(root_block_starts: &[usize], offset: usize) -> usize {
+    root_block_starts
+        .partition_point(|block_start| *block_start <= offset)
+        .saturating_sub(1)
+}
+
+fn snap_to_char_boundaries(source: &str, selection: Range<usize>) -> Option<Range<usize>> {
+    let mut start = selection.start.min(source.len());
+    let mut end = selection.end.min(source.len());
+    if start >= end {
+        return None;
+    }
+    while start > 0 && !source.is_char_boundary(start) {
+        start -= 1;
+    }
+    while end < source.len() && !source.is_char_boundary(end) {
+        end += 1;
+    }
+    Some(start..end)
+}
+
+/// Shrinks selection boundaries that fall inside delimiter syntax so no
+/// delimiter is left half-selected. Repeats until stable, since snapping can
+/// land inside a nested span's delimiter. Returns `None` when the selection
+/// becomes empty.
+fn snap_out_of_delimiters(spans: &[&InlineSpan], selection: Range<usize>) -> Option<Range<usize>> {
+    let mut start = selection.start;
+    let mut end = selection.end;
+    loop {
+        let mut changed = false;
+        for span in spans {
+            if end > span.range.start && end <= span.content.start {
+                end = span.range.start;
+                changed = true;
+            } else if end > span.content.end && end <= span.range.end {
+                end = span.content.end;
+                changed = true;
+            }
+            if start >= span.range.start && start < span.content.start {
+                start = span.content.start;
+                changed = true;
+            } else if start >= span.content.end && start < span.range.end {
+                start = span.range.end;
+                changed = true;
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    (start < end).then(|| start..end)
+}
+
+fn selection_is_only_inside_code_spans(spans: &[&InlineSpan], selection: &Range<usize>) -> bool {
+    let contains = |span: &&&InlineSpan| {
+        span.content.start <= selection.start && selection.end <= span.content.end
+    };
+    spans.iter().any(|span| span.is_code && contains(&span))
+        && !spans.iter().any(|span| !span.is_code && contains(&span))
+}
+
+/// Re-adds delimiters cut off by the selection so the result is well-formed
+/// markdown: selecting `old te` in `**bold text**` yields `**old te**`.
+/// Nested spans are reopened outermost first.
+fn rebalance_delimiters(source: &str, spans: &[&InlineSpan], selection: &Range<usize>) -> String {
+    let nesting_order = |a: &&&InlineSpan, b: &&&InlineSpan| {
+        a.range
+            .start
+            .cmp(&b.range.start)
+            .then(b.range.end.cmp(&a.range.end))
+    };
+
+    let mut open_at_start: Vec<&&InlineSpan> = spans
+        .iter()
+        .filter(|span| span.content.start <= selection.start && selection.start < span.content.end)
+        .collect();
+    open_at_start.sort_by(nesting_order);
+
+    let mut open_at_end: Vec<&&InlineSpan> = spans
+        .iter()
+        .filter(|span| span.content.start < selection.end && selection.end <= span.content.end)
+        .collect();
+    open_at_end.sort_by(nesting_order);
+
+    let mut result = String::new();
+    for span in &open_at_start {
+        result.push_str(span.opening(source));
+    }
+    result.push_str(&source[selection.clone()]);
+    for span in open_at_end.iter().rev() {
+        result.push_str(span.closing(source));
+    }
+    result
+}
+
 fn code_block_display_text(code: &SharedString) -> SharedString {
     code.strip_suffix('\n').map_or_else(
         || code.clone(),
@@ -1835,6 +2127,7 @@ fn parse_links_only(source: SharedString) -> ParsedMarkdown {
         segments,
         links,
         images: Vec::new(),
+        spans: Vec::new(),
         render_cache: TextPreparationCache::default(),
         intrinsic_width_cache: IntrinsicTextWidthCache::default(),
         inline_flow_layout_cache: InlineFlowLayoutCache::default(),
@@ -2080,18 +2373,27 @@ impl RenderedLineLayout {
 impl RenderedLine {
     fn source_for_rendered(&self, rendered_index: usize, exclusive_end: bool) -> usize {
         let rendered_index = rendered_index.min(self.text.len());
-        let mapping = self
-            .mappings
-            .iter()
-            .find(|mapping| {
+        let mapping = if exclusive_end {
+            // A range end maps to the end of the segment it terminates.
+            self.mappings.iter().find(|mapping| {
                 mapping.rendered.start <= rendered_index && rendered_index <= mapping.rendered.end
             })
-            .or_else(|| {
-                self.mappings
-                    .iter()
-                    .rev()
-                    .find(|mapping| mapping.rendered.start <= rendered_index)
-            });
+        } else {
+            // Hit testing prefers the segment starting at a shared boundary so
+            // a click at the left edge of a code chip lands inside the code.
+            self.mappings
+                .iter()
+                .find(|mapping| {
+                    mapping.rendered.start <= rendered_index
+                        && rendered_index < mapping.rendered.end
+                })
+                .or_else(|| {
+                    self.mappings
+                        .iter()
+                        .rev()
+                        .find(|mapping| mapping.rendered.start <= rendered_index)
+                })
+        };
         let Some(mapping) = mapping else {
             return self.source.start;
         };
@@ -2195,6 +2497,44 @@ impl RenderedText {
             .find(|line| line.source.contains(&source_index) || source_index == line.source.end)?;
         let rendered = line.rendered_for_source(source_index);
         line.layout.position_for_index(rendered)
+    }
+
+    /// Word range around a source index, computed on the rendered
+    /// text so delimiters never leak into the selection: double-clicking
+    /// inside inline code selects the content only, and a click on a
+    /// separator between two word runs selects the adjacent word.
+    fn surrounding_word_range(&self, source_index: usize) -> Range<usize> {
+        for line in &self.lines {
+            if source_index > line.source.end {
+                continue;
+            }
+            let rendered_index = line.rendered_for_source(source_index);
+            let text: &str = line.text.as_ref();
+            let mut prev = text[..rendered_index].chars().rev().peekable();
+            let mut next = text[rendered_index..].chars().peekable();
+            let word_kind = std::cmp::max(
+                prev.peek().map(|c| CharType::from(*c).word_kind()),
+                next.peek().map(|c| CharType::from(*c).word_kind()),
+            );
+            let mut start = rendered_index;
+            for c in prev {
+                if Some(CharType::from(c).word_kind()) == word_kind {
+                    start -= c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            let mut end = rendered_index;
+            for c in next {
+                if Some(CharType::from(c).word_kind()) == word_kind {
+                    end += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            return line.source_for_rendered(start, false)..line.source_for_rendered(end, true);
+        }
+        source_index..source_index
     }
 
     fn selection_bounds(&self, range: Range<usize>) -> Vec<Bounds<Pixels>> {
@@ -2702,6 +3042,13 @@ fn render_code_block(
     code_style.refine(&style.code_block.text);
     let text = block.display_code.clone();
     let display_len = text.len();
+    // The rendered code text maps linearly onto the source content. When the
+    // trailing newline was stripped from the display, drop it from the mapped
+    // source range too so the mapping stays length-equal and selection can
+    // start and end inside the block.
+    let stripped = block.code.len() - display_len;
+    let mapped_source =
+        block.content_source.start..block.content_source.end.saturating_sub(stripped);
     let mut runs = Vec::new();
     let mut cursor = 0;
     for (range, highlight) in block.highlight.styles(&style.syntax) {
@@ -2756,7 +3103,7 @@ fn render_code_block(
                         source: block.source.clone(),
                         mappings: vec![SegmentMapping {
                             rendered: 0..display_len,
-                            source: block.source.clone(),
+                            source: mapped_source.clone(),
                         }]
                         .into(),
                         links: Vec::new(),
@@ -2887,7 +3234,7 @@ fn render_code_block(
             source: block.source.clone(),
             mappings: vec![SegmentMapping {
                 rendered: 0..display_len,
-                source: block.source.clone(),
+                source: mapped_source,
             }]
             .into(),
             links: Vec::new(),
@@ -3407,10 +3754,11 @@ impl Element for MarkdownElement {
         window.on_action(std::any::TypeId::of::<CopyAsMarkdown>(), {
             let markdown = self.markdown.clone();
             move |_, phase, _, cx| {
-                if phase == DispatchPhase::Bubble
-                    && let Some(source) = markdown.read(cx).selected_source()
-                {
-                    cx.write_to_clipboard(ClipboardItem::new_string(source.to_string()));
+                if phase == DispatchPhase::Bubble {
+                    let text = markdown.read(cx).rebalanced_markdown_for_selection();
+                    if !text.is_empty() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    }
                 }
             }
         });
@@ -3423,10 +3771,7 @@ impl Element for MarkdownElement {
         let selection = self.markdown.read(cx).selection.range();
         if !selection.is_empty() {
             for bounds in rendered.selection_bounds(selection) {
-                window.paint_quad(fill(
-                    bounds,
-                    self.style.selection_background_color.opacity(0.35),
-                ));
+                window.paint_quad(fill(bounds, self.style.selection_background_color));
             }
         }
     }
@@ -3440,6 +3785,25 @@ impl MarkdownElement {
         window: &mut Window,
         _cx: &mut App,
     ) {
+        let entity = self.markdown.downgrade();
+        let clear_hitbox = hitbox.clone();
+        window.on_mouse_event(move |event: &MouseDownEvent, phase, _window, cx| {
+            if phase != DispatchPhase::Capture
+                || event.button != MouseButton::Left
+                || clear_hitbox.is_hovered(_window)
+            {
+                return;
+            }
+            // A left press outside clears the previous selection before the
+            // bubble handlers decide whether to start a new one.
+            let _ = entity.update(cx, |markdown, cx| {
+                markdown.selection = Selection::default();
+                markdown.pressed_link = None;
+                markdown.pressed_checkbox = None;
+                cx.notify();
+            });
+        });
+
         let entity = self.markdown.downgrade();
         let hitbox = hitbox.clone();
         let move_hitbox = hitbox.clone();
@@ -3465,27 +3829,47 @@ impl MarkdownElement {
                 }
             }
             let _ = entity.update(cx, |markdown, cx| {
+                let pressed_link = rendered_down
+                    .link_at(index)
+                    .map(|link| link.destination.clone());
+                markdown.pressed_link = pressed_link.clone();
+                markdown.pressed_checkbox = task_marker_at(&markdown.source, index);
+                if pressed_link.is_some() {
+                    // Pressing a link never starts a selection; activation is
+                    // decided on release by identity comparison.
+                    cx.notify();
+                    return;
+                }
                 let range = match event.click_count {
-                    2 => super::selection::word_range_at(&markdown.source, index)
-                        .unwrap_or(index..index),
+                    2 => rendered_down.surrounding_word_range(index),
                     3 => source_line_range(&markdown.source, index),
                     count if count >= 4 => 0..markdown.source.len(),
+                    1 if event.modifiers.shift => {
+                        // Shift-click extends from the last moved endpoint.
+                        let tail = markdown.selection.head.min(markdown.source.len());
+                        index.min(tail)..index.max(tail)
+                    }
                     _ => index..index,
                 };
                 markdown.selection = Selection {
-                    anchor: range.start,
-                    head: range.end,
+                    anchor: if event.modifiers.shift && event.click_count == 1 {
+                        markdown.selection.head.min(markdown.source.len())
+                    } else {
+                        range.start
+                    },
+                    head: if event.modifiers.shift && event.click_count == 1 {
+                        index
+                    } else {
+                        range.end
+                    },
                     pending: true,
                     mode: match event.click_count {
-                        2 => SelectionMode::Word,
-                        3 => SelectionMode::Line,
+                        2 => SelectionMode::Word(range),
+                        3 => SelectionMode::Line(range),
                         count if count >= 4 => SelectionMode::All,
                         _ => SelectionMode::Character,
                     },
                 };
-                markdown.pressed_link = rendered_down
-                    .link_at(index)
-                    .map(|link| link.destination.clone());
                 window.focus(&markdown.focus_handle, cx);
                 cx.notify();
             });
@@ -3510,15 +3894,42 @@ impl MarkdownElement {
             }
             let _ = entity.update(cx, |markdown, cx| {
                 if markdown.selection.pending {
-                    markdown.selection.head = match markdown.selection.mode {
-                        SelectionMode::Character => index,
-                        SelectionMode::Word => {
-                            super::selection::word_range_at(&markdown.source, index)
-                                .map_or(index, |range| range.end)
+                    match &markdown.selection.mode {
+                        SelectionMode::Character => {
+                            markdown.selection.head = index;
                         }
-                        SelectionMode::Line => source_line_range(&markdown.source, index).end,
-                        SelectionMode::All => markdown.source.len(),
-                    };
+                        SelectionMode::Word(original) => {
+                            let original = original.clone();
+                            let head_range = rendered_move.surrounding_word_range(index);
+                            if index < original.start {
+                                markdown.selection.anchor = original.end;
+                                markdown.selection.head = head_range.start;
+                            } else if index >= original.end {
+                                markdown.selection.anchor = original.start;
+                                markdown.selection.head = head_range.end;
+                            } else {
+                                markdown.selection.anchor = original.start;
+                                markdown.selection.head = original.end;
+                            }
+                        }
+                        SelectionMode::Line(original) => {
+                            let original = original.clone();
+                            let head_range = source_line_range(&markdown.source, index);
+                            if index < original.start {
+                                markdown.selection.anchor = original.end;
+                                markdown.selection.head = head_range.start;
+                            } else if index >= original.end {
+                                markdown.selection.anchor = original.start;
+                                markdown.selection.head = head_range.end;
+                            } else {
+                                markdown.selection.anchor = original.start;
+                                markdown.selection.head = original.end;
+                            }
+                        }
+                        SelectionMode::All => {
+                            markdown.selection.head = markdown.source.len();
+                        }
+                    }
                     markdown.autoscroll_request = Some(index);
                     cx.notify();
                 }
@@ -3539,18 +3950,21 @@ impl MarkdownElement {
                 .map(|link| link.destination.clone());
             let _ = entity.update(cx, |markdown, cx| {
                 let pressed = markdown.pressed_link.take();
-                let was_click = markdown.selection.range().is_empty();
+                let pressed_checkbox = markdown.pressed_checkbox.take();
                 markdown.selection.pending = false;
-                if was_click
+                if let Some((range, checked)) = pressed_checkbox
+                    && task_marker_at(&markdown.source, index).is_some_and(
+                        |(released_range, released_checked)| {
+                            released_range == range && released_checked == checked
+                        },
+                    )
                     && let Some(callback) = on_checkbox_toggle.as_ref()
-                    && let Some((range, checked)) = task_marker_at(&markdown.source, index)
                 {
                     callback(range, !checked, window, cx);
                     cx.notify();
                     return;
                 }
-                if was_click
-                    && let Some(destination) = pressed
+                if let Some(destination) = pressed
                     && Some(destination.clone()) == released
                 {
                     if let Some(callback) = on_click.as_ref() {
@@ -3614,7 +4028,9 @@ mod tests {
     use super::*;
     use std::{cell::RefCell, rc::Rc};
 
-    use gpui::{Context, Render, ScrollDelta, ScrollWheelEvent, VisualTestContext};
+    use gpui::{
+        Context, Modifiers, Point, Render, ScrollDelta, ScrollWheelEvent, VisualTestContext,
+    };
 
     struct CodeBlockScrollTestRoot {
         markdown: Entity<Markdown>,
@@ -3637,6 +4053,318 @@ mod tests {
         fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
             div()
         }
+    }
+
+    struct SelectionTestRoot {
+        markdown: Entity<Markdown>,
+        clicked: Rc<RefCell<Option<String>>>,
+    }
+
+    impl Render for SelectionTestRoot {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let clicked = self.clicked.clone();
+            div()
+                .debug_selector(|| "selection-test-host".to_string())
+                .child(
+                    MarkdownElement::new(
+                        self.markdown.clone(),
+                        MarkdownStyle::themed(MarkdownFont::Agent, window, cx),
+                    )
+                    .on_url_click(move |url, _, _| {
+                        *clicked.borrow_mut() = Some(url.to_string());
+                    }),
+                )
+        }
+    }
+
+    fn selection_host_bounds(cx: &mut VisualTestContext) -> Bounds<Pixels> {
+        cx.debug_bounds("selection-test-host").expect("host bounds")
+    }
+
+    fn drag_selection(cx: &mut VisualTestContext, start: Point<Pixels>, end: Point<Pixels>) {
+        cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
+        cx.simulate_mouse_move(end, Some(MouseButton::Left), Modifiers::default());
+        cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
+    }
+
+    #[gpui::test]
+    fn inline_code_can_be_selected_alone(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("`code`", cx)));
+        let markdown_for_root = markdown.clone();
+        let clicked = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| SelectionTestRoot {
+                markdown: markdown_for_root,
+                clicked,
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds = selection_host_bounds(cx);
+        // The chip is the only fragment; click inside the padded text region.
+        let y = bounds.center().y;
+        drag_selection(
+            cx,
+            point(bounds.left() + px(6.), y),
+            point(bounds.left() + px(22.), y),
+        );
+        let (selection, source) = markdown.read_with(cx, |markdown, _| {
+            (markdown.selection.range(), markdown.source.clone())
+        });
+        assert!(
+            !selection.is_empty() && selection.start >= 1 && selection.end <= 5,
+            "selection {selection:?} must stay inside the code content: {source:?}"
+        );
+        assert_eq!(&source[selection.clone()], "co");
+    }
+
+    #[gpui::test]
+    fn code_block_can_be_selected_partially(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("```\nabc def\n```", cx)));
+        let markdown_for_root = markdown.clone();
+        let clicked = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| SelectionTestRoot {
+                markdown: markdown_for_root,
+                clicked,
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds = selection_host_bounds(cx);
+        // Click past the border and padding into the first glyphs of the code.
+        let y = bounds.center().y;
+        drag_selection(
+            cx,
+            point(bounds.left() + px(14.), y),
+            point(bounds.left() + px(26.), y),
+        );
+        let (selection, source) = markdown.read_with(cx, |markdown, _| {
+            (markdown.selection.range(), markdown.source.clone())
+        });
+        assert!(
+            !selection.is_empty() && selection.start >= 1 && selection.end <= 8,
+            "selection {selection:?} must stay inside the code content: {source:?}"
+        );
+    }
+
+    #[gpui::test]
+    fn shift_click_extends_selection_from_the_tail(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("abc def", cx)));
+        let markdown_for_root = markdown.clone();
+        let clicked = Rc::new(RefCell::new(None));
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| SelectionTestRoot {
+                markdown: markdown_for_root,
+                clicked,
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds = selection_host_bounds(cx);
+        let y = bounds.center().y;
+        drag_selection(
+            cx,
+            point(bounds.left() + px(2.), y),
+            point(bounds.left() + px(20.), y),
+        );
+        let first_head = markdown.read_with(cx, |markdown, _| markdown.selection.head);
+        assert!(!markdown.read_with(cx, |markdown, _| markdown.selection.range().is_empty()));
+        // Shift-click before the tail: the selection keeps the tail as its end.
+        cx.simulate_mouse_down(
+            point(bounds.left() + px(8.), y),
+            MouseButton::Left,
+            Modifiers::shift(),
+        );
+        cx.simulate_mouse_up(
+            point(bounds.left() + px(8.), y),
+            MouseButton::Left,
+            Modifiers::shift(),
+        );
+        let (selection, source) = markdown.read_with(cx, |markdown, _| {
+            (markdown.selection.range(), markdown.source.clone())
+        });
+        assert_eq!(
+            selection.end, first_head,
+            "the tail must stay pinned: {source:?}"
+        );
+        assert!(selection.start < selection.end);
+    }
+
+    #[gpui::test]
+    fn clicking_a_link_does_not_create_a_selection(cx: &mut gpui::TestAppContext) {
+        cx.update(crate::init);
+        let markdown = cx.update(|cx| cx.new(|cx| Markdown::new("[v](https://e.com) tail", cx)));
+        let markdown_for_root = markdown.clone();
+        let clicked = Rc::new(RefCell::new(None));
+        let clicked_for_root = clicked.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let content = cx.new(|_| SelectionTestRoot {
+                markdown: markdown_for_root,
+                clicked: clicked_for_root,
+            });
+            crate::Root::new(content, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            let _ = window.draw(cx);
+        });
+        let bounds = selection_host_bounds(cx);
+        let y = bounds.center().y;
+        let position = point(bounds.left() + px(4.), y);
+        cx.simulate_click(position, Modifiers::default());
+        let selection = markdown.read_with(cx, |markdown, _| markdown.selection.range());
+        assert!(
+            selection.is_empty(),
+            "clicking a link must not start a selection: {selection:?}"
+        );
+        assert_eq!(
+            clicked.borrow().as_deref(),
+            Some("https://e.com"),
+            "the link must still activate"
+        );
+    }
+
+    fn rebalanced_for(source: &str, selection: Range<usize>) -> String {
+        let parsed = parse_markdown(source.into(), MarkdownOptions::default());
+        rebalanced_markdown_for_selection(&parsed, selection)
+    }
+
+    #[test]
+    fn rebalanced_markdown_balances_inline_spans() {
+        assert_eq!(
+            rebalanced_for("This is **bold** text in a sentence.", 10..14),
+            "**bold**"
+        );
+        // A boundary inside the closing delimiter snaps back into the content.
+        assert_eq!(
+            rebalanced_for("This is **bold** text in a sentence.", 10..15),
+            "**bold**"
+        );
+        assert_eq!(
+            rebalanced_for("This is **bold** text in a sentence.", 2..12),
+            "is is **bo**"
+        );
+        assert_eq!(
+            rebalanced_for("This is *italic* text in a sentence.", 9..15),
+            "*italic*"
+        );
+        assert_eq!(
+            rebalanced_for("This is *italic* text in a sentence.", 11..13),
+            "*al*"
+        );
+    }
+
+    #[test]
+    fn rebalanced_markdown_handles_code_spans() {
+        // Selections fully inside a code span copy plain text.
+        assert_eq!(rebalanced_for("run `cargo` test now", 5..10), "cargo");
+        assert_eq!(rebalanced_for("run `cargo` test now", 6..9), "arg");
+        // A selection crossing the closing delimiter re-adds the backtick
+        // while keeping the interior text plain.
+        assert_eq!(rebalanced_for("run `cargo` test now", 6..12), "`argo` ");
+        assert_eq!(
+            rebalanced_for("T his `code` all `in one` sentence.", 2..9),
+            "his `co`"
+        );
+    }
+
+    #[test]
+    fn rebalanced_markdown_rebalances_nested_spans() {
+        assert_eq!(
+            rebalanced_for("**bold with `code` inside**", 14..16),
+            "**`od`**"
+        );
+        assert_eq!(
+            rebalanced_for("**bold with `code` inside**", 13..17),
+            "**`code`**"
+        );
+        assert_eq!(
+            rebalanced_for("**bold with `code` inside**", 0..27),
+            "**bold with `code` inside**"
+        );
+    }
+
+    #[test]
+    fn rebalanced_markdown_rebalances_links() {
+        assert_eq!(
+            rebalanced_for("[Visit Rust's website](https://rust.org)", 16..21),
+            "[bsite](https://rust.org)"
+        );
+        assert_eq!(
+            rebalanced_for("[Visit Rust's website](https://rust.org)", 0..40),
+            "[Visit Rust's website](https://rust.org)"
+        );
+        assert_eq!(
+            rebalanced_for("visit https://example.com now", 14..25),
+            "example.com"
+        );
+    }
+
+    #[test]
+    fn rebalanced_markdown_scopes_to_boundary_blocks() {
+        assert_eq!(
+            rebalanced_for("**bold one**\n\nmiddle `x`\n\n*italic two*", 4..30),
+            "**ld one**\n\nmiddle `x`\n\n*ita*"
+        );
+        assert_eq!(rebalanced_for("one\ntwo\nthree", 4..7), "two");
+        assert_eq!(rebalanced_for("```rust\nlet x = 1;\n```", 12..15), "x =");
+    }
+
+    #[test]
+    fn surrounding_word_range_respects_rendered_text() {
+        let line =
+            |text: &str, source: Range<usize>, mappings: Vec<(Range<usize>, Range<usize>)>| {
+                RenderedLine {
+                    layout: RenderedLineLayout::Inline(InlineFlowLayoutState::default()),
+                    text: text.into(),
+                    source,
+                    mappings: mappings
+                        .into_iter()
+                        .map(|(rendered, source)| SegmentMapping { rendered, source })
+                        .collect::<Vec<_>>()
+                        .into(),
+                    links: Vec::new(),
+                }
+            };
+        // "before `code` after": the code segment maps content-only (8..12).
+        let rendered = RenderedText {
+            lines: vec![line(
+                "before code after",
+                0..19,
+                vec![(0..7, 0..7), (7..11, 8..12), (11..17, 13..19)],
+            )],
+        };
+        assert_eq!(rendered.surrounding_word_range(9), 8..12);
+        assert_eq!(
+            rendered.surrounding_word_range(7),
+            8..12,
+            "a click on the opening backtick selects the code content"
+        );
+        assert_eq!(rendered.surrounding_word_range(4), 0..6);
+        // A click on a separator selects the word run behind it: the
+        // separator itself stops the right expansion.
+        let rendered = RenderedText {
+            lines: vec![line("foo.bar", 0..7, vec![(0..7, 0..7)])],
+        };
+        assert_eq!(rendered.surrounding_word_range(3), 0..3);
+        assert_eq!(rendered.surrounding_word_range(4), 4..7);
     }
 
     impl Render for CodeBlockScrollTestRoot {
@@ -3754,9 +4482,12 @@ mod tests {
                 && &source[segment.source.clone()] == "粗体"
         }));
         assert!(block.segments.iter().any(|segment| {
+            // The segment maps to the code content only, without the backtick
+            // delimiters, so source<->rendered mappings stay length-equal and
+            // selection can start and end inside the code span.
             segment.text.as_ref() == "code"
                 && segment.flags.code
-                && source[segment.source.clone()].contains("`code`")
+                && &source[segment.source.clone()] == "code"
         }));
     }
 
@@ -4801,6 +5532,7 @@ mod tests {
                 ],
                 images: Vec::new(),
                 links: Vec::new(),
+                spans: Vec::new(),
                 render_cache: TextPreparationCache::default(),
                 intrinsic_width_cache: IntrinsicTextWidthCache::default(),
                 inline_flow_layout_cache: InlineFlowLayoutCache::default(),

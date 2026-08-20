@@ -28,7 +28,7 @@ let style = MarkdownStyle::themed(MarkdownFont::Preview, window, cx);
 MarkdownElement::new(markdown.clone(), style)
 ```
 
-`MarkdownFont::Agent`、`Editor`、`Preview` 提供与 Zed 对齐的排版 profile。`MarkdownStyle` 可配置标题、链接、inline code、引用、code block、分隔线、表格、语法高亮、选择区域和软换行。
+`MarkdownFont::Agent`、`Editor`、`Preview` 分别提供 agent、editor、preview 三种场景的排版 profile。`MarkdownStyle` 可配置标题、链接、inline code、引用、code block、分隔线、表格、语法高亮、选择区域和软换行。
 
 ### Inline code
 
@@ -122,7 +122,9 @@ markdown.update(cx, |markdown, cx| {
 });
 ```
 
-普通 Copy 输出渲染后的纯文本；`CopyAsMarkdown` 输出选中的 canonical Markdown source。
+普通 Copy 输出渲染后的纯文本；`CopyAsMarkdown` 输出再平衡后的合法 Markdown：选择边界会从定界符语法中收敛，被选择截断的定界符会重新补回，例如在 `**bold**` 中选择 `old` 会复制 `**old**`。完全落在 inline code 内的选择复制纯文本。
+
+鼠标选择：词选择基于渲染文本计算（双击 inline code 只选中内容、不含反引号），shift-click 从选择尾部扩展，词/行拖拽越过锚点后反向扩展。点击链接不会创建选择，激活在释放时判定。
 
 ## HTML
 

@@ -22,6 +22,8 @@ Adjacent spans keep independent chips: `let a = 1;` and `let b = a + 1;`
 
 Code inside links keeps its chip styling and stays clickable: [`open_url("https://example.com")`](https://example.com)
 
+Double-click `inline code` to select the content without backticks, shift-click extends a selection, and Copy As Markdown rebalances cut delimiters.
+
 > [!TIP]
 > Selection, link hit testing, copy, and scrolling are owned by one Markdown entity.
 
